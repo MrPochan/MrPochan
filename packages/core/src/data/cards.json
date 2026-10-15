@@ -1,0 +1,821 @@
+{
+  "version": 1,
+  "_comment": "Card pool (CARD-001). Card texts are open (spec 4.2); effects are placeholders. stat: dmg or hp is a percent bonus, speed is a percent reduction of the attack period. tiers[0..3] apply to tier 0..3 (CARD-006).",
+  "pool": {
+    "per_hero": 6,
+    "common": 6,
+    "total": 30
+  },
+  "cards": [
+    {
+      "id": "knight_01",
+      "hero": "knight",
+      "effects": [
+        {
+          "stat": "dmg",
+          "tiers": [
+            {
+              "value": 8,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            },
+            {
+              "value": 22,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "knight_02",
+      "hero": "knight",
+      "effects": [
+        {
+          "stat": "hp",
+          "tiers": [
+            {
+              "value": 10,
+              "source": "open"
+            },
+            {
+              "value": 15,
+              "source": "open"
+            },
+            {
+              "value": 20,
+              "source": "open"
+            },
+            {
+              "value": 28,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "knight_03",
+      "hero": "knight",
+      "effects": [
+        {
+          "stat": "speed",
+          "tiers": [
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 9,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "knight_04",
+      "hero": "knight",
+      "effects": [
+        {
+          "stat": "dmg",
+          "tiers": [
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 9,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "knight_05",
+      "hero": "knight",
+      "effects": [
+        {
+          "stat": "hp",
+          "tiers": [
+            {
+              "value": 8,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            },
+            {
+              "value": 22,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "knight_06",
+      "hero": "knight",
+      "effects": [
+        {
+          "stat": "speed",
+          "tiers": [
+            {
+              "value": 5,
+              "source": "open"
+            },
+            {
+              "value": 8,
+              "source": "open"
+            },
+            {
+              "value": 10,
+              "source": "open"
+            },
+            {
+              "value": 14,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "archer_01",
+      "hero": "archer",
+      "effects": [
+        {
+          "stat": "dmg",
+          "tiers": [
+            {
+              "value": 8,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            },
+            {
+              "value": 22,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "archer_02",
+      "hero": "archer",
+      "effects": [
+        {
+          "stat": "speed",
+          "tiers": [
+            {
+              "value": 8,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            },
+            {
+              "value": 22,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "archer_03",
+      "hero": "archer",
+      "effects": [
+        {
+          "stat": "hp",
+          "tiers": [
+            {
+              "value": 8,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            },
+            {
+              "value": 20,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "archer_04",
+      "hero": "archer",
+      "effects": [
+        {
+          "stat": "dmg",
+          "tiers": [
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 9,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "archer_05",
+      "hero": "archer",
+      "effects": [
+        {
+          "stat": "speed",
+          "tiers": [
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 9,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "archer_06",
+      "hero": "archer",
+      "effects": [
+        {
+          "stat": "hp",
+          "tiers": [
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 9,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mage_01",
+      "hero": "mage",
+      "effects": [
+        {
+          "stat": "dmg",
+          "tiers": [
+            {
+              "value": 10,
+              "source": "open"
+            },
+            {
+              "value": 15,
+              "source": "open"
+            },
+            {
+              "value": 20,
+              "source": "open"
+            },
+            {
+              "value": 28,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mage_02",
+      "hero": "mage",
+      "effects": [
+        {
+          "stat": "speed",
+          "tiers": [
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 9,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mage_03",
+      "hero": "mage",
+      "effects": [
+        {
+          "stat": "hp",
+          "tiers": [
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 9,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mage_04",
+      "hero": "mage",
+      "effects": [
+        {
+          "stat": "dmg",
+          "tiers": [
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 9,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mage_05",
+      "hero": "mage",
+      "effects": [
+        {
+          "stat": "speed",
+          "tiers": [
+            {
+              "value": 8,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            },
+            {
+              "value": 20,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mage_06",
+      "hero": "mage",
+      "effects": [
+        {
+          "stat": "hp",
+          "tiers": [
+            {
+              "value": 8,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            },
+            {
+              "value": 20,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "druid_01",
+      "hero": "druid",
+      "effects": [
+        {
+          "stat": "dmg",
+          "tiers": [
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 9,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "druid_02",
+      "hero": "druid",
+      "effects": [
+        {
+          "stat": "hp",
+          "tiers": [
+            {
+              "value": 8,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            },
+            {
+              "value": 22,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "druid_03",
+      "hero": "druid",
+      "effects": [
+        {
+          "stat": "speed",
+          "tiers": [
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 9,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "druid_04",
+      "hero": "druid",
+      "effects": [
+        {
+          "stat": "dmg",
+          "tiers": [
+            {
+              "value": 8,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            },
+            {
+              "value": 22,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "druid_05",
+      "hero": "druid",
+      "effects": [
+        {
+          "stat": "hp",
+          "tiers": [
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 9,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "druid_06",
+      "hero": "druid",
+      "effects": [
+        {
+          "stat": "speed",
+          "tiers": [
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 9,
+              "source": "open"
+            },
+            {
+              "value": 12,
+              "source": "open"
+            },
+            {
+              "value": 16,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "common_01",
+      "hero": "common",
+      "effects": [
+        {
+          "stat": "dmg",
+          "tiers": [
+            {
+              "value": 4,
+              "source": "open"
+            },
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 8,
+              "source": "open"
+            },
+            {
+              "value": 10,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "common_02",
+      "hero": "common",
+      "effects": [
+        {
+          "stat": "hp",
+          "tiers": [
+            {
+              "value": 4,
+              "source": "open"
+            },
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 8,
+              "source": "open"
+            },
+            {
+              "value": 10,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "common_03",
+      "hero": "common",
+      "effects": [
+        {
+          "stat": "speed",
+          "tiers": [
+            {
+              "value": 3,
+              "source": "open"
+            },
+            {
+              "value": 5,
+              "source": "open"
+            },
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 8,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "common_04",
+      "hero": "common",
+      "effects": [
+        {
+          "stat": "dmg",
+          "tiers": [
+            {
+              "value": 3,
+              "source": "open"
+            },
+            {
+              "value": 5,
+              "source": "open"
+            },
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 8,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "common_05",
+      "hero": "common",
+      "effects": [
+        {
+          "stat": "hp",
+          "tiers": [
+            {
+              "value": 3,
+              "source": "open"
+            },
+            {
+              "value": 5,
+              "source": "open"
+            },
+            {
+              "value": 6,
+              "source": "open"
+            },
+            {
+              "value": 8,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "common_06",
+      "hero": "common",
+      "effects": [
+        {
+          "stat": "speed",
+          "tiers": [
+            {
+              "value": 2,
+              "source": "open"
+            },
+            {
+              "value": 3,
+              "source": "open"
+            },
+            {
+              "value": 4,
+              "source": "open"
+            },
+            {
+              "value": 5,
+              "source": "open"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
