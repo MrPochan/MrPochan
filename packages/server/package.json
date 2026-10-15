@@ -1,0 +1,16 @@
+{
+  "name": "@cupquest/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@cupquest/core": "*",
+    "fastify": "^5.0.0"
+  }
+}

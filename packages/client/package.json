@@ -1,0 +1,20 @@
+{
+  "name": "@cupquest/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@cupquest/core": "*",
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}
