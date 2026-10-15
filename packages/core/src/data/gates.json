@@ -92,7 +92,7 @@
         0
       ],
       "balls_sum": 1260740,
-      "avg_balls_hundredths": 12607,
+      "avg_balls_hundredths": 2521,
       "chance_tenths": {
         "x0": 82,
         "x1": 168,
@@ -222,7 +222,7 @@
         0
       ],
       "balls_sum": 1258880,
-      "avg_balls_hundredths": 12588,
+      "avg_balls_hundredths": 2517,
       "chance_tenths": {
         "x0": 80,
         "x1": 168,
@@ -352,7 +352,7 @@
         0
       ],
       "balls_sum": 1260380,
-      "avg_balls_hundredths": 12603,
+      "avg_balls_hundredths": 2520,
       "chance_tenths": {
         "x0": 82,
         "x1": 166,
@@ -482,7 +482,7 @@
         0
       ],
       "balls_sum": 1267090,
-      "avg_balls_hundredths": 12670,
+      "avg_balls_hundredths": 2534,
       "chance_tenths": {
         "x0": 81,
         "x1": 167,
@@ -612,7 +612,7 @@
         0
       ],
       "balls_sum": 1254740,
-      "avg_balls_hundredths": 12547,
+      "avg_balls_hundredths": 2509,
       "chance_tenths": {
         "x0": 84,
         "x1": 170,
@@ -742,7 +742,7 @@
         0
       ],
       "balls_sum": 1260660,
-      "avg_balls_hundredths": 12606,
+      "avg_balls_hundredths": 2521,
       "chance_tenths": {
         "x0": 82,
         "x1": 168,
@@ -872,7 +872,7 @@
         0
       ],
       "balls_sum": 1256560,
-      "avg_balls_hundredths": 12565,
+      "avg_balls_hundredths": 2513,
       "chance_tenths": {
         "x0": 82,
         "x1": 170,
@@ -1002,7 +1002,7 @@
         0
       ],
       "balls_sum": 1259400,
-      "avg_balls_hundredths": 12594,
+      "avg_balls_hundredths": 2518,
       "chance_tenths": {
         "x0": 81,
         "x1": 168,
@@ -1132,7 +1132,7 @@
         0
       ],
       "balls_sum": 1257870,
-      "avg_balls_hundredths": 12578,
+      "avg_balls_hundredths": 2515,
       "chance_tenths": {
         "x0": 82,
         "x1": 168,
@@ -1262,7 +1262,7 @@
         0
       ],
       "balls_sum": 1260200,
-      "avg_balls_hundredths": 12602,
+      "avg_balls_hundredths": 2520,
       "chance_tenths": {
         "x0": 81,
         "x1": 167,
@@ -1392,7 +1392,7 @@
         0
       ],
       "balls_sum": 1264410,
-      "avg_balls_hundredths": 12644,
+      "avg_balls_hundredths": 2528,
       "chance_tenths": {
         "x0": 81,
         "x1": 166,
@@ -1522,7 +1522,7 @@
         0
       ],
       "balls_sum": 1259050,
-      "avg_balls_hundredths": 12590,
+      "avg_balls_hundredths": 2518,
       "chance_tenths": {
         "x0": 81,
         "x1": 169,
@@ -1652,7 +1652,7 @@
         0
       ],
       "balls_sum": 1259900,
-      "avg_balls_hundredths": 12599,
+      "avg_balls_hundredths": 2519,
       "chance_tenths": {
         "x0": 81,
         "x1": 168,
@@ -1782,7 +1782,7 @@
         0
       ],
       "balls_sum": 1260440,
-      "avg_balls_hundredths": 12604,
+      "avg_balls_hundredths": 2520,
       "chance_tenths": {
         "x0": 82,
         "x1": 168,
@@ -1912,7 +1912,7 @@
         0
       ],
       "balls_sum": 1260270,
-      "avg_balls_hundredths": 12602,
+      "avg_balls_hundredths": 2520,
       "chance_tenths": {
         "x0": 83,
         "x1": 168,
@@ -2043,7 +2043,7 @@
       0
     ],
     "balls_sum": 18900590,
-    "avg_balls_hundredths": 12600,
+    "avg_balls_hundredths": 2520,
     "chance_tenths": {
       "x0": 82,
       "x1": 168,
@@ -2088,6 +2088,6 @@
         "x5": 200
       }
     ],
-    "avg_run_hundredths": 189005
+    "avg_run_hundredths": 37801
   }
 }
