@@ -1,0 +1,413 @@
+/* Layout and tokens. Colours live on :root; placeholder art only (spec 6.5, UI-008). */
+:root {
+  --bg: #1b1d2a;
+  --fg: #f4f1e8;
+  --accent: #f5b942;
+  --panel: #262a3d;
+  --panel-2: #2f3449;
+  --muted: #9aa0b8;
+  --danger: #ff8a80;
+  --ok: #7ee08a;
+  --line: #3b4160;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+}
+
+body {
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+  min-height: 100vh;
+}
+
+.boot {
+  color: var(--muted);
+  text-align: center;
+  margin-top: 40vh;
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0;
+}
+
+h2 {
+  font-size: 17px;
+  margin: 16px 0 8px;
+}
+
+h3 {
+  font-size: 15px;
+  margin: 0 0 4px;
+}
+
+.title {
+  text-align: center;
+  margin: 12px 0 8px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 13px;
+}
+
+.section {
+  color: var(--accent);
+}
+
+.error {
+  color: var(--danger);
+}
+
+.status-line,
+.landed,
+.timer,
+.column-line,
+.balances,
+.notice-line {
+  margin: 8px 0;
+}
+
+.notice-line {
+  color: var(--accent);
+}
+
+.headline {
+  color: var(--accent);
+  margin: 12px 0;
+}
+
+.win {
+  color: var(--ok);
+}
+
+.lose {
+  color: var(--danger);
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.header h1 {
+  flex: 1;
+  text-align: center;
+}
+
+.header-actions,
+.header-spacer {
+  min-width: 44px;
+}
+
+.menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--panel);
+  color: var(--accent);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #1b1d2a;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.btn-small {
+  min-height: 44px;
+  padding: 8px 10px;
+}
+
+.segmented {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.segmented .btn {
+  flex: 1 1 0;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.hero-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  min-height: 96px;
+}
+
+.hero-card.is-selected {
+  border-color: var(--accent);
+}
+
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.upgrade-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.odds {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 8px 12px;
+}
+
+.odds-row {
+  justify-content: flex-start;
+}
+
+.odds-row > span:nth-child(2) {
+  margin-left: auto;
+}
+
+.gate-chip {
+  display: inline-block;
+  min-width: 40px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  text-align: center;
+}
+
+.stage {
+  width: 100%;
+  aspect-ratio: 360 / 300;
+  max-height: 60vh;
+  background: var(--panel);
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.stage canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.cup-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cup-controls .btn {
+  flex: 0 0 auto;
+}
+
+.result-panel,
+.rewards,
+.profile,
+.settings {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.result-panel[hidden],
+.overlay-inline[hidden] {
+  display: none;
+}
+
+.overlay,
+.overlay-inline {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 10;
+}
+
+.overlay-inline {
+  position: static;
+  background: var(--panel);
+  border-radius: 12px;
+  z-index: auto;
+  padding: 0;
+}
+
+.dialog {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.dialog-actions .btn {
+  flex: 1 1 auto;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  background: var(--panel-2);
+  color: var(--fg);
+  padding: 10px 14px;
+  border-radius: 10px;
+  max-width: calc(100% - 32px);
+  z-index: 20;
+}
+
+.update-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--accent);
+  z-index: 30;
+}
+
+.install-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.board {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.board th,
+.board td {
+  text-align: left;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.board .is-me {
+  color: var(--accent);
+}
+
+.notice {
+  text-align: center;
+  margin-top: 30vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+table,
+p,
+h1,
+h2,
+h3 {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 340px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+  }
+}
