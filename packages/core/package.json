@@ -9,9 +9,18 @@
   "types": "./src/index.ts",
   "scripts": {
     "test": "vitest run",
+    "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint src test scripts eslint.config.js",
+    "release:check": "tsx scripts/release-check.ts",
     "data:fallback": "tsx scripts/build-data.ts fallback",
     "data:gates": "tsx scripts/build-data.ts gates",
-    "data:levels": "tsx scripts/build-data.ts levels"
+    "data:levels": "tsx scripts/build-data.ts levels",
+    "golden:build": "tsx scripts/build-golden.ts golden",
+    "tv005:build": "tsx scripts/build-golden.ts tv005"
+  },
+  "dependencies": {
+    "eslint": "^10.12.0",
+    "typescript-eslint": "^8.71.2"
   }
 }

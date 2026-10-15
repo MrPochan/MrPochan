@@ -218,12 +218,20 @@ function assemble(
   };
 }
 
+/** Attempt builder signature; tests may substitute it to force the fallback branch (TV-002). */
+export type AttemptBuilder = (subseed: Uint8Array, wave: number, attempt: number) => BuildResult;
+
 /** Generates the field for run seed S and wave w, with the trace of failed attempts (GEN-016, GEN-017). */
 export function generateBoardTrace(seed: Uint8Array, wave: number): GenerationTrace {
+  return generateWith(seed, wave, buildFromSubseed);
+}
+
+/** Same as generateBoardTrace with an injectable attempt builder. Not exported from the package index. */
+export function generateWith(seed: Uint8Array, wave: number, builder: AttemptBuilder): GenerationTrace {
   checkWave(wave);
   const failures: BuildFailure[] = [];
   for (let a = 0; a < FIELD.attempts; a++) {
-    const res = buildFromSubseed(kdf(seed, 'field', wave, a), wave, a);
+    const res = builder(kdf(seed, 'field', wave, a), wave, a);
     if (res.ok) return { board: res.board, failures, fallback: false };
     failures.push(res.reason);
   }
@@ -231,7 +239,7 @@ export function generateBoardTrace(seed: Uint8Array, wave: number): GenerationTr
   const seeds = fallbackSeeds(wave);
   const rng = new Xoshiro128ss(kdf(seed, 'fallback', wave, 0));
   const child = seeds[rng.bounded(seeds.length)] as Uint8Array;
-  const res = buildFromSubseed(child, wave, FALLBACK_ATTEMPT);
+  const res = builder(child, wave, FALLBACK_ATTEMPT);
   if (!res.ok) {
     throw new Error(`internal error: fallback seed failed for wave ${wave} (${res.reason})`);
   }

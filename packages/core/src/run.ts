@@ -160,7 +160,7 @@ function offerNow(state: RunState): string[] {
 function enterCardsOrField(state: RunState): RunState {
   const hasCardStep = state.wave < state.lastWave;
   if (!hasCardStep) return { ...state, phase: 'field', offer: [] };
-  const offer = offerNow({ ...state, reroll: 0 } as RunState);
+  const offer = offerFor(state.config.seed, state.wave, 0, state.config.team, state.taken);
   if (offer.length === 0) return { ...state, phase: 'field', offer: [], reroll: 0 };
   return { ...state, phase: 'cards', reroll: 0, offer };
 }

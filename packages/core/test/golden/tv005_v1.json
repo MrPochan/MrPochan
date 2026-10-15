@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "generated_by": "scripts/build-golden.ts tv005 (TV-005)",
+  "seeds": 1000,
+  "waves": 15,
+  "fields": 15000,
+  "sim_seed_root": "cupquest-sim-v1",
+  "seed_label": "sim",
+  "attempt_histogram": [
+    15000,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "fallback": 0,
+  "dead_end_by_attempt": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "validation_by_attempt": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ]
+}
