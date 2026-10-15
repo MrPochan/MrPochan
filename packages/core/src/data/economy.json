@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "_comment": "Prices, coin formulas and energy constants (spec ECO-002, ECO-004..ECO-012; concept 3.1). Numbers wrapped as {value, source} per BAL-002.",
+  "coin": {
+    "win_base": { "value": 20, "source": "concept:3.1" },
+    "win_per_wave": { "value": 5, "source": "concept:3.1" },
+    "boss_wave": { "value": 15, "source": "concept:2.1" },
+    "boss_bonus": { "value": 500, "source": "concept:3.1" },
+    "miniboss_wave": { "value": 8, "source": "concept:2.1" },
+    "miniboss_bonus": { "value": 100, "source": "open" },
+    "short_mode_waves": { "value": 5, "source": "assumption" }
+  },
+  "level": {
+    "min_level": 2,
+    "max_level": 20,
+    "formula": "U(L) = round_half_up(50 * L^1.4), spent to go from L-1 to L (ECO-004, BAL-004)",
+    "table_source": "concept:3.2",
+    "table": [
+      { "value": 132, "source": "concept:3.2" },
+      { "value": 233, "source": "concept:3.2" },
+      { "value": 348, "source": "concept:3.2" },
+      { "value": 476, "source": "concept:3.2" },
+      { "value": 614, "source": "concept:3.2" },
+      { "value": 762, "source": "concept:3.2" },
+      { "value": 919, "source": "concept:3.2" },
+      { "value": 1084, "source": "concept:3.2" },
+      { "value": 1256, "source": "concept:3.2" },
+      { "value": 1435, "source": "concept:3.2" },
+      { "value": 1621, "source": "concept:3.2" },
+      { "value": 1813, "source": "concept:3.2" },
+      { "value": 2012, "source": "concept:3.2" },
+      { "value": 2216, "source": "concept:3.2" },
+      { "value": 2425, "source": "concept:3.2" },
+      { "value": 2640, "source": "concept:3.2" },
+      { "value": 2860, "source": "concept:3.2" },
+      { "value": 3085, "source": "concept:3.2" },
+      { "value": 3314, "source": "concept:3.2" }
+    ],
+    "bonus_pct_per_level": { "value": 5, "source": "open" }
+  },
+  "ball": {
+    "unit": { "value": 10, "source": "concept:3.1" },
+    "gate_multiplier": {
+      "x0": { "value": 0, "source": "concept:2.2" },
+      "x1": { "value": 1, "source": "concept:2.2" },
+      "x2": { "value": 2, "source": "concept:2.2" },
+      "x3": { "value": 3, "source": "concept:2.2" },
+      "x5": { "value": 5, "source": "concept:2.2" }
+    },
+    "reroll_cost": { "value": 5, "source": "concept:2.1" },
+    "tier_cost": [
+      { "value": 20, "source": "concept:2.2" },
+      { "value": 60, "source": "concept:2.2" },
+      { "value": 150, "source": "concept:2.2" }
+    ],
+    "max_tier": { "value": 3, "source": "concept:2.2" }
+  },
+  "energy": {
+    "max": { "value": 5, "source": "concept:3.1" },
+    "period_s": { "value": 1200, "source": "concept:3.1" },
+    "per_run": { "value": 1, "source": "concept:3.1" },
+    "purchase_enabled": false
+  },
+  "gems": {
+    "resurrect": { "value": 10, "source": "assumption" },
+    "druid_unlock": { "value": 300, "source": "concept:3.1" }
+  },
+  "coins_unlock": {
+    "druid": { "value": 4000, "source": "concept:3.1" }
+  },
+  "referral": {
+    "weekly_reward_cap": { "value": 10, "source": "assumption" }
+  }
+}
