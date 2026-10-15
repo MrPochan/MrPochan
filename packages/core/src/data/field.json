@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "_comment": "Field geometry and generator weights (spec GEN-010, BAL-001). Geometry is structural; tunable numbers are wrapped as {value, source} per BAL-002.",
+  "geometry": {
+    "width": 9,
+    "route_rows": 9,
+    "drop_x": [0, 2, 4, 6, 8],
+    "slot_count": 5,
+    "source": "assumption"
+  },
+  "templates": [
+    [0, 2, 4, 6, 8],
+    [0, 3, 4, 5, 8],
+    [0, 3, 5, 7, 8]
+  ],
+  "templates_source": "assumption",
+  "weights": {
+    "x0": { "value": 10, "source": "assumption" },
+    "x1": { "value": 15, "source": "assumption" },
+    "x2": { "value": 30, "source": "assumption" },
+    "x3": { "value": 25, "source": "assumption" },
+    "x5": { "value": 20, "source": "assumption" }
+  },
+  "max_x0_per_field": 1,
+  "attempts": { "value": 10, "source": "concept:2.3" }
+}
