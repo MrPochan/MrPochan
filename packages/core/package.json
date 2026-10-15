@@ -9,6 +9,9 @@
   "types": "./src/index.ts",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "data:fallback": "tsx scripts/build-data.ts fallback",
+    "data:gates": "tsx scripts/build-data.ts gates",
+    "data:levels": "tsx scripts/build-data.ts levels"
   }
 }

@@ -1,18 +1,45 @@
 {
   "version": 1,
   "_comment": "Battle data (spec 4.1, CORE-012..CORE-027, BAL-001). Numbers wrapped as {value, source} per BAL-002. Wave compositions are placeholders with status open (CORE-009).",
-  "tick_ms": { "value": 50, "source": "assumption" },
-  "tmin1": { "value": 60, "source": "assumption" },
-  "tmin2": { "value": 0, "source": "assumption" },
-  "tmin3_tanim": { "value": 30, "source": "assumption" },
+  "tick_ms": {
+    "value": 50,
+    "source": "assumption"
+  },
+  "tmin1": {
+    "value": 60,
+    "source": "assumption"
+  },
+  "tmin2": {
+    "value": 0,
+    "source": "assumption"
+  },
+  "tmin3_tanim": {
+    "value": 30,
+    "source": "assumption"
+  },
   "limits_ticks": {
-    "normal": { "value": 800, "source": "concept:2.1" },
-    "miniboss": { "value": 1200, "source": "open" },
-    "boss": { "value": 1800, "source": "concept:2.5" }
+    "normal": {
+      "value": 800,
+      "source": "concept:2.1"
+    },
+    "miniboss": {
+      "value": 1200,
+      "source": "open"
+    },
+    "boss": {
+      "value": 1800,
+      "source": "concept:2.5"
+    }
   },
   "resurrect": {
-    "wait_ticks": { "value": 60, "source": "open" },
-    "hp_divisor": { "value": 2, "source": "concept:2.5" }
+    "wait_ticks": {
+      "value": 60,
+      "source": "open"
+    },
+    "hp_divisor": {
+      "value": 2,
+      "source": "concept:2.5"
+    }
   },
   "formation": {
     "enemy_slots": 5,
@@ -21,100 +48,558 @@
   "heroes": {
     "knight": {
       "name": "Рыцарь",
-      "hp": { "value": 150, "source": "open" },
-      "dmg": { "value": 12, "source": "open" },
-      "period": { "value": 12, "source": "open" },
-      "splash_radius": { "value": 0, "source": "assumption" }
+      "hp": {
+        "value": 300,
+        "source": "open"
+      },
+      "dmg": {
+        "value": 12,
+        "source": "open"
+      },
+      "period": {
+        "value": 12,
+        "source": "open"
+      },
+      "splash_radius": {
+        "value": 0,
+        "source": "assumption"
+      }
     },
     "archer": {
       "name": "Лучник",
-      "hp": { "value": 90, "source": "open" },
-      "dmg": { "value": 10, "source": "assumption" },
-      "period": { "value": 10, "source": "assumption" },
-      "splash_radius": { "value": 0, "source": "assumption" }
+      "hp": {
+        "value": 180,
+        "source": "open"
+      },
+      "dmg": {
+        "value": 10,
+        "source": "assumption"
+      },
+      "period": {
+        "value": 10,
+        "source": "assumption"
+      },
+      "splash_radius": {
+        "value": 0,
+        "source": "assumption"
+      }
     },
     "mage": {
       "name": "Маг",
-      "hp": { "value": 80, "source": "open" },
-      "dmg": { "value": 16, "source": "assumption" },
-      "period": { "value": 20, "source": "assumption" },
-      "splash_radius": { "value": 1, "source": "assumption" }
+      "hp": {
+        "value": 160,
+        "source": "open"
+      },
+      "dmg": {
+        "value": 12,
+        "source": "assumption"
+      },
+      "period": {
+        "value": 20,
+        "source": "assumption"
+      },
+      "splash_radius": {
+        "value": 1,
+        "source": "assumption"
+      }
     },
     "druid": {
       "name": "Друид",
-      "hp": { "value": 100, "source": "open" },
-      "dmg": { "value": 6, "source": "open" },
-      "period": { "value": 10, "source": "open" },
-      "splash_radius": { "value": 0, "source": "assumption" }
+      "hp": {
+        "value": 200,
+        "source": "open"
+      },
+      "dmg": {
+        "value": 6,
+        "source": "open"
+      },
+      "period": {
+        "value": 10,
+        "source": "open"
+      },
+      "splash_radius": {
+        "value": 0,
+        "source": "assumption"
+      }
     }
   },
   "frog": {
-    "hp": { "value": 40, "source": "open" },
-    "dmg": { "value": 4, "source": "open" },
-    "period": { "value": 10, "source": "open" },
-    "life": { "value": 200, "source": "open" },
-    "summon_period": { "value": 400, "source": "open" },
-    "max_alive": { "value": 2, "source": "open" }
+    "hp": {
+      "value": 40,
+      "source": "open"
+    },
+    "dmg": {
+      "value": 4,
+      "source": "open"
+    },
+    "period": {
+      "value": 10,
+      "source": "open"
+    },
+    "life": {
+      "value": 200,
+      "source": "open"
+    },
+    "summon_period": {
+      "value": 400,
+      "source": "open"
+    },
+    "max_alive": {
+      "value": 2,
+      "source": "open"
+    }
   },
   "enemies": {
     "grunt": {
       "name": "Гоблин",
-      "hp": { "value": 150, "source": "assumption" },
-      "dmg": { "value": 1, "source": "assumption" },
-      "period": { "value": 20, "source": "assumption" }
+      "hp": {
+        "value": 150,
+        "source": "assumption"
+      },
+      "dmg": {
+        "value": 1,
+        "source": "assumption"
+      },
+      "period": {
+        "value": 20,
+        "source": "assumption"
+      }
     },
     "brute": {
       "name": "Огр",
-      "hp": { "value": 770, "source": "concept:2.5" },
-      "dmg": { "value": 4, "source": "assumption" },
-      "period": { "value": 20, "source": "assumption" }
+      "hp": {
+        "value": 770,
+        "source": "concept:2.5"
+      },
+      "dmg": {
+        "value": 4,
+        "source": "assumption"
+      },
+      "period": {
+        "value": 20,
+        "source": "assumption"
+      }
     },
     "captain": {
       "name": "Вожак",
-      "hp": { "value": 600, "source": "open" },
-      "dmg": { "value": 4, "source": "open" },
-      "period": { "value": 20, "source": "open" }
+      "hp": {
+        "value": 600,
+        "source": "open"
+      },
+      "dmg": {
+        "value": 4,
+        "source": "open"
+      },
+      "period": {
+        "value": 20,
+        "source": "open"
+      }
     },
     "boss": {
       "name": "Владыка бездны",
-      "hp": { "value": 3000, "source": "concept:2.5" },
-      "dmg": { "value": 3, "source": "open" },
-      "period": { "value": 20, "source": "open" },
+      "hp": {
+        "value": 3000,
+        "source": "concept:2.5"
+      },
+      "dmg": {
+        "value": 2,
+        "source": "open"
+      },
+      "period": {
+        "value": 20,
+        "source": "open"
+      },
       "phases": [
-        { "hp_pct_below": { "value": 50, "source": "open" }, "dmg": { "value": 6, "source": "open" } }
+        {
+          "hp_pct_below": {
+            "value": 50,
+            "source": "open"
+          },
+          "dmg": {
+            "value": 4,
+            "source": "open"
+          }
+        }
       ]
     }
   },
   "waves": [
-    { "wave": 1, "kind": "normal", "status": "open", "enemies": [
-      { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 1 }, { "type": "grunt", "slot": 2 }, { "type": "grunt", "slot": 3 }] },
-    { "wave": 2, "kind": "normal", "status": "open", "enemies": [
-      { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 1 }, { "type": "grunt", "slot": 2 }, { "type": "grunt", "slot": 3 }, { "type": "grunt", "slot": 4 }] },
-    { "wave": 3, "kind": "normal", "status": "open", "enemies": [
-      { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 1 }, { "type": "grunt", "slot": 2 }, { "type": "grunt", "slot": 3 }, { "type": "grunt", "slot": 4 }] },
-    { "wave": 4, "kind": "normal", "status": "open", "enemies": [
-      { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 1 }, { "type": "grunt", "slot": 2 }, { "type": "grunt", "slot": 3 }, { "type": "grunt", "slot": 4 }] },
-    { "wave": 5, "kind": "normal", "status": "open", "enemies": [
-      { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 1 }, { "type": "grunt", "slot": 2 }, { "type": "grunt", "slot": 3 }, { "type": "grunt", "slot": 4 }] },
-    { "wave": 6, "kind": "normal", "status": "open", "enemies": [
-      { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 1 }, { "type": "grunt", "slot": 2 }, { "type": "grunt", "slot": 3 }, { "type": "grunt", "slot": 4 }] },
-    { "wave": 7, "kind": "normal", "status": "open", "enemies": [
-      { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 1 }, { "type": "grunt", "slot": 2 }, { "type": "grunt", "slot": 3 }, { "type": "grunt", "slot": 4 }] },
-    { "wave": 8, "kind": "miniboss", "status": "open", "enemies": [
-      { "type": "captain", "slot": 2 }, { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 4 }] },
-    { "wave": 9, "kind": "normal", "status": "open", "enemies": [
-      { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 1 }, { "type": "grunt", "slot": 2 }, { "type": "grunt", "slot": 3 }, { "type": "grunt", "slot": 4 }] },
-    { "wave": 10, "kind": "normal", "status": "open", "enemies": [
-      { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 1 }, { "type": "grunt", "slot": 2 }, { "type": "grunt", "slot": 3 }, { "type": "grunt", "slot": 4 }] },
-    { "wave": 11, "kind": "normal", "status": "open", "enemies": [
-      { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 1 }, { "type": "grunt", "slot": 2 }, { "type": "grunt", "slot": 3 }, { "type": "grunt", "slot": 4 }] },
-    { "wave": 12, "kind": "normal", "status": "open", "enemies": [
-      { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 1 }, { "type": "grunt", "slot": 2 }, { "type": "grunt", "slot": 3 }, { "type": "grunt", "slot": 4 }] },
-    { "wave": 13, "kind": "normal", "status": "open", "enemies": [
-      { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 1 }, { "type": "grunt", "slot": 2 }, { "type": "grunt", "slot": 3 }, { "type": "grunt", "slot": 4 }] },
-    { "wave": 14, "kind": "normal", "status": "open", "enemies": [
-      { "type": "brute", "slot": 2 }, { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 4 }] },
-    { "wave": 15, "kind": "boss", "status": "open", "enemies": [
-      { "type": "boss", "slot": 2 }, { "type": "grunt", "slot": 0 }, { "type": "grunt", "slot": 4 }] }
+    {
+      "wave": 1,
+      "kind": "normal",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 1
+        },
+        {
+          "type": "grunt",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 3
+        }
+      ]
+    },
+    {
+      "wave": 2,
+      "kind": "normal",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 1
+        },
+        {
+          "type": "grunt",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 3
+        },
+        {
+          "type": "grunt",
+          "slot": 4
+        }
+      ]
+    },
+    {
+      "wave": 3,
+      "kind": "normal",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 1
+        },
+        {
+          "type": "grunt",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 3
+        },
+        {
+          "type": "grunt",
+          "slot": 4
+        }
+      ]
+    },
+    {
+      "wave": 4,
+      "kind": "normal",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 1
+        },
+        {
+          "type": "grunt",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 3
+        },
+        {
+          "type": "grunt",
+          "slot": 4
+        }
+      ]
+    },
+    {
+      "wave": 5,
+      "kind": "normal",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 1
+        },
+        {
+          "type": "grunt",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 3
+        },
+        {
+          "type": "grunt",
+          "slot": 4
+        }
+      ]
+    },
+    {
+      "wave": 6,
+      "kind": "normal",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 1
+        },
+        {
+          "type": "grunt",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 3
+        },
+        {
+          "type": "grunt",
+          "slot": 4
+        }
+      ]
+    },
+    {
+      "wave": 7,
+      "kind": "normal",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 1
+        },
+        {
+          "type": "grunt",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 3
+        },
+        {
+          "type": "grunt",
+          "slot": 4
+        }
+      ]
+    },
+    {
+      "wave": 8,
+      "kind": "miniboss",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "captain",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 4
+        }
+      ]
+    },
+    {
+      "wave": 9,
+      "kind": "normal",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 1
+        },
+        {
+          "type": "grunt",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 3
+        },
+        {
+          "type": "grunt",
+          "slot": 4
+        }
+      ]
+    },
+    {
+      "wave": 10,
+      "kind": "normal",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 1
+        },
+        {
+          "type": "grunt",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 3
+        },
+        {
+          "type": "grunt",
+          "slot": 4
+        }
+      ]
+    },
+    {
+      "wave": 11,
+      "kind": "normal",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 1
+        },
+        {
+          "type": "grunt",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 3
+        },
+        {
+          "type": "grunt",
+          "slot": 4
+        }
+      ]
+    },
+    {
+      "wave": 12,
+      "kind": "normal",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 1
+        },
+        {
+          "type": "grunt",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 3
+        },
+        {
+          "type": "grunt",
+          "slot": 4
+        }
+      ]
+    },
+    {
+      "wave": 13,
+      "kind": "normal",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 1
+        },
+        {
+          "type": "grunt",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 3
+        },
+        {
+          "type": "grunt",
+          "slot": 4
+        }
+      ]
+    },
+    {
+      "wave": 14,
+      "kind": "normal",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "brute",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 4
+        }
+      ]
+    },
+    {
+      "wave": 15,
+      "kind": "boss",
+      "status": "open",
+      "enemies": [
+        {
+          "type": "boss",
+          "slot": 2
+        },
+        {
+          "type": "grunt",
+          "slot": 0
+        },
+        {
+          "type": "grunt",
+          "slot": 4
+        }
+      ]
+    }
   ]
 }
