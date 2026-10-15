@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Падающая кирка</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #11181f;
+      color: #fff;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+    }
+    #overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 16px;
+      box-sizing: border-box;
+      background: rgba(10, 14, 20, 0.6);
+      text-align: center;
+    }
+    #overlay.hidden { display: none; }
+    #title { margin: 0; font-size: 30px; }
+    #msg { margin: 0; font-size: 17px; opacity: 0.85; line-height: 1.4; }
+    #play {
+      margin-top: 8px;
+      font: inherit;
+      font-size: 20px;
+      font-weight: 700;
+      padding: 12px 36px;
+      border: 0;
+      border-radius: 12px;
+      background: #f5b642;
+      color: #1d2733;
+      cursor: pointer;
+    }
+    #play:active { transform: scale(0.97); }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="overlay">
+    <h1 id="title">⛏️ Падающая кирка</h1>
+    <p id="msg">Лови 🪙 и 💎, уворачивайся от ⛏️. Двигай тележку пальцем или стрелками.</p>
+    <button id="play">Играть</button>
+  </div>
+
+  <script>
+    (() => {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      try {
+        tg && tg.ready();
+        tg && tg.expand();
+        tg && tg.disableVerticalSwipes && tg.disableVerticalSwipes();
+      } catch (e) { /* not inside Telegram */ }
+
+      const haptic = {
+        light() { try { tg.HapticFeedback.impactOccurred('light'); } catch (e) {} },
+        error() { try { tg.HapticFeedback.notificationOccurred('error'); } catch (e) {} },
+      };
+
+      const canvas = document.getElementById('game');
+      const ctx = canvas.getContext('2d');
+      const overlay = document.getElementById('overlay');
+      const titleEl = document.getElementById('title');
+      const msgEl = document.getElementById('msg');
+      const playBtn = document.getElementById('play');
+
+      const BEST_KEY = 'falling-pickaxe-best';
+      const GROUND = 24;          // высота земли снизу, px
+      const START_LIVES = 3;
+      const EMOJI = { coin: '🪙', gem: '💎', pick: '⛏️' };
+      const TYPES = [
+        { kind: 'coin', pts: 10, weight: 55 },
+        { kind: 'gem', pts: 30, weight: 12 },
+        { kind: 'pick', pts: 0, weight: 33 },   // опасная кирка
+      ];
+
+      let best = 0;
+      try { best = Number(localStorage.getItem(BEST_KEY)) || 0; } catch (e) {}
+
+      let W = 0, H = 0, dpr = 1;
+      const player = { x: 0, target: 0, w: 100, h: 50, y: 0 };
+      const keys = { left: false, right: false };
+      let dragging = false;
+
+      let state = 'menu';        // menu | playing | paused | over
+      let items = [];
+      let floaters = [];
+      let score = 0, lives = START_LIVES, elapsed = 0, spawnTimer = 0, shake = 0;
+
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+      function layout() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        W = window.innerWidth;
+        H = window.innerHeight;
+        canvas.width = Math.round(W * dpr);
+        canvas.height = Math.round(H * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        player.w = clamp(W * 0.22, 70, 120);
+        player.h = 50;
+        player.y = H - GROUND - player.h;
+        player.x = clamp(player.x || W / 2, player.w / 2, W - player.w / 2);
+        player.target = clamp(player.target || W / 2, player.w / 2, W - player.w / 2);
+      }
+
+      function pickType() {
+        let r = Math.random() * 100;
+        for (const t of TYPES) {
+          r -= t.weight;
+          if (r < 0) return t;
+        }
+        return TYPES[0];
+      }
+
+      function spawn() {
+        const t = pickType();
+        items.push({
+          kind: t.kind,
+          pts: t.pts,
+          x: 24 + Math.random() * (W - 48),
+          y: -30,
+          rot: 0,
+          vr: t.kind === 'pick' ? (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 2) : 0,
+        });
+      }
+
+      // Скорость падения растёт со временем, но есть потолок
+      const fallSpeed = () => Math.min(H * (0.2 + elapsed * 0.004), H * 0.6);
+      const spawnInterval = () => Math.max(0.35, 0.9 - elapsed * 0.01);
+
+      function floater(x, y, text, color) {
+        floaters.push({ x, y, text, color, life: 0.8 });
+      }
+
+      function onCatch(it) {
+        const cx = player.x;
+        if (it.kind === 'pick') {
+          lives--;
+          shake = 0.4;
+          haptic.error();
+          floater(cx, player.y - 12, '-1 ❤', '#ff5d5d');
+        } else {
+          score += it.pts;
+          haptic.light();
+          floater(cx, player.y - 12, '+' + it.pts, '#f5b642');
+        }
+      }
+
+      function update(dt) {
+        elapsed += dt;
+        shake = Math.max(0, shake - dt * 2);
+
+        // Управление: тележка плавно догоняет цель
+        const half = player.w / 2;
+        const dir = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+        if (dir) player.target = clamp(player.target + dir * W * 0.9 * dt, half, W - half);
+        player.x += (player.target - player.x) * Math.min(1, dt * 14);
+
+        spawnTimer -= dt;
+        if (spawnTimer <= 0) {
+          spawn();
+          spawnTimer = spawnInterval() * (0.7 + Math.random() * 0.6);
+        }
+
+        const speed = fallSpeed();
+        const top = player.y;
+        for (const it of items) {
+          it.y += speed * dt;
+          it.rot += it.vr * dt;
+          if (!it.dead && it.y + 10 >= top && it.y - 10 < top + player.h && Math.abs(it.x - player.x) < half) {
+            it.dead = true;
+            onCatch(it);
+          }
+        }
+        items = items.filter(it => !it.dead && it.y < H + 40);
+
+        for (const f of floaters) {
+          f.y -= 40 * dt;
+          f.life -= dt;
+        }
+        floaters = floaters.filter(f => f.life > 0);
+
+        if (lives <= 0) gameOver();
+      }
+
+      function drawCart() {
+        const { x, y, w, h } = player;
+        const L = x - w / 2, R = x + w / 2;
+        ctx.fillStyle = '#8c6239';
+        ctx.beginPath();
+        ctx.moveTo(L, y);
+        ctx.lineTo(R, y);
+        ctx.lineTo(R - 12, y + h);
+        ctx.lineTo(L + 12, y + h);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#b07d4a';
+        ctx.fillRect(L - 4, y - 6, w + 8, 8);
+        ctx.fillStyle = '#3a2a1a';
+        ctx.beginPath();
+        ctx.arc(L + 18, y + h + 2, 7, 0, Math.PI * 2);
+        ctx.arc(R - 18, y + h + 2, 7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      function draw() {
+        ctx.save();
+        if (shake > 0) {
+          ctx.translate((Math.random() - 0.5) * 14 * shake, (Math.random() - 0.5) * 14 * shake);
+        }
+
+        const bg = ctx.createLinearGradient(0, 0, 0, H);
+        bg.addColorStop(0, '#26323f');
+        bg.addColorStop(1, '#11181f');
+        ctx.fillStyle = bg;
+        ctx.fillRect(-20, -20, W + 40, H + 40);
+
+        ctx.fillStyle = '#5a4632';
+        ctx.fillRect(-20, H - GROUND, W + 40, GROUND + 20);
+        ctx.fillStyle = '#7a6244';
+        ctx.fillRect(-20, H - GROUND, W + 40, 6);
+
+        ctx.font = '36px "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (const it of items) {
+          ctx.save();
+          ctx.translate(it.x, it.y);
+          ctx.rotate(it.rot);
+          ctx.fillText(EMOJI[it.kind], 0, 0);
+          ctx.restore();
+        }
+
+        drawCart();
+
+        ctx.font = 'bold 22px system-ui, sans-serif';
+        for (const f of floaters) {
+          ctx.globalAlpha = Math.max(0, f.life / 0.8);
+          ctx.fillStyle = f.color;
+          ctx.fillText(f.text, f.x, f.y);
+        }
+        ctx.globalAlpha = 1;
+
+        // HUD
+        ctx.textBaseline = 'alphabetic';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 22px system-ui, sans-serif';
+        ctx.fillText('Счёт: ' + score, 16, 34);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#ff5d5d';
+        ctx.fillText('❤'.repeat(Math.max(0, lives)), W - 16, 34);
+
+        ctx.restore();
+      }
+
+      function showOverlay(title, msg, label, action) {
+        titleEl.textContent = title;
+        msgEl.textContent = msg;
+        playBtn.textContent = label;
+        playBtn.onclick = action;
+        overlay.classList.remove('hidden');
+      }
+
+      function hideOverlay() {
+        overlay.classList.add('hidden');
+      }
+
+      function start() {
+        items = [];
+        floaters = [];
+        score = 0;
+        lives = START_LIVES;
+        elapsed = 0;
+        spawnTimer = 0.6;
+        shake = 0;
+        player.x = player.target = W / 2;
+        dragging = false;
+        state = 'playing';
+        hideOverlay();
+        try { tg.HapticFeedback.impactOccurred('medium'); } catch (e) {}
+      }
+
+      function gameOver() {
+        state = 'over';
+        if (score > best) {
+          best = score;
+          try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {}
+        }
+        haptic.error();
+        showOverlay('Игра окончена', `Счёт: ${score}  ·  Рекорд: ${best}`, 'Ещё раз', start);
+      }
+
+      function pause() {
+        if (state !== 'playing') return;
+        state = 'paused';
+        keys.left = keys.right = false;
+        dragging = false;
+        showOverlay('Пауза', `Счёт: ${score}`, 'Продолжить', resume);
+      }
+
+      function resume() {
+        state = 'playing';
+        hideOverlay();
+      }
+
+      // Ввод: палец / мышь
+      const setTarget = x => { player.target = clamp(x, player.w / 2, W - player.w / 2); };
+      canvas.addEventListener('pointerdown', e => {
+        if (state !== 'playing') return;
+        dragging = true;
+        setTarget(e.clientX);
+      });
+      window.addEventListener('pointermove', e => { if (dragging) setTarget(e.clientX); });
+      const stopDrag = () => { dragging = false; };
+      window.addEventListener('pointerup', stopDrag);
+      window.addEventListener('pointercancel', stopDrag);
+
+      // Ввод: клавиатура
+      const keyMap = { ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right' };
+      window.addEventListener('keydown', e => {
+        const k = keyMap[e.code];
+        if (k) { keys[k] = true; e.preventDefault(); }
+      });
+      window.addEventListener('keyup', e => {
+        const k = keyMap[e.code];
+        if (k) keys[k] = false;
+      });
+
+      // Пауза, когда приложение уходит в фон
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) pause();
+      });
+      window.addEventListener('blur', pause);
+
+      playBtn.onclick = start;
+      window.addEventListener('resize', layout);
+      layout();
+
+      let last = performance.now();
+      function loop(t) {
+        const dt = Math.min((t - last) / 1000, 0.05);
+        last = t;
+        if (state === 'playing') update(dt);
+        draw();
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+    })();
+  </script>
+</body>
+</html>
