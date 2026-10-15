@@ -139,7 +139,7 @@ function gatesSim(): void {
     mergeInto(sumAll, st);
     waves[String(w)] = block(st);
   }
-  const runAvg = Math.floor((100 * perRunBalls.reduce((a, b) => a + b, 0)) / SEEDS);
+  const runAvg = Math.floor((100 * perRunBalls.reduce((a, b) => a + b, 0)) / (FIELD.slotCount * SEEDS));
   const totalBlock = block(sumAll);
   (totalBlock as Record<string, unknown>).avg_run_hundredths = runAvg;
   const final = { ...out, waves, total: totalBlock };
@@ -178,7 +178,8 @@ function block(st: WaveStats): Record<string, unknown> {
     dead_end_by_attempt: st.deadEnd,
     validation_by_attempt: st.validation,
     balls_sum: st.balls,
-    avg_balls_hundredths: Math.floor((100 * st.balls) / n),
+    // One drop per wave lands in one column chosen uniformly among 5, so the expected yield is the mean over columns.
+    avg_balls_hundredths: Math.floor((100 * st.balls) / (FIELD.slotCount * n)),
     chance_tenths: chance,
     column_chance_tenths: column,
   };
