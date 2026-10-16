@@ -3,7 +3,7 @@ import 'dotenv/config';
 // RoadFlow Telegram bot. It only does one job: when someone presses Start on a login link from the site,
 // it tells the RoadFlow server who that is. Long polling, no webhook, no extra dependencies.
 const TOKEN = process.env.BOT_TOKEN || '';
-const SERVER = (process.env.SERVER_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
+const SERVER = (process.env.SERVER_URL || 'http://127.0.0.1:3333').replace(/\/$/, '');
 const SECRET = process.env.INTERNAL_SECRET || '';
 const SITE = (process.env.SITE_URL || 'https://roadflow.ru').replace(/\/$/, '');
 const API = `${(process.env.TELEGRAM_API || 'https://api.telegram.org').replace(/\/$/, '')}/bot${TOKEN}`;

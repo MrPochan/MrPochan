@@ -7,7 +7,7 @@ import { openDb } from './db.js';
 
 // ---- configuration (see deploy/server.env.example) ----
 const cfg = {
-  port: Number(process.env.PORT || 3000),
+  port: Number(process.env.PORT || 3333),
   host: process.env.HOST || '127.0.0.1',
   dbPath: process.env.DB_PATH || path.resolve('data/roadflow.db'),
   botUsername: (process.env.BOT_USERNAME || '').replace(/^@/, ''),
