@@ -72,6 +72,11 @@ body {
 }
 .dlabel .st { font-size: 10px; padding: 0 5px; border-radius: 5px; background: var(--warn); color: #1a1a1a; }
 .dlabel .st.bad { background: var(--bad); color: #fff; }
+.jam {
+  position: absolute; left: 0; top: 0; padding: 1px 7px; border-radius: 999px; white-space: nowrap;
+  background: #d93a2f; color: #fff; font-size: 11px; font-weight: 700; border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
 .popup {
   position: absolute; left: 0; top: 0; padding: 2px 7px; border-radius: 7px;
   background: #f2c14e; color: #3b2a00; font-size: 12px; font-weight: 700; white-space: nowrap;
@@ -348,7 +353,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       <summary>Как играть</summary>
       <ul>
         <li>Районы бывают жилые 🏠, офисные 🏢, промышленные 🏭 и зоны отдыха 🎡, плюс выезд 🚪 в другой город. Сутки идут 5 минут, в выходные на работу не ездят.</li>
-        <li>Число машин зависит от числа жителей, а жители приходят и уходят вслед за настроением: пробки его портят, свободные дороги поднимают.</li>
+        <li>Жители — настоящие люди: машин горожан не больше, чем жителей, а приезжие из других городов считаются отдельно. Над каждым районом видно, сколько людей в нём сейчас. Красный значок 🚗 отмечает пробку. Жители приходят и уходят вслед за настроением.</li>
         <li>Проведите линию — игра сгладит её в кривую. Проверьте цену и нажмите «Построить».</li>
         <li>Дорога соединяется с районом у его выезда. Пересечение с другой дорогой становится перекрёстком.</li>
         <li>В режиме «Правка» перекрёсток можно превратить в кольцо или поставить светофор.</li>
@@ -929,7 +934,7 @@ function pathFromLane(startKey, destDi) {
 }
 // A reachable district for a trip with the given purpose (nearer ones are likelier), with the route to it.
 // Dijkstra from one door lane is reused for a moment: many cars leave through the same lane.
-function pickDestination(startKey, originDi, purpose = 'any') {
+function pickDestination(startKey, originDi, purpose = 'any', force) {
   let res = S.dcache && S.dcache.get(startKey);
   if (!res || res.t < S.t - 2 || res.v !== (S.netVer | 0)) {
     res = { ...dijkstraFrom(startKey), t: S.t, v: S.netVer | 0 };
@@ -939,13 +944,13 @@ function pickDestination(startKey, originDi, purpose = 'any') {
   const { dist, prev } = res, types = PURPOSE_TYPES[purpose] || null, opts = [];
   let wsum = 0;
   S.districts.forEach((d, di) => {
-    if (di === originDi || (types && !types.includes(d.type))) return;
+    if (force !== undefined ? di !== force : (di === originDi || (types && !types.includes(d.type)))) return;
     let goal = null, bd = Infinity;
     for (const nid of d.doors) {
       for (const k of nodes.get(nid).ins) { const dd = dist.get(k); if (dd !== undefined && dd < bd) { bd = dd; goal = k; } }
     }
     if (!goal) return;
-    const w = (purpose === 'home' ? Math.max(1, d.pop) : 1) / (1 + bd / 40);
+    const w = 1 / (1 + bd / 40);
     opts.push({ di, goal, w });
     wsum += w;
   });
@@ -1558,10 +1563,10 @@ function afterNetworkChange() {
     if (car.dead) continue;
     const cur = car.route[car.idx];
     const seg = segOf(cur);
-    if (!seg) { car.dead = true; continue; }
+    if (!seg) { loseCar(car); continue; }
     const endKey = seg.conn ? seg.outKey : cur;
     const rest = pathFromLane(endKey, car.dest);
-    if (!rest) { car.dead = true; continue; }
+    if (!rest) { loseCar(car); continue; }
     car.route = seg.conn ? [cur].concat(rest) : rest;
     car.idx = 0;
     const w = was.get(car);
@@ -1993,7 +1998,7 @@ function createDistrict(x, z, type = 'home', opt = {}) {
   const d = {
     cx: x, cz: z, type, name: type === 'exit' ? 'Другой город' : S.names[di % S.names.length], wall, roof: ROOFS[di % ROOFS.length],
     doors: [], driveways: [], boxes: typeBoxes(type), age: 0, acc: 0, queue: 0, retry: 0, noLink: false,
-    pop: type === 'home' ? (opt.pop || 600) : 0, here: 0, hereOut: 0, qp: [], pacc: {}, hacc: 0, oacc: 0, drop: 0,
+    pop: type === 'home' ? (opt.pop || 25) : 0, away: 0, hereList: [], hereOut: 0, qp: [], pacc: {}, hacc: 0, oacc: 0, drop: 0,
     group: new THREE.Group(), el: null, nameEl: null, stEl: null, lastKey: '',
   };
   for (const sd of sides) {
@@ -2157,7 +2162,7 @@ const S = {
   running: false, over: false, t: 0,
   money: START_MONEY, delivered: 0, meter: 0, speed: 1, tool: 'road', dirty: true, planDirty: true, sel: null, selNode: null, selRing: null, selDirty: true, contNode: null,
   plan: null, districts: [], cars: [], popups: [], names: [], trees: [],
-  nextDistrictIn: 0, jamCool: 0, bestScore: 0, heat: new Map(), view: 0, heatT: 0,
+  nextDistrictIn: 0, jamCool: 0, bestScore: 0, heat: new Map(), view: 0, heatT: 0, jams: [],
   tod: 17, day: 6, mood: 75, moodTarget: 75, moodT: 0,
 };
 const cam = { tx: FIELD / 2, tz: FIELD / 2, dist: 40, pitch: PITCH };
@@ -2715,6 +2720,11 @@ function rebuildBuckets() {
   }
   for (const arr of bk.values()) if (arr.length > 1) arr.sort((p, q) => q.s - p.s);
 }
+// A car that lost its road: its resident gets back home on foot.
+function loseCar(car) {
+  car.dead = true;
+  if (car.res && car.home !== undefined) { const h = S.districts[car.home]; if (h) h.away = Math.max(0, h.away - 1); }
+}
 function trySpawn(d, di) {
   if (S.cars.length >= MAX_CARS) return;
   let best = null, bestN = Infinity;
@@ -2726,11 +2736,11 @@ function trySpawn(d, di) {
     }
   }
   if (!best) return;
-  const purpose = d.qp.length ? d.qp[0] : 'any';
-  const pick = pickDestination(best, di, purpose);
+  const entry = d.qp.length ? d.qp[0] : null, purpose = entry ? entry.p : 'any';
+  const pick = pickDestination(best, di, purpose, entry ? entry.force : undefined);
   if (!pick) {
-    // Nowhere to go for this purpose: the trip is dropped. The district is cut off only if it reaches nothing at all.
-    if (purpose !== 'any' && pickDestination(best, di, 'any')) { d.noLink = false; d.qp.shift(); d.queue--; d.retry = 0.3; return; }
+    // Nowhere to go for this purpose: the trip is dropped and the person stays. The district is cut off only if it reaches nothing at all.
+    if (purpose !== 'any' && pickDestination(best, di, 'any')) { d.noLink = false; d.qp.shift(); d.queue--; cancelTrip(d, di, entry); d.retry = 0.3; return; }
     d.noLink = true; d.retry = 1; return;
   }
   d.noLink = false;
@@ -2741,7 +2751,8 @@ function trySpawn(d, di) {
   const car = {
     id: ++carSeq, route: pick.path, idx: 0, s: 0, v: 0, wait: 0, dead: false, warned: false,
     dest: pick.di, dist: total, len: pick.path.length,
-    col: S.districts[pick.di].roof, purpose, outsider: purpose === 'in-work' || purpose === 'in-leisure',
+    col: S.districts[pick.di].roof, purpose, res: !!(entry && entry.res), home: entry ? entry.home : undefined,
+    outsider: !!(entry && !entry.res && (purpose === 'in-work' || purpose === 'in-leisure')),
   };
   let arr = bk.get(best);
   if (!arr) { arr = []; bk.set(best, arr); }
@@ -2849,7 +2860,7 @@ function moveCar(car, leader, dt) {
   // A leader that already crossed into another segment no longer constrains us.
   if (leader && (leader.dead || leader.route[leader.idx] !== car.route[car.idx])) leader = null;
   const seg = segOf(car.route[car.idx]);
-  if (!seg) { car.dead = true; return; }
+  if (!seg) { loseCar(car); return; }
   const len = seg.len, need = CAR_LEN + MIN_GAP;
   const last = car.idx === car.route.length - 1;
   let gap, nextSeg = null, q = EMPTY, blocked = false;
@@ -2924,7 +2935,11 @@ function deliver(car) {
   S.money += fare;
   S.delivered++;
   const dd = S.districts[car.dest];
-  if (dd && (dd.type === 'work' || dd.type === 'industry' || dd.type === 'leisure')) { if (car.outsider) dd.hereOut++; else dd.here++; }
+  if (dd && car.res) {
+    // a resident arrives: home again, or a guest in the district he was heading for
+    if (dd.type === 'home' && dd === S.districts[car.home] && car.purpose === 'home') dd.away = Math.max(0, dd.away - 1);
+    else dd.hereList.push(car.home);
+  } else if (dd && car.outsider) dd.hereOut++;
   const p = carPose(car);
   spawnPopup(p.x, p.y + 0.5, p.z, '+$' + fare);
 }
@@ -2950,6 +2965,45 @@ function spawnPopup(x, y, z, text) {
 }
 
 // ---------- Simulation ----------
+// ---------- Jam markers ----------
+// Queues of standing cars get one badge each. Cars close to each other form one jam, jams close to each other one badge,
+// and a badge stays for a few seconds after its jam clears so that it does not flicker.
+function updateJams() {
+  const stuck = [];
+  for (const c of S.cars) if (!c.dead && c.wait > 4 && c.px !== undefined) stuck.push(c);
+  const par = stuck.map((_, i) => i), find = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+  for (let i = 0; i < stuck.length; i++) for (let j = i + 1; j < stuck.length; j++) {
+    if (Math.hypot(stuck[i].px - stuck[j].px, stuck[i].pz - stuck[j].pz) < 1.7) par[find(i)] = find(j);
+  }
+  const groups = new Map();
+  for (let i = 0; i < stuck.length; i++) { const r = find(i); (groups.get(r) || groups.set(r, []).get(r)).push(stuck[i]); }
+  const found = [];
+  for (const g of groups.values()) {
+    if (g.length < 5) continue;
+    let cx = 0, cz = 0;
+    for (const c of g) { cx += c.px; cz += c.pz; }
+    cx /= g.length; cz /= g.length;
+    let mid = g[0], bd = Infinity;
+    for (const c of g) { const dd = Math.hypot(c.px - cx, c.pz - cz); if (dd < bd) { bd = dd; mid = c; } }
+    found.push({ x: mid.px, z: mid.pz, n: g.length });
+  }
+  found.sort((a, b) => b.n - a.n);
+  const keep = [];
+  for (const f of found) if (keep.length < 8 && keep.every(k => Math.hypot(k.x - f.x, k.z - f.z) > 9)) keep.push(f);
+  for (const f of keep) {
+    let m = S.jams.find(j => Math.hypot(j.x - f.x, j.z - f.z) < 8 && j.seen !== S.t);
+    if (!m) {
+      const el = document.createElement('div');
+      el.className = 'jam'; el.hidden = true;
+      labelsEl.appendChild(el);
+      m = { x: f.x, z: f.z, n: f.n, el, seen: S.t, txt: '' };
+      S.jams.push(m);
+    }
+    m.x += (f.x - m.x) * 0.4; m.z += (f.z - m.z) * 0.4; m.n = f.n; m.seen = S.t;
+  }
+  S.jams = S.jams.filter(m => { if (S.t - m.seen < 3) return true; m.el.remove(); return false; });
+}
+
 // ---------- City life ----------
 // Residents leave home for work in the morning on working days, come back in the evening, spend evenings and weekends
 // in leisure districts, run errands, and some travel to and from other cities. Every trip has a purpose and a goal.
@@ -2958,46 +3012,86 @@ const gauss = (h, c, w) => Math.exp(-0.5 * ((h - c) / w) ** 2);
 const window01 = (h, a, b, soft = 1) => ss(clamp((h - a) / soft, 0, 1)) * (1 - ss(clamp((h - b) / soft, 0, 1)));
 const SEC_PER_H = DAY_LEN / 24;
 function daylight(h) { return Math.min(ss(clamp((h - 5) / 3, 0, 1)), 1 - ss(clamp((h - 17.5) / 3.5, 0, 1))); }
-function totalPop() { let t = 0; for (const d of S.districts) t += d.pop; return t; }
-function pushTrip(d, p) {
+const residents = d => Math.floor(d.pop);
+function totalPop() { let t = 0; for (const d of S.districts) t += residents(d); return t; }
+// How many people are in a district right now (residents at home, visitors, and people from other cities).
+function peopleIn(d) {
+  if (d.type === 'home') return Math.max(0, residents(d) - d.away) + d.hereList.length;
+  return d.hereList.length + d.hereOut;
+}
+// A trip waits at its district as a queue entry: {p: purpose, home: the resident's home district, res: a resident drives,
+// force: the district it must end in}. A resident who left on a trip is counted as away from home until he is back.
+function pushTrip(d, di, e) {
   if (d.queue >= QUEUE_CAP) { d.drop++; S.drops = (S.drops || 0) + 1; return false; }
-  d.qp.push(p); d.queue++;
+  d.qp.push(e); d.queue++;
   return true;
 }
-// Fractional trips pile up in acc[key]; each whole one becomes a car waiting at the district.
-function accrue(d, key, rate, dt, purpose) {
+// A resident at home goes out: only if somebody is at home, and the trip waits for a free road.
+function homeTrip(d, di, p) {
+  if (residents(d) - d.away < 1) return false;
+  if (!pushTrip(d, di, { p, home: di, res: true })) return false;
+  d.away++;
+  return true;
+}
+// A person present in this district leaves: purpose p, back home when p is 'home'.
+function leaveTrip(d, di, p) {
+  if (!d.hereList.length) return false;
+  const k = (Math.random() * d.hereList.length) | 0, home = d.hereList[k];
+  if (!pushTrip(d, di, { p, home, res: true, force: p === 'home' ? home : undefined })) return false;
+  d.hereList.splice(k, 1);
+  return true;
+}
+// A trip that cannot start (no road to the goal): the person stays where he is.
+function cancelTrip(d, di, e) {
+  if (!e || !e.res) return;
+  if (d.type === 'home' && e.home === di) d.away = Math.max(0, d.away - 1);
+  else d.hereList.push(e.home);
+}
+// Fractional trips pile up in pacc[key]; each whole one is tried as a resident's trip (the pile is capped at one).
+function accrue(d, di, key, rate, dt, purpose) {
+  const v = Math.min(1.5, (d.pacc[key] || 0) + rate * dt);
+  if (v >= 1) d.pacc[key] = homeTrip(d, di, purpose) ? v - 1 : 1; else d.pacc[key] = v;
+}
+// Trips of people from other cities and cargo trucks: not residents, counted separately.
+function accrueVisitor(d, key, rate, dt, purpose) {
   const v = (d.pacc[key] || 0) + rate * dt;
-  if (v >= 1) { d.pacc[key] = v - 1; pushTrip(d, purpose); } else d.pacc[key] = v;
+  if (v >= 1) { d.pacc[key] = v - 1; pushTrip(d, 0, { p: purpose, res: false }); } else d.pacc[key] = v;
 }
 function lifeStep(dt) {
   S.tod += dt * 24 / DAY_LEN;
-  if (S.tod >= 24) { S.tod -= 24; S.day++; S.money += Math.floor(totalPop() * 0.08); }
+  if (S.tod >= 24) { S.tod -= 24; S.day++; S.money += Math.floor(totalPop() * 0.8); }
   const h = S.tod, wk = S.day % 7 < 5, pop = totalPop();
   const ind = S.districts.filter(d => d.type === 'industry').length || 1, gates = S.districts.filter(d => d.type === 'exit').length || 1;
   const dayWin = window01(h, 7.5, 21, 1.5), work = window01(h, 7, 18, 1.5);
-  for (const d of S.districts) {
-    if (!districtHasRoad(d) && d.type !== 'exit') continue;
+  const hazard = (d, n, hz) => { d.hacc += n * hz * dt; if (d.hacc >= 1) { d.hacc -= 1; return true; } return false; };
+  for (let di = 0; di < S.districts.length; di++) {
+    const d = S.districts[di];
+    if (!districtHasRoad(d)) continue;
     if (d.type === 'home') {
-      const P = d.pop;
-      if (wk) accrue(d, 'work', P * 0.04 * gauss(h, 7.7, 1.8) / (1.8 * 2.507 * SEC_PER_H), dt, 'work');
-      const lei = wk ? P * 0.02 * gauss(h, 18.6, 1.6) / (1.6 * 2.507 * SEC_PER_H) : P * 0.05 * gauss(h, 13.5, 3.2) / (3.2 * 2.507 * SEC_PER_H);
-      accrue(d, 'leisure', lei, dt, 'leisure');
-      accrue(d, 'visit', P * 0.004 * dayWin / (13.5 * SEC_PER_H), dt, 'visit');
-      accrue(d, 'out', P * 0.003 * dayWin / (13.5 * SEC_PER_H), dt, 'out');
+      const P = residents(d);
+      if (wk) accrue(d, di, 'work', P * 0.55 * gauss(h, 7.7, 1.8) / (1.8 * 2.507 * SEC_PER_H), dt, 'work');
+      const lei = wk ? P * 0.25 * gauss(h, 18.6, 1.8) / (1.8 * 2.507 * SEC_PER_H) : P * 0.6 * gauss(h, 13.5, 3.2) / (3.2 * 2.507 * SEC_PER_H);
+      accrue(d, di, 'leisure', lei, dt, 'leisure');
+      accrue(d, di, 'visit', P * 0.12 * dayWin / (13.5 * SEC_PER_H), dt, 'visit');
+      accrue(d, di, 'out', P * 0.04 * dayWin / (13.5 * SEC_PER_H), dt, 'out');
+      // guests of this home go back to their own
+      if (d.hereList.length && hazard(d, d.hereList.length, 0.02)) leaveTrip(d, di, 'home');
     } else if (d.type === 'work' || d.type === 'industry') {
       // Commuters leave in the evening (and everybody at the weekend or at night); lunch trips are rare.
       let hz = !wk ? 0.05 : h >= 16 || h < 5 ? 0.035 : h >= 11.5 && h < 13.5 ? 0.004 : 0;
       if (h >= 21 || h < 5) hz = 0.06;
-      if (d.here >= 1 && hz > 0) { d.hacc += d.here * hz * dt; if (d.hacc >= 1) { d.hacc -= 1; if (pushTrip(d, h >= 11.5 && h < 13.5 && wk ? 'leisure' : 'home')) d.here--; } }
-      if (d.hereOut >= 1) { d.oacc += d.hereOut * 0.03 * dt; if (d.oacc >= 1) { d.oacc -= 1; if (pushTrip(d, 'out')) d.hereOut--; } }
-      if (d.type === 'industry') accrue(d, 'truck', pop * 0.00005 * (wk ? work : 0.3 * work + 0.05) / ind, dt, 'out');
+      if (d.hereList.length && hz > 0 && hazard(d, d.hereList.length, hz)) leaveTrip(d, di, wk && h >= 11.5 && h < 13.5 ? 'leisure' : 'home');
+      if (d.hereOut >= 1) { d.oacc += d.hereOut * 0.03 * dt; if (d.oacc >= 1) { d.oacc -= 1; if (pushTrip(d, di, { p: 'out', res: false })) d.hereOut--; } }
+      if (d.type === 'industry') accrueVisitor(d, 'truck', pop * 0.0005 * (wk ? work : 0.3 * work + 0.05) / ind, dt, 'out');
     } else if (d.type === 'leisure') {
       const hz = h >= 23 || h < 4 ? 0.1 : 0.022;
-      if (d.here >= 1) { d.hacc += d.here * hz * dt; if (d.hacc >= 1) { d.hacc -= 1; if (pushTrip(d, 'home')) d.here--; } }
-      if (d.hereOut >= 1) { d.oacc += d.hereOut * 0.03 * dt; if (d.oacc >= 1) { d.oacc -= 1; if (pushTrip(d, 'out')) d.hereOut--; } }
+      if (d.hereList.length && hazard(d, d.hereList.length, hz)) leaveTrip(d, di, 'home');
+      if (d.hereOut >= 1) { d.oacc += d.hereOut * 0.03 * dt; if (d.oacc >= 1) { d.oacc -= 1; if (pushTrip(d, di, { p: 'out', res: false })) d.hereOut--; } }
     } else if (d.type === 'exit') {
-      accrue(d, 'inwork', pop * 0.00004 * (wk ? work : 0.2 * work) / gates, dt, 'in-work');
-      accrue(d, 'inleis', pop * 0.00005 * (wk ? 0.4 : 1.2) * gauss(h, 14, 3.2) / gates, dt, 'in-leisure');
+      // residents who travelled to another city come back after a while; visitors and trucks come from there
+      if (d.hereList.length && hazard(d, d.hereList.length, 0.01)) leaveTrip(d, di, 'home');
+      accrueVisitor(d, 'inwork', pop * 0.0004 * (wk ? work : 0.2 * work) / gates, dt, 'in-work');
+      accrueVisitor(d, 'inleis', pop * 0.0005 * (wk ? 0.4 : 1.2) * gauss(h, 14, 3.2) / gates, dt, 'in-leisure');
     }
   }
   // Mood follows how the traffic flows; residents move in or out slowly with it.
@@ -3015,8 +3109,8 @@ function lifeStep(dt) {
   }
   S.drops = (S.drops || 0) * Math.exp(-dt / 30);       // trips that could not even start leave a bad memory for a while
   S.mood += ((S.moodTarget === undefined ? S.mood : S.moodTarget) - S.mood) * Math.min(1, dt / 60);
-  const rate = (S.mood - 50) / 50 * 0.0004;
-  for (const d of S.districts) if (d.type === 'home' && districtHasRoad(d) && !d.noLink) d.pop = clamp(d.pop * Math.exp(rate * dt), 100, 30000);
+  const rate = (S.mood - 50) / 50 * 0.0014;
+  for (const d of S.districts) if (d.type === 'home' && districtHasRoad(d) && !d.noLink) d.pop = clamp(d.pop * Math.exp(rate * dt), 8, 30000);
 }
 
 function step(dt) {
@@ -3038,6 +3132,8 @@ function step(dt) {
   }
 
   if (!S.demo) lifeStep(dt);
+  S.jamT = (S.jamT || 0) + dt;
+  if (S.jamT >= 0.5) { S.jamT = 0; if (S.demo) { for (const m of S.jams) m.el.remove(); S.jams = []; } else updateJams(); }
   S.nextDistrictIn -= dt;
   if (S.nextDistrictIn <= 0) {
     const linked = districtsLinked();
@@ -3322,6 +3418,8 @@ function endDemo() {
 function clearWorld() {
   for (const d of S.districts) { scene.remove(d.group); d.el.remove(); }
   for (const p of S.popups) p.el.remove();
+  for (const m of S.jams) m.el.remove();
+  S.jams = [];
   S.districts = [];
   S.cars = [];
   S.popups = [];
@@ -3342,7 +3440,7 @@ function newGame() {
   S.tod = 17; S.day = 6; S.mood = S.moodTarget = 75; S.moodT = 0; S.dcache = null;     // Sunday evening: the first working morning is a few minutes away
   addDistrict(0, MIN_DISTRICT_GAP, 'home');
   if (!addDistrict(1, 28, 'work')) addDistrict(1, MIN_DISTRICT_GAP, 'work');
-  S.districts[0].pop = 1000;
+  S.districts[0].pop = 40;
   fitDistance();
   if (S.districts.length > 1) {
     cam.tx = (S.districts[0].cx + S.districts[1].cx) / 2;
@@ -3524,7 +3622,7 @@ function updateHint() {
 }
 function updateLabels() {
   for (const d of S.districts) {
-    const g = d.type === 'home' ? 0.85 + 0.5 * Math.min(1, d.pop / 4000) : d.type === 'exit' ? 1 : 1 + 0.2 * Math.min(1, d.age / 300);
+    const g = d.type === 'home' ? 0.85 + 0.5 * Math.min(1, d.pop / 400) : d.type === 'exit' ? 1 : 1 + 0.2 * Math.min(1, d.age / 300);
     d.group.scale.y = g;
     projV.set(d.cx, 2.9 * g, d.cz).project(camera);
     const sx = (projV.x + 1) / 2 * CW, sy = (1 - projV.y) / 2 * CH;
@@ -3535,7 +3633,7 @@ function updateLabels() {
     const hasRoad = districtHasRoad(d);
     const status = !hasRoad ? 'нет дороги' : d.noLink ? 'нет связи' : '';
     const hot = d.queue >= 8;
-    const popTxt = d.type === 'home' ? ' · ' + Math.round(d.pop).toLocaleString('ru-RU') : '';
+    const inside = peopleIn(d), popTxt = ' · 👥 ' + inside + (d.type === 'home' ? '/' + residents(d) : '');
     const key = `${d.name}|${status}|${d.queue}|${hot}|${popTxt}`;
     if (key !== d.lastKey) {
       d.lastKey = key;
@@ -3544,6 +3642,16 @@ function updateLabels() {
       else if (d.queue > 0) { d.stEl.hidden = false; d.stEl.className = hot ? 'st bad' : 'st'; d.stEl.textContent = 'в очереди ' + d.queue; }
       else d.stEl.hidden = true;
     }
+  }
+  for (const m of S.jams) {
+    projV.set(m.x, 0.6, m.z).project(camera);
+    const sx = (projV.x + 1) / 2 * CW, sy = (1 - projV.y) / 2 * CH;
+    const on = projV.z < 1 && sx > 20 && sx < CW - 20 && sy > 20 && sy < CH - 100;
+    m.el.hidden = !on;
+    if (!on) continue;
+    const txt = '🚗 ' + m.n;
+    if (txt !== m.txt) { m.txt = txt; m.el.textContent = txt; }
+    m.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, -120%)`;
   }
   for (const p of S.popups) {
     projV.set(p.x, p.y + p.age * 0.5, p.z).project(camera);
