@@ -3,217 +3,236 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="claude:viewport-fit-sides" content="cover">
 <title>RoadFlow</title>
+<meta name="description" content="RoadFlow: игра про город, где вы строите дороги, кольца и светофоры, а жители ездят на работу, домой и отдыхать.">
+<meta name="theme-color" content="#17191c">
+<link rel="stylesheet" href="fonts/fonts.css">
 <style>
-/* Concept: the game's own dark HUD, scaled up to a page. One live scene on top (cars on a small road network),
-   a real day-schedule chart in the middle, account panel last. Colours and weights are taken from the game. */
+/* Concept: the page is a road you drive down. Sections are exits marked with kilometre posts, headings are road signs
+   in real sign colours, the live parts are what a road has: lane markings, a variable-message board, a traffic controller.
+   Fonts are self-hosted (site/fonts). Single dark look: asphalt. */
 :root {
-  --bg: #12171c;
-  --panel: #1a2128;
-  --panel-2: #212a33;
-  --line: rgba(255, 255, 255, 0.09);
-  --fg: #edf2f6;
-  --muted: #8b97a3;
-  --accent: #5ab4ff;
-  --accent-ink: #0b1620;
-  --ok: #7ed36b;
-  --warn: #f2b84b;
-  --bad: #ff6159;
-  --grass: #3f6b3a;
-  --grass-2: #4a7a43;
-  --water: #2f78a8;
-  --asphalt: #4a525c;
-  --mark: #eef2f5;
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --asphalt: #17191c;
+  --asphalt-2: #1f2226;
+  --asphalt-3: #2b2f34;
+  --mark: #f3f1e8;
+  --muted: #9aa1a8;
+  --green: #00704d;
+  --blue: #0b52a8;
+  --brown: #6a3a1d;
+  --yellow: #f7c600;
+  --amber: #ffb000;
+  --red: #e0372c;
+  --ok: #3ddc84;
+  --sky: #5eb0ff;
+  --display: "Fira Sans Extra Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Fira Sans", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   color-scheme: dark;
 }
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg: #dfe7ec;
-    --panel: #f6f9fb;
-    --panel-2: #e9eff3;
-    --line: rgba(20, 30, 40, 0.11);
-    --fg: #1c242c;
-    --muted: #5f6b77;
-    --accent: #1677d2;
-    --accent-ink: #ffffff;
-    --ok: #2f9d4f;
-    --warn: #b97a06;
-    --bad: #d2362e;
-    --grass: #8fc27a;
-    --grass-2: #9bcb86;
-    --water: #5aa9d6;
-    --asphalt: #5a626c;
-    color-scheme: light;
-  }
-}
-:root[data-theme="light"] {
-  --bg: #dfe7ec;
-  --panel: #f6f9fb;
-  --panel-2: #e9eff3;
-  --line: rgba(20, 30, 40, 0.11);
-  --fg: #1c242c;
-  --muted: #5f6b77;
-  --accent: #1677d2;
-  --accent-ink: #ffffff;
-  --ok: #2f9d4f;
-  --warn: #b97a06;
-  --bad: #d2362e;
-  --grass: #8fc27a;
-  --grass-2: #9bcb86;
-  --water: #5aa9d6;
-  --asphalt: #5a626c;
-  color-scheme: light;
-}
-
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; scroll-padding-top: 76px; }
 body {
-  margin: 0; background: var(--bg); color: var(--fg);
-  font: 15px/1.5 var(--font);
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  margin: 0; background: var(--asphalt); color: var(--mark);
+  font: 16px/1.5 var(--body);
+  padding-left: max(28px, calc(env(safe-area-inset-left, 0px) + 22px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-block: 0 40px;
+  padding-block: 0 0;
 }
-a { color: var(--accent); }
-.wrap { max-width: 1040px; margin: 0 auto; }
-.k { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+a { color: inherit; }
+.wrap { max-width: 1080px; margin: 0 auto; }
+:focus-visible { outline: 3px solid var(--yellow); outline-offset: 3px; }
+
+/* the road on the left edge; the little car shows how far down the page you are */
+.edge { position: fixed; z-index: 3; left: 0; top: 0; bottom: 0; width: 14px; background:
+  repeating-linear-gradient(180deg, var(--mark) 0 14px, transparent 14px 28px) center / 2px 100% no-repeat, var(--asphalt-3);
+  border-right: 2px solid var(--yellow); }
+.edge i { position: absolute; left: 3px; width: 8px; height: 15px; border-radius: 3px; background: var(--red); top: calc(var(--p, 0) * (100% - 15px)); box-shadow: 0 0 8px rgba(224, 55, 44, .7); }
 
 /* top bar */
-.bar {
-  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
-  background: var(--bg); border-bottom: 1px solid var(--line);
-  margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px)));
-  padding-inline: max(16px, env(safe-area-inset-left, 0px));
-}
-body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
-.bar .wrap { display: flex; align-items: center; gap: 12px; padding-block: 10px; }
-.logo { margin: 0; font-size: 26px; line-height: 1; font-weight: 800; letter-spacing: -1px; color: var(--fg); text-decoration: none; }
-.logo b { color: var(--accent); }
-.nav { display: none; gap: 18px; margin-left: 18px; }
-.nav a { color: var(--muted); text-decoration: none; font-weight: 600; font-size: 14px; }
-.nav a:hover { color: var(--fg); }
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--asphalt);
+  margin-left: calc(-1 * max(28px, calc(env(safe-area-inset-left, 0px) + 22px))); padding-left: max(28px, calc(env(safe-area-inset-left, 0px) + 22px));
+  margin-right: calc(-1 * max(16px, env(safe-area-inset-right, 0px))); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-bottom: 3px solid var(--yellow); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--asphalt); }
+.bar .wrap { display: flex; align-items: center; gap: 8px; padding-block: 9px; }
+.bar .btn { padding: 8px 11px 7px; font-size: 15px; }
 .sp { flex: 1; }
-.btn {
-  appearance: none; border: 0; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center;
-  font: 700 14px var(--font); padding: 10px 16px; border-radius: 10px; background: var(--accent); color: var(--accent-ink);
-}
-.btn.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
-.btn.go { background: var(--ok); color: #0b1620; }
-.btn.big { font-size: 16px; padding: 14px 24px; border-radius: 12px; }
-.btn:hover { filter: brightness(1.08); }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.plate { display: inline-block; border-radius: 7px; box-shadow: inset 0 0 0 2px var(--asphalt), inset 0 0 0 3.5px var(--mark); color: #fff; }
+.logo { text-decoration: none; font: 800 25px/1 var(--display); letter-spacing: .04em; text-transform: uppercase; background: var(--blue); padding: 7px 12px 6px; }
+.nav { display: none; gap: 20px; margin-left: 18px; font: 600 15px var(--display); letter-spacing: .08em; text-transform: uppercase; }
+.nav a { text-decoration: none; color: var(--muted); }
+.nav a:hover { color: var(--mark); }
+.who { font: 600 15px var(--display); letter-spacing: .06em; text-transform: uppercase; max-width: 26vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--yellow); }
+.btn { appearance: none; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border: 0; border-radius: 7px; padding: 9px 14px 8px; font: 700 17px/1 var(--display); letter-spacing: .06em; text-transform: uppercase; }
+.btn.go { background: var(--green); color: #fff; box-shadow: inset 0 0 0 2px var(--asphalt), inset 0 0 0 3.5px var(--mark); }
+.btn.amber { background: var(--yellow); color: #111; }
+.btn.line { background: transparent; color: var(--mark); box-shadow: inset 0 0 0 2px var(--muted); }
+.btn.big { font-size: 22px; padding: 15px 22px 14px; }
+.btn:hover { filter: brightness(1.12); }
+.btn:disabled { opacity: .5; cursor: wait; }
 
-/* hero */
-.hero { display: grid; gap: 22px; padding-block: 28px 8px; align-items: center; }
-.hero h1 { margin: 0; font-size: clamp(44px, 11vw, 76px); line-height: 0.95; font-weight: 800; letter-spacing: -0.04em; }
-.hero h1 b { color: var(--accent); }
-.hero .tag { margin: 12px 0 0; font-size: 18px; font-weight: 700; }
-.hero p.lead { margin: 10px 0 0; color: var(--muted); max-width: 46ch; }
-.cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
-.scene {
-  border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: var(--grass);
-  aspect-ratio: 4 / 3; max-width: 100%; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-}
-.scene svg { display: block; width: 100%; height: 100%; }
-.s-grass { fill: var(--grass); }
-.s-grass2 { fill: var(--grass-2); }
-.s-water { fill: var(--water); }
-.s-road { fill: none; stroke: var(--asphalt); stroke-width: 15; stroke-linecap: round; stroke-linejoin: round; }
-.s-curb { fill: none; stroke: #d6dde2; stroke-width: 18; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
-.s-dash { fill: none; stroke: var(--mark); stroke-width: 1.4; stroke-dasharray: 5 5; stroke-linecap: round; }
-.s-ring { fill: none; stroke: var(--asphalt); stroke-width: 15; }
-.s-ringc { fill: none; stroke: #d6dde2; stroke-width: 18; opacity: 0.85; }
-.s-lbl { font: 700 9px var(--font); fill: #fff; }
-.s-chip { fill: rgba(16, 20, 24, 0.82); }
+/* kilometre posts and section heads */
+section { padding-block: 64px 0; }
+.head { display: flex; align-items: flex-start; gap: 14px; }
+.km { flex: none; text-align: center; background: var(--mark); color: #111; border-radius: 6px 6px 2px 2px; padding: 3px 10px 5px; min-width: 56px; box-shadow: 0 0 0 2px var(--asphalt-3); }
+.km small { display: block; font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #555; }
+.km b { display: block; font: 800 28px/1 var(--display); }
+h2 { margin: 0; font: 800 clamp(32px, 7.5vw, 52px)/.98 var(--display); letter-spacing: .01em; text-transform: uppercase; text-wrap: balance; }
+.sub { margin: 14px 0 0; max-width: 60ch; color: #c9ced2; }
+.lead { color: #c9ced2; max-width: 46ch; margin: 18px 0 0; font-size: 18px; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 
-/* sections */
-section { padding-block: 44px 0; }
-h2 { margin: 6px 0 0; font-size: clamp(26px, 6vw, 36px); line-height: 1.1; font-weight: 800; letter-spacing: -0.02em; text-wrap: balance; }
-.sub { margin: 10px 0 0; color: var(--muted); max-width: 62ch; }
-.grid { display: grid; gap: 12px; margin-top: 22px; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; min-width: 0; }
-.card h3 { margin: 0; font-size: 17px; font-weight: 800; }
-.card p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
-.ico { font-size: 26px; line-height: 1; }
-.card.type { display: grid; gap: 4px; }
-.roof { width: 34px; height: 5px; border-radius: 3px; margin-top: 8px; }
+/* hero: gantry sign over a three-lane road */
+.hero { display: grid; gap: 30px; padding-block: 34px 0; }
+.hero > * { min-width: 0; }
+.gantry { position: relative; padding-top: 22px; }
+.gantry::before { content: ""; position: absolute; left: -6px; right: -6px; top: 8px; height: 8px; background: linear-gradient(#4a4f55, #2b2f34); border-radius: 4px; }
+.gantry::after { content: ""; position: absolute; left: 14%; top: 8px; width: 6px; height: 22px; background: #4a4f55; box-shadow: 190px 0 0 #4a4f55; }
+.sign { position: relative; background: var(--green); border-radius: 12px; padding: 18px 20px 18px; box-shadow: inset 0 0 0 3px var(--asphalt), inset 0 0 0 7px var(--mark), 0 18px 40px rgba(0, 0, 0, .45); }
+.sign .k { margin: 0; font: 600 14px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: #bfe9d8; padding-left: 8px; }
+.sign h1 { margin: 10px 0 0; padding-left: 8px; font: 800 clamp(58px, 17vw, 112px)/.86 var(--display); letter-spacing: .01em; text-transform: uppercase; color: #fff; }
+.sign .tag { margin: 12px 0 0; padding: 0 8px; display: flex; align-items: center; gap: 12px; font: 700 clamp(20px, 5vw, 28px)/1.1 var(--display); letter-spacing: .03em; text-transform: uppercase; color: #fff; }
+.sign .tag svg { flex: none; width: 24px; height: 40px; }
+.lanes { position: relative; height: 340px; border-radius: 12px; overflow: hidden; background: #202327; box-shadow: 0 0 0 3px var(--asphalt-3), inset 0 0 0 1px #000; isolation: isolate; }
+.lanes::before { content: ""; position: absolute; inset: 0 0; background:
+  repeating-linear-gradient(180deg, var(--mark) 0 26px, transparent 26px 56px) 33.333% 0 / 3px 100% no-repeat,
+  repeating-linear-gradient(180deg, var(--mark) 0 26px, transparent 26px 56px) 66.666% 0 / 3px 100% no-repeat;
+  animation: dashes 1.1s linear infinite; z-index: 0; }
+.lanes::after { content: ""; position: absolute; inset: 0 0 auto; height: 70px; background: linear-gradient(#202327, transparent); z-index: 2; }
+@keyframes dashes { to { background-position: 33.333% 56px, 66.666% 56px; } }
+.car { position: absolute; z-index: 1; left: calc(var(--l) * 33.333% + 16.666%); margin-left: -13px; width: 26px; height: 46px; border-radius: 7px 7px 5px 5px;
+  background: var(--c); top: 110%; animation: drive var(--d) linear infinite; animation-delay: var(--o); box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+.car::before { content: ""; position: absolute; left: 3px; right: 3px; top: 9px; height: 11px; border-radius: 3px; background: #bcd3e3; }
+.car::after { content: ""; position: absolute; left: 3px; right: 3px; top: 3px; height: 3px; background: #fff7c2; border-radius: 2px; opacity: .9; }
+@keyframes drive { from { top: 110%; } to { top: -20%; } }
+.arrow-paint { position: absolute; z-index: 1; bottom: 24px; left: calc(var(--l) * 33.333% + 16.666%); margin-left: -22px; width: 44px; height: 70px; opacity: .85; }
+.arrow-paint svg { width: 100%; height: 100%; fill: var(--mark); }
+.sig { position: absolute; z-index: 3; right: 8px; top: 16px; width: 22px; padding: 4px; background: #0c0d0f; border-radius: 6px; display: grid; gap: 4px; box-shadow: 0 0 0 1px #000; }
+.sig i { display: block; width: 14px; height: 14px; border-radius: 50%; background: #3a1411; }
+.sig i:nth-child(1) { animation: sr 9s infinite; } .sig i:nth-child(2) { animation: sy 9s infinite; } .sig i:nth-child(3) { animation: sg 9s infinite; }
+@keyframes sr { 0%, 44% { background: var(--red); box-shadow: 0 0 10px var(--red); } 50%, 100% { background: #3a1411; box-shadow: none; } }
+@keyframes sy { 0%, 44% { background: #3b3105; box-shadow: none; } 44.1%, 50% { background: var(--yellow); box-shadow: 0 0 10px var(--yellow); } 50.1%, 100% { background: #3b3105; box-shadow: none; } }
+@keyframes sg { 0%, 50% { background: #0b2e1a; box-shadow: none; } 50.1%, 94% { background: var(--ok); box-shadow: 0 0 10px var(--ok); } 94.1%, 100% { background: #0b2e1a; box-shadow: none; } }
 
-/* day chart */
-.chart { margin-top: 22px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
-.seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
-.seg button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font: 700 13px var(--font); padding: 6px 14px; border-radius: 7px; }
-.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
-.chart svg { display: block; width: 100%; height: auto; margin-top: 12px; overflow: visible; }
-.chart .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 13px; color: var(--muted); }
-.chart .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
-.ax { fill: var(--muted); font: 600 16px var(--font); }
-.gl { stroke: var(--line); stroke-width: 1; }
-.note { margin: 12px 0 0; font-size: 13px; color: var(--muted); }
+/* district signs */
+.signs { display: grid; gap: 22px 14px; margin-top: 30px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.dsign p { margin: 12px 2px 0; color: #c9ced2; font-size: 15px; line-height: 1.4; }
+.dsign .sign { padding: 12px 14px; display: flex; align-items: center; gap: 12px; border-radius: 10px; box-shadow: inset 0 0 0 2.5px var(--asphalt), inset 0 0 0 5px var(--mark); min-height: 74px; }
+.dsign .sign svg { flex: none; width: 38px; height: 38px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.dsign .sign b { font: 800 22px/1 var(--display); min-width: 0; letter-spacing: .03em; text-transform: uppercase; }
+.dsign .blue { background: var(--blue); color: #fff; } .dsign .brown { background: var(--brown); color: #fff; } .dsign .green2 { background: var(--green); color: #fff; }
+.dsign .yellow { background: var(--yellow); color: #111; box-shadow: inset 0 0 0 2.5px #111, inset 0 0 0 5px #111; }
+
+/* variable-message board and chart */
+.led { margin-top: 28px; background: #0a0907; border-radius: 10px; border: 3px solid #3a3d41; overflow: hidden; position: relative; }
+.led::after { content: ""; position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(0,0,0,.75) 1px, transparent 1.6px); background-size: 4px 4px; pointer-events: none; }
+.led .run { display: flex; width: max-content; white-space: nowrap; padding: 10px 0; font: 700 19px/1 var(--mono); color: var(--amber); text-shadow: 0 0 8px rgba(255, 176, 0, .75); letter-spacing: .04em; animation: run 38s linear infinite; }
+.led .run span { padding-right: 60px; }
+@keyframes run { to { transform: translateX(-50%); } }
+.chart { margin-top: 14px; background: var(--asphalt-2); border-radius: 10px; padding: 16px; box-shadow: inset 0 0 0 1px #000, 0 0 0 2px var(--asphalt-3); }
+.seg { display: inline-flex; gap: 0; border-radius: 7px; overflow: hidden; box-shadow: 0 0 0 2px var(--muted); }
+.seg button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font: 700 16px/1 var(--display); letter-spacing: .08em; text-transform: uppercase; padding: 9px 16px 8px; }
+.seg button[aria-pressed="true"] { background: var(--yellow); color: #111; }
+.chart svg { display: block; width: 100%; height: auto; margin-top: 14px; overflow: visible; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 14px; color: #c9ced2; }
+.legend i { display: inline-block; width: 22px; height: 5px; border-radius: 3px; margin-right: 8px; vertical-align: 3px; }
+.ax { fill: var(--muted); font: 500 15px var(--mono); }
+.gl { stroke: #2f3338; stroke-width: 1; }
+.note { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
+
+/* controller: two crossroads fed by the same cars */
+.ctrl { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 28px; }
+.ctrl figure { margin: 0; min-width: 0; }
+.ctrl canvas { display: block; width: 100%; aspect-ratio: 1; border-radius: 10px; background: #202327; box-shadow: 0 0 0 2px var(--asphalt-3); }
+.ctrl figcaption { margin-top: 8px; display: grid; gap: 6px; }
+.ctrl .t { font: 800 21px/1 var(--display); text-transform: uppercase; letter-spacing: .04em; }
+.ctrl .t small { display: block; margin-top: 4px; font: 400 13px/1.3 var(--body); text-transform: none; letter-spacing: 0; color: var(--muted); }
+.read { display: flex; gap: 8px; }
+.read div { flex: 1; min-width: 0; background: #0a0907; border-radius: 6px; padding: 6px 8px; border: 2px solid #3a3d41; }
+.read b { display: block; font: 700 22px/1 var(--mono); color: var(--amber); text-shadow: 0 0 6px rgba(255,176,0,.6); font-variant-numeric: tabular-nums; }
+.read span { font: 500 10px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #9a8a5a; }
+.ctrlbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 14px; }
 
 /* map views */
-.grad { height: 10px; border-radius: 5px; background: linear-gradient(90deg, #2fc752 0%, #e8d92c 30%, #f08a24 55%, #e0302a 80%, #6e0a1a 100%); }
-.gl2 { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.views { display: grid; gap: 12px; margin-top: 28px; }
+.view { background: var(--asphalt-2); border-radius: 10px; padding: 12px 14px 14px; box-shadow: inset 0 0 0 1px #000, 0 0 0 2px var(--asphalt-3); min-width: 0; }
+.view h3 { margin: 0; font: 800 24px/1 var(--display); text-transform: uppercase; letter-spacing: .04em; }
+.view p { margin: 6px 0 0; color: #c9ced2; font-size: 15px; }
+.view svg { display: block; width: 100%; height: auto; margin-top: 8px; }
+.scale { display: flex; justify-content: space-between; font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
 
-/* account */
-.account { display: grid; gap: 14px; margin-top: 22px; }
-.soon { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--warn); color: #1a1a1a; vertical-align: 2px; margin-left: 6px; }
-ul.plain { margin: 10px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; display: grid; gap: 4px; }
+/* the gate: login */
+.gate { margin-top: 30px; display: grid; gap: 14px; }
+.pass { position: relative; background: var(--asphalt-2); border-radius: 12px; padding: 30px 18px 18px; box-shadow: inset 0 0 0 1px #000, 0 0 0 2px var(--asphalt-3); min-width: 0; }
+.pass::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 14px; border-radius: 12px 12px 0 0; background: repeating-linear-gradient(135deg, var(--red) 0 16px, var(--mark) 16px 32px); }
+.pass h3 { margin: 0; font: 800 28px/1 var(--display); text-transform: uppercase; letter-spacing: .03em; }
+.pass ul { margin: 12px 0 0; padding-left: 20px; color: #c9ced2; display: grid; gap: 6px; font-size: 15px; }
+.pass p { margin: 10px 0 0; color: #c9ced2; font-size: 15px; }
+.statrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 14px; }
+.statrow div { background: #0a0907; border: 2px solid #3a3d41; border-radius: 7px; padding: 8px 10px; min-width: 0; }
+.statrow span { display: block; font: 500 10px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #9a8a5a; }
+.statrow b { display: block; margin-top: 3px; font: 700 22px/1 var(--mono); color: var(--amber); text-shadow: 0 0 6px rgba(255,176,0,.6); font-variant-numeric: tabular-nums; }
+.tablewrap { overflow-x: auto; margin-top: 14px; }
+table { border-collapse: collapse; width: 100%; font: 500 14px var(--mono); font-variant-numeric: tabular-nums; }
+th { text-align: left; color: var(--muted); font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 6px 8px; }
+td { padding: 7px 8px; border-top: 1px solid #2f3338; white-space: nowrap; }
 
-dialog { border: 1px solid var(--line); border-radius: 16px; padding: 0; background: var(--panel); color: var(--fg); width: min(400px, calc(100vw - 32px)); }
-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
-.dlg { padding: 18px; display: grid; gap: 12px; }
-.dlg h3 { margin: 0; font-size: 22px; font-weight: 800; }
-label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
-input[type="email"], input[type="password"], input[type="text"] {
-  font: 16px var(--font); padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); width: 100%;
-}
-.msg { font-size: 13px; padding: 9px 12px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
-.row { display: flex; gap: 8px; }
-.row .btn { flex: 1; }
+dialog { border: 0; border-radius: 12px; padding: 0; background: var(--asphalt-2); color: var(--mark); width: min(420px, calc(100vw - 32px)); box-shadow: 0 0 0 3px var(--yellow), 0 30px 80px rgba(0, 0, 0, .7); }
+dialog::backdrop { background: rgba(0, 0, 0, .72); }
+.dlg { padding: 22px 18px 18px; display: grid; gap: 14px; }
+.dlg h3 { margin: 0; font: 800 30px/1 var(--display); text-transform: uppercase; letter-spacing: .03em; }
+.dlg .row { display: flex; gap: 10px; flex-wrap: wrap; }
+.dlg .row .btn { flex: 1; }
+.msg { font-size: 14px; padding: 9px 12px; border-radius: 7px; background: #3a1411; border: 1px solid var(--red); }
 
+footer { margin-top: 80px; padding-block: 22px 40px; border-top: 3px dashed #3a3d41; display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; color: var(--muted); font-size: 14px; }
+footer .post { display: flex; align-items: center; gap: 10px; }
+footer .post .km { min-width: 64px; }
 
-.who { font-weight: 700; font-size: 14px; max-width: 28vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.statrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 10px; }
-.statrow div { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0; }
-.statrow b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
-.tablewrap { overflow-x: auto; margin-top: 12px; }
-table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
-th { text-align: left; color: var(--muted); font-weight: 700; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; padding: 6px 8px; }
-td { padding: 6px 8px; border-top: 1px solid var(--line); white-space: nowrap; }
-footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--muted); font-size: 13px; justify-content: space-between; }
-
-@media (min-width: 720px) {
+@media (max-width: 420px) { .logo { font-size: 20px; padding: 6px 9px 5px; } .bar .btn { font-size: 14px; padding: 8px 9px 7px; } .bar .wrap { gap: 6px; } }
+@media (min-width: 760px) {
   .nav { display: flex; }
-  .hero { grid-template-columns: 1fr 1.1fr; gap: 36px; padding-block: 44px 8px; }
-  .grid.c4 { grid-template-columns: repeat(2, 1fr); }
-  .grid.c3 { grid-template-columns: repeat(3, 1fr); }
-  .account { grid-template-columns: 1.1fr 1fr; }
+  .bar .btn { padding: 9px 14px 8px; font-size: 17px; }
+  .hero { grid-template-columns: 1.25fr .75fr; gap: 36px; align-items: start; }
+  .lanes { height: 100%; min-height: 420px; }
+  .views { grid-template-columns: repeat(3, 1fr); }
+  .gate { grid-template-columns: 1fr 1fr; }
+  .gate .wide { grid-column: 1 / -1; }
+  .edge { width: 18px; } .edge i { left: 5px; }
 }
-@media (min-width: 980px) {
-  .grid.c4 { grid-template-columns: repeat(4, 1fr); }
-  .grid.c5 { grid-template-columns: repeat(5, 1fr); }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .lanes::before, .car, .sig i, .led .run { animation: none; }
+  .car { top: 40%; } .car:nth-child(even) { top: 15%; }
 }
-@media (min-width: 560px) and (max-width: 979px) { .grid.c5 { grid-template-columns: repeat(2, 1fr); } }
-@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5M5.5 10v9.5h13V10M10 19.5v-5h4v5"/></symbol>
+    <symbol id="i-office" viewBox="0 0 24 24"><path d="M5 20.5V4.5h9v16M14 9.5h5v11M3.5 20.5h17M8 8h3M8 11.5h3M8 15h3M16.5 13h.5M16.5 16.5h.5"/></symbol>
+    <symbol id="i-fact" viewBox="0 0 24 24"><path d="M3.5 20.5v-8l5 3v-3l5 3v-3l5 3V8.5h2.5v12zM6 8V4M9.5 8V3"/></symbol>
+    <symbol id="i-wheel" viewBox="0 0 24 24"><circle cx="12" cy="10" r="6.5"/><circle cx="12" cy="10" r="1.2"/><path d="M12 3.5v13M5.5 10h13M7.4 5.4l9.2 9.2M16.6 5.4l-9.2 9.2M8 21l4-4.5 4 4.5"/></symbol>
+    <symbol id="i-exit" viewBox="0 0 24 24"><path d="M5 19 19 5M9 5h10v10"/></symbol>
+    <symbol id="i-up" viewBox="0 0 40 70"><path d="M20 0 40 26H27v44H13V26H0z"/></symbol>
+  </defs>
+</svg>
+<div class="edge" aria-hidden="true"><i></i></div>
+
 <header class="bar">
   <div class="wrap">
-    <a class="logo" href="#top" aria-label="RoadFlow">Road<b>Flow</b></a>
+    <a class="logo plate" href="#top" aria-label="RoadFlow">RoadFlow</a>
     <nav class="nav" aria-label="Разделы">
-      <a href="#city">Город</a>
-      <a href="#day">Сутки</a>
-      <a href="#views">Карта</a>
-      <a href="#account">Аккаунт</a>
+      <a href="#city">Город</a><a href="#day">Сутки</a><a href="#auto">Автоматика</a><a href="#views">Карта</a><a href="#gate">Пропуск</a>
     </nav>
     <span class="sp"></span>
     <span class="who" id="who" hidden></span>
-    <button class="btn ghost" id="openAuth" type="button">Войти</button>
-    <button class="btn ghost" id="logout" type="button" hidden>Выйти</button>
+    <button class="btn line" id="openAuth" type="button">Войти</button>
+    <button class="btn line" id="logout" type="button" hidden>Выйти</button>
     <a class="btn go gameLink" href="/play/">Играть</a>
   </div>
 </header>
@@ -221,246 +240,325 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
 <main class="wrap" id="top">
   <div class="hero">
     <div>
-      <p class="k">Градостроительная игра</p>
-      <h1>Road<b>Flow</b></h1>
-      <p class="tag">Строй дороги. Пусти поток.</p>
-      <p class="lead">Жители едут на работу, домой и отдыхать. Вы строите для них дороги, кольца и светофоры, пока город не встал в пробке.</p>
+      <div class="gantry">
+        <div class="sign">
+          <p class="k">Игра про город и его дороги</p>
+          <h1>RoadFlow</h1>
+          <p class="tag"><svg viewBox="0 0 40 70" fill="#fff" aria-hidden="true"><use href="#i-up"/></svg>Строй дороги. Пусти поток.</p>
+        </div>
+      </div>
+      <p class="lead">Жители едут на работу, домой и отдыхать. Вы строите для них дороги, кольца и светофоры. Не справитесь, и город встанет в пробке.</p>
       <div class="cta">
         <a class="btn go big gameLink" href="/play/">Играть сейчас</a>
-        <a class="btn ghost big" href="#day">Как живёт город</a>
+        <a class="btn line big" href="#auto">Как работает светофор</a>
       </div>
     </div>
-    <div class="scene" aria-label="Схема города: машины едут между районами">
-      <svg id="scene" viewBox="0 0 400 300" role="img" aria-label="Мини-карта города с едущими машинами">
-        <rect class="s-grass" width="400" height="300"/>
-        <circle class="s-grass2" cx="70" cy="250" r="60"/>
-        <circle class="s-grass2" cx="350" cy="60" r="70"/>
-        <path class="s-water" d="M-10 150 C 60 110, 120 190, 200 150 S 340 110, 410 170 L 410 196 C 340 136, 260 176, 200 196 S 60 140, -10 176 Z"/>
-        <g id="roads">
-          <path class="s-curb" d="M60 70 L200 150 L340 80"/>
-          <path class="s-curb" d="M200 150 L 120 250"/>
-          <path class="s-curb" d="M200 150 L 330 240"/>
-          <path class="s-road" d="M60 70 L200 150 L340 80"/>
-          <path class="s-road" d="M200 150 L 120 250"/>
-          <path class="s-road" d="M200 150 L 330 240"/>
-          <path class="s-dash" d="M60 70 L200 150 L340 80"/>
-          <path class="s-dash" d="M200 150 L 120 250"/>
-          <path class="s-dash" d="M200 150 L 330 240"/>
-          <circle class="s-ringc" cx="200" cy="150" r="17"/>
-          <circle class="s-ring" cx="200" cy="150" r="17"/>
-          <circle class="s-grass2" cx="200" cy="150" r="9"/>
-        </g>
-        <!-- districts -->
-        <g>
-          <rect x="40" y="46" width="22" height="22" rx="2" fill="#c9b79a"/><rect x="40" y="46" width="22" height="5" fill="#e4572e"/>
-          <rect x="66" y="40" width="16" height="28" rx="2" fill="#c9b79a"/><rect x="66" y="40" width="16" height="5" fill="#e4572e"/>
-          <rect x="326" y="52" width="14" height="38" rx="2" fill="#a9cde0"/><rect x="326" y="52" width="14" height="5" fill="#2e86ab"/>
-          <rect x="344" y="62" width="14" height="28" rx="2" fill="#a9cde0"/><rect x="344" y="62" width="14" height="5" fill="#2e86ab"/>
-          <rect x="96" y="246" width="34" height="18" rx="2" fill="#c2bfb6"/><rect x="96" y="246" width="34" height="4" fill="#f3a712"/>
-          <rect x="132" y="228" width="5" height="22" fill="#8c8f93"/>
-          <circle cx="330" cy="256" r="16" fill="#86c26c"/><circle cx="330" cy="256" r="9" fill="none" stroke="#7b2cbf" stroke-width="2"/>
-        </g>
-        <g>
-          <rect class="s-chip" x="30" y="22" width="68" height="15" rx="7"/><text class="s-lbl" x="38" y="33">🏠 Сосновый</text>
-          <rect class="s-chip" x="300" y="30" width="62" height="15" rx="7"/><text class="s-lbl" x="308" y="41">🏢 Центр</text>
-          <rect class="s-chip" x="88" y="272" width="60" height="15" rx="7"/><text class="s-lbl" x="96" y="283">🏭 Завод</text>
-          <rect class="s-chip" x="296" y="276" width="62" height="15" rx="7"/><text class="s-lbl" x="304" y="287">🎡 Парк</text>
-        </g>
-        <g id="cars"></g>
-      </svg>
+    <div class="lanes" aria-hidden="true">
+      <i class="car" style="--l:0;--c:#e4572e;--d:7s;--o:-1s"></i>
+      <i class="car" style="--l:0;--c:#2e86ab;--d:7s;--o:-4.6s"></i>
+      <i class="car" style="--l:1;--c:#f3a712;--d:5.4s;--o:-2s"></i>
+      <i class="car" style="--l:1;--c:#7b2cbf;--d:5.4s;--o:-4.4s"></i>
+      <i class="car" style="--l:1;--c:#2a9d8f;--d:5.4s;--o:-0.2s"></i>
+      <i class="car" style="--l:2;--c:#ef6f8e;--d:8.4s;--o:-3s"></i>
+      <i class="car" style="--l:2;--c:#e4572e;--d:8.4s;--o:-6.4s"></i>
+      <div class="arrow-paint" style="--l:0"><svg viewBox="0 0 40 70"><use href="#i-up"/></svg></div>
+      <div class="arrow-paint" style="--l:1"><svg viewBox="0 0 40 70"><use href="#i-up"/></svg></div>
+      <div class="arrow-paint" style="--l:2"><svg viewBox="0 0 40 70"><use href="#i-up"/></svg></div>
+      <div class="sig"><i></i><i></i><i></i></div>
     </div>
   </div>
 
   <section id="city">
-    <p class="k">Город</p>
-    <h2>Пять видов районов, один общий поток</h2>
-    <p class="sub">У каждого района своя роль. Жители живут в жилых, работают в офисах и на заводах, отдыхают в парках и ездят в другие города через выезд.</p>
-    <div class="grid c5">
-      <div class="card type"><span class="ico">🏠</span><h3>Жилой район</h3><p>Здесь живут настоящие люди. Машин горожан не больше, чем жителей.</p><span class="roof" style="background:#e4572e"></span></div>
-      <div class="card type"><span class="ico">🏢</span><h3>Офисы</h3><p>Утром сюда едут на работу, вечером разъезжаются по домам.</p><span class="roof" style="background:#2e86ab"></span></div>
-      <div class="card type"><span class="ico">🏭</span><h3>Промзона</h3><p>Рабочие смены и грузовики, которые уходят в другие города.</p><span class="roof" style="background:#f3a712"></span></div>
-      <div class="card type"><span class="ico">🎡</span><h3>Отдых</h3><p>Вечерами и в выходные сюда едут парки, кафе и друзья.</p><span class="roof" style="background:#7b2cbf"></span></div>
-      <div class="card type"><span class="ico">🚪</span><h3>Выезд</h3><p>Дорога в другой город: оттуда приезжают гости и грузовики.</p><span class="roof" style="background:#2a9d8f"></span></div>
+    <div class="head"><div class="km"><small>км</small><b>1</b></div><h2>Пять видов районов</h2></div>
+    <p class="sub">У каждого района своя роль на дороге. Жители живут в жилых, работают в офисах и на заводах, отдыхают в парках и ездят в другие города через выезд.</p>
+    <div class="signs">
+      <div class="dsign"><div class="sign blue"><svg viewBox="0 0 24 24"><use href="#i-home"/></svg><b>Жилой</b></div><p>Здесь живут настоящие люди. Машин горожан не больше, чем жителей.</p></div>
+      <div class="dsign"><div class="sign blue"><svg viewBox="0 0 24 24"><use href="#i-office"/></svg><b>Офисы</b></div><p>Утром сюда едут на работу, вечером разъезжаются по домам.</p></div>
+      <div class="dsign"><div class="sign yellow"><svg viewBox="0 0 24 24"><use href="#i-fact"/></svg><b>Промзона</b></div><p>Рабочие смены и грузовики, которые уходят в другие города.</p></div>
+      <div class="dsign"><div class="sign brown"><svg viewBox="0 0 24 24"><use href="#i-wheel"/></svg><b>Отдых</b></div><p>Вечером и в выходные сюда едут в парк, к друзьям, по делам.</p></div>
+      <div class="dsign"><div class="sign green2"><svg viewBox="0 0 24 24"><use href="#i-exit"/></svg><b>Выезд</b></div><p>Дорога в другой город: оттуда приезжают гости и грузовики.</p></div>
     </div>
   </section>
 
   <section id="day">
-    <p class="k">Сутки</p>
-    <h2>Город живёт по часам</h2>
+    <div class="head"><div class="km"><small>км</small><b>2</b></div><h2>Город живёт по часам</h2></div>
     <p class="sub">Сутки в игре идут 10 минут, неделя 70 минут. В будни все едут на работу, в выходные на работу не ездит никто. Так выглядит поток из жилых районов в течение дня.</p>
+    <div class="led" aria-label="Табло с расписанием"><div class="run" id="ticker"></div></div>
     <div class="chart">
       <div class="seg" role="group" aria-label="День недели">
-        <button type="button" id="dayWk" aria-pressed="true">Будни</button>
-        <button type="button" id="dayWe" aria-pressed="false">Выходные</button>
+        <button type="button" id="dayWk" aria-pressed="true">Будни</button><button type="button" id="dayWe" aria-pressed="false">Выходные</button>
       </div>
-      <svg id="dayChart" viewBox="0 0 640 260" role="img" aria-label="График поездок жителей в течение суток"></svg>
+      <svg id="dayChart" viewBox="0 0 640 270" role="img" aria-label="График поездок жителей в течение суток"></svg>
       <div class="legend">
-        <span><i style="background:var(--accent)"></i>На работу</span>
+        <span><i style="background:var(--sky)"></i>На работу</span>
         <span><i style="background:var(--ok)"></i>Домой с работы</span>
-        <span><i style="background:var(--warn)"></i>На отдых</span>
+        <span><i style="background:var(--amber)"></i>На отдых</span>
       </div>
       <p class="note" id="dayNote"></p>
     </div>
   </section>
 
-  <section id="views">
-    <p class="k">Карта</p>
-    <h2>Видно, где город задыхается</h2>
-    <div class="grid c3">
-      <div class="card"><h3>Обычный вид</h3><p>Дороги, районы и машины в цветах районов назначения.</p></div>
-      <div class="card"><h3>Пробки</h3><p>Участки, где машины стоят, краснеют. Над затором висит значок с числом машин.</p><div class="grad" style="margin-top:14px"></div><div class="gl2"><span>свободно</span><span>пробка</span></div></div>
-      <div class="card"><h3>Скорость</h3><p>Цвет показывает среднюю скорость на участке. Настроение жителей зависит от времени в пути.</p><div class="grad" style="margin-top:14px"></div><div class="gl2"><span>быстро</span><span>медленно</span></div></div>
+  <section id="auto">
+    <div class="head"><div class="km"><small>км</small><b>3</b></div><h2>Светофор думает сам</h2></div>
+    <p class="sub">Слева светофор переключается по таймеру, справа по датчикам: зелёный держится, пока подъезжают машины, и уступает, когда с другой стороны скопилась очередь. Машины приезжают одинаковые, в одно и то же время. В игре светофоры работают по тому же принципу.</p>
+    <div class="ctrl">
+      <figure>
+        <canvas id="simA" width="300" height="300" aria-label="Перекрёсток со светофором по таймеру"></canvas>
+        <figcaption>
+          <div class="t">По таймеру<small>9 секунд на каждую сторону</small></div>
+          <div class="read"><div><b id="aPass">0</b><span>проехало</span></div><div><b id="aQ">0</b><span>очередь</span></div></div>
+        </figcaption>
+      </figure>
+      <figure>
+        <canvas id="simB" width="300" height="300" aria-label="Перекрёсток с умным светофором"></canvas>
+        <figcaption>
+          <div class="t">С датчиками<small>зелёный по спросу</small></div>
+          <div class="read"><div><b id="bPass">0</b><span>проехало</span></div><div><b id="bQ">0</b><span>очередь</span></div></div>
+        </figcaption>
+      </figure>
     </div>
-    <div class="grid c4">
-      <div class="card"><h3>Кольца и светофоры</h3><p>Три размера колец, одна или две полосы, умные светофоры.</p></div>
-      <div class="card"><h3>Правила дорог</h3><p>Главная и второстепенная, знаки, стрелки на полосах, одностороннее движение.</p></div>
-      <div class="card"><h3>Правка по участкам</h3><p>Улучшайте и сносите дорогу небольшими кусками, не трогая остальное.</p></div>
-      <div class="card"><h3>Настроение города</h3><p>Если поездка слишком долгая, житель разворачивается домой, и жители уезжают из города.</p></div>
+    <div class="ctrlbar"><button class="btn amber" id="simBtn" type="button">Пауза</button><span class="note" style="margin:0;flex:1;min-width:200px">«Проехало» считается за последнюю минуту. Поток меняется: то больше машин с востока и запада, то с севера и юга. Это иллюстрация принципа, а не расчёт игры.</span></div>
+  </section>
+
+  <section id="views">
+    <div class="head"><div class="km"><small>км</small><b>4</b></div><h2>Видно, где затор</h2></div>
+    <p class="sub">В игре три режима карты. Серый ландшафт и прозрачные машины оставляют на виду только цвет дороги: от зелёного к бордовому, без резких границ.</p>
+    <div class="views">
+      <div class="view"><h3>Обычный</h3><p>Дороги, районы и машины в цветах районов назначения.</p>
+        <svg viewBox="0 0 320 80" aria-hidden="true"><path d="M8 52 C70 20 130 70 190 40 S290 30 312 36" fill="none" stroke="#454b52" stroke-width="16" stroke-linecap="round"/><path d="M8 52 C70 20 130 70 190 40 S290 30 312 36" fill="none" stroke="#f3f1e8" stroke-width="1.6" stroke-dasharray="7 7"/><rect x="60" y="30" width="14" height="8" rx="2" fill="#e4572e"/><rect x="150" y="48" width="14" height="8" rx="2" fill="#2e86ab"/><rect x="245" y="32" width="14" height="8" rx="2" fill="#f3a712"/></svg></div>
+      <div class="view"><h3>Пробки</h3><p>Участки, где машины стоят, краснеют. Над затором значок с числом машин.</p>
+        <svg viewBox="0 0 320 80" aria-hidden="true"><defs><linearGradient id="gj" x1="0" x2="1"><stop offset="0" stop-color="#2fc752"/><stop offset=".3" stop-color="#e8d92c"/><stop offset=".55" stop-color="#f08a24"/><stop offset=".8" stop-color="#e0302a"/><stop offset="1" stop-color="#6e0a1a"/></linearGradient></defs>
+          <path d="M8 52 C70 20 130 70 190 40 S290 30 312 36" fill="none" stroke="url(#gj)" stroke-width="16" stroke-linecap="round"/><g transform="translate(222 4)"><rect width="76" height="20" rx="10" fill="#e0372c" stroke="#fff" stroke-opacity=".7"/><text x="38" y="14.5" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-weight="700" font-size="12" fill="#fff">ЗАТОР 12</text></g></svg>
+        <div class="scale"><span>свободно</span><span>пробка</span></div></div>
+      <div class="view"><h3>Скорость</h3><p>Цвет показывает среднюю скорость на участке. Время в пути влияет на настроение жителей.</p>
+        <svg viewBox="0 0 320 80" aria-hidden="true"><defs><linearGradient id="gs" x1="0" x2="1"><stop offset="0" stop-color="#6e0a1a"/><stop offset=".25" stop-color="#e0302a"/><stop offset=".5" stop-color="#f08a24"/><stop offset=".72" stop-color="#e8d92c"/><stop offset="1" stop-color="#2fc752"/></linearGradient></defs>
+          <path d="M8 52 C70 20 130 70 190 40 S290 30 312 36" fill="none" stroke="url(#gs)" stroke-width="16" stroke-linecap="round"/></svg>
+        <div class="scale"><span>медленно</span><span>быстро</span></div></div>
     </div>
   </section>
 
-  <section id="account">
-    <p class="k">Аккаунт</p>
-    <h2 id="accTitle">Войдите через Telegram</h2>
-    <p class="sub" id="accSub">Вход нужен, чтобы играть: сервер запоминает ваши игровые сессии. Отдельный пароль не нужен, подтверждение приходит в Telegram.</p>
-    <div class="account">
-      <div class="card" id="accAnon">
-        <h3>Как войти</h3>
-        <ul class="plain">
+  <section id="gate">
+    <div class="head"><div class="km"><small>км</small><b>5</b></div><h2 id="accTitle">Пропуск</h2></div>
+    <p class="sub" id="accSub">Вход через Telegram, пароль не нужен. Сервер запомнит ваши игры.</p>
+    <div class="gate">
+      <div class="pass" id="accAnon">
+        <h3>Шлагбаум закрыт</h3>
+        <ul>
           <li>Нажмите «Войти» и откройте бота в Telegram.</li>
-          <li>Нажмите в боте «Start». Сайт увидит это сам.</li>
+          <li>Нажмите в боте Start. Сайт увидит это сам.</li>
           <li>Повторно входить не нужно: вы остаётесь в системе около 30 дней, на сайте и в игре.</li>
         </ul>
-        <div class="cta"><button class="btn" id="openAuth2" type="button">Войти через Telegram</button></div>
+        <div class="cta"><button class="btn amber big" id="openAuth2" type="button">Войти через Telegram</button></div>
       </div>
-      <div class="card" id="accUser" hidden>
-        <h3>Ваши игры</h3>
+      <div class="pass wide" id="accUser" hidden>
+        <h3>Шлагбаум открыт</h3>
         <div class="statrow" id="statRow"></div>
         <div class="tablewrap"><table id="hist"><thead><tr><th>Начало</th><th>В игре</th><th>Дней</th><th>Жителей</th><th>Доехали</th></tr></thead><tbody></tbody></table></div>
         <p class="note" id="histEmpty" hidden>Игр пока нет. Нажмите «Играть», и первая сессия появится здесь.</p>
       </div>
-      <div class="card">
+      <div class="pass">
         <h3>Что хранится</h3>
-        <p>Ваш Telegram-номер (числовой id), имя и @логин, которые Telegram передаёт боту, и сводка каждой игровой сессии: время, дни, жители, настроение, деньги. Полное сохранение карты города появится позже.</p>
+        <p>Числовой номер в Telegram, имя и @логин, которые Telegram передаёт боту, и сводка каждой игры: время, дни, жители, настроение, деньги. Карта города пока не сохраняется.</p>
       </div>
     </div>
   </section>
 
   <footer>
-    <span>RoadFlow</span>
-    <span>Игра в браузере, работает на телефоне</span>
+    <div class="post"><div class="km"><small>км</small><b>0</b></div><span>RoadFlow. Игра в браузере, работает на телефоне.</span></div>
+    <a class="btn go gameLink" href="/play/">Играть</a>
   </footer>
 </main>
 
 <dialog id="auth" aria-labelledby="authTitle">
   <div class="dlg">
     <h3 id="authTitle">Вход через Telegram</h3>
-    <p class="note" style="margin:0" id="authLead">Откройте бота и нажмите «Start». Вернуться на сайт не придётся: он войдёт сам.</p>
+    <p class="note" style="margin:0">Откройте бота и нажмите Start. Возвращаться на сайт не нужно: он войдёт сам.</p>
     <div class="msg" id="aMsg" role="status" hidden></div>
     <a class="btn go big" id="aOpen" href="#" target="_blank" rel="noopener" hidden>Открыть Telegram</a>
-    <p class="note" id="aWait" hidden style="margin:0">Ждём подтверждения в Telegram… <span id="aLeft"></span></p>
+    <p class="note" id="aWait" hidden style="margin:0">Ждём подтверждения в Telegram… <b id="aLeft"></b></p>
     <div class="row">
-      <button class="btn ghost" type="button" id="aClose">Закрыть</button>
-      <button class="btn" type="button" id="aStart">Получить ссылку</button>
+      <button class="btn line" type="button" id="aClose">Закрыть</button>
+      <button class="btn amber" type="button" id="aStart">Получить ссылку</button>
     </div>
   </div>
 </dialog>
 
 <script>
 (function () {
-  // The game is served from /play/ on the same site, behind the same login.
-  var GAME_URL = '/play/';
+  var $ = function (id) { return document.getElementById(id); };
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var GAME_URL = '/play/';           // the game is served from /play/ behind the same login
   document.querySelectorAll('.gameLink').forEach(function (a) { a.setAttribute('href', GAME_URL); });
 
-  // ---- live scene: cars on three roads, colours of the district they go to ----
-  var NS = 'http://www.w3.org/2000/svg';
-  var routes = [
-    { d: 'M60 70 L200 150 L340 80', col: '#2e86ab', dur: 11 },
-    { d: 'M340 80 L200 150 L60 70', col: '#e4572e', dur: 12 },
-    { d: 'M60 70 L200 150 L120 250', col: '#f3a712', dur: 10 },
-    { d: 'M120 250 L200 150 L340 80', col: '#2e86ab', dur: 13 },
-    { d: 'M330 240 L200 150 L60 70', col: '#e4572e', dur: 14 },
-    { d: 'M60 70 L200 150 L330 240', col: '#7b2cbf', dur: 12 },
-    { d: 'M340 80 L200 150 L330 240', col: '#7b2cbf', dur: 11 },
-    { d: 'M120 250 L200 150 L330 240', col: '#2a9d8f', dur: 9 }
-  ];
-  var carsG = document.getElementById('cars');
-  routes.forEach(function (r, i) {
-    for (var k = 0; k < 2; k++) {
-      var g = document.createElementNS(NS, 'g');
-      var body = document.createElementNS(NS, 'rect');
-      body.setAttribute('x', -6); body.setAttribute('y', -3.2); body.setAttribute('width', 12); body.setAttribute('height', 6.4); body.setAttribute('rx', 2);
-      body.setAttribute('fill', r.col);
-      var cab = document.createElementNS(NS, 'rect');
-      cab.setAttribute('x', -2); cab.setAttribute('y', -2.4); cab.setAttribute('width', 5); cab.setAttribute('height', 4.8); cab.setAttribute('rx', 1);
-      cab.setAttribute('fill', '#bcd3e3');
-      g.appendChild(body); g.appendChild(cab);
-      var m = document.createElementNS(NS, 'animateMotion');
-      m.setAttribute('dur', r.dur + 's'); m.setAttribute('repeatCount', 'indefinite');
-      m.setAttribute('begin', '-' + (k * r.dur / 2 + i * 0.7).toFixed(2) + 's');
-      m.setAttribute('rotate', 'auto'); m.setAttribute('path', r.d);
-      g.appendChild(m);
-      carsG.appendChild(g);
-    }
-  });
-  var sc = document.getElementById('scene');
-  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches && sc.pauseAnimations) sc.pauseAnimations();
+  // ---- the car on the left edge follows the scroll ----
+  var edge = document.querySelector('.edge');
+  function onScroll() {
+    var h = document.documentElement.scrollHeight - window.innerHeight;
+    edge.style.setProperty('--p', h > 0 ? Math.min(1, Math.max(0, window.scrollY / h)).toFixed(4) : 0);
+  }
+  window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
 
-  // ---- day chart: the same schedule the game uses (trips per hour as a share of a day's trips) ----
-  var W = 640, H = 260, L = 52, R = 12, T = 18, B = 34, pw = W - L - R, ph = H - T - B;
+  // ---- variable message board ----
+  var msgs = ['ПН 07:40  ЧАС ПИК: НА РАБОТУ ЕДЕТ 55% ЖИТЕЛЕЙ', 'ПОСЛЕ 16:00  ВОЗВРАТ ДОМОЙ', 'ВЕЧЕР 18:30  ПИК ПОЕЗДОК НА ОТДЫХ', 'СБ-ВС  НА РАБОТУ НЕ ЕДЕТ НИКТО', 'ПОЕЗДКА ДОЛЬШЕ СРЕДНЕЙ В 2,5 РАЗА: ЖИТЕЛЬ РАЗВОРАЧИВАЕТСЯ ДОМОЙ', 'ПРОБКА: НАСТРОЕНИЕ ПАДАЕТ, ЖИТЕЛИ УЕЗЖАЮТ'];
+  var line = msgs.map(function (m) { return '<span>' + m + '</span>'; }).join('');
+  $('ticker').innerHTML = line + line;
+
+  // ---- day chart: the schedule the game uses ----
+  var NS = 'http://www.w3.org/2000/svg';
+  var W = 640, H = 270, L = 54, R = 12, T = 18, B = 36, pw = W - L - R, ph = H - T - B;
   function gauss(h, c, w) { return Math.exp(-0.5 * Math.pow((h - c) / w, 2)); }
-  function norm(c, w) { return 1 / (w * 2.507); }       // area of a bell is 1 trip per resident-trip
+  function norm(w) { return 1 / (w * 2.507); }
   var curves = {
     wk: [
-      { key: 'work', col: 'var(--accent)', f: function (h) { return 0.55 * gauss(h, 7.7, 1.8) * norm(7.7, 1.8); } },
-      { key: 'home', col: 'var(--ok)', f: function (h) { return h >= 15 ? 0.55 * Math.min(1, (h - 15) / 2.5) * Math.exp(-Math.max(0, h - 17.5) / 2.2) * 0.22 : 0; } },
-      { key: 'leis', col: 'var(--warn)', f: function (h) { return 0.25 * gauss(h, 18.6, 1.8) * norm(18.6, 1.8); } }
+      { col: '#5eb0ff', f: function (h) { return 0.55 * gauss(h, 7.7, 1.8) * norm(1.8); } },
+      { col: '#3ddc84', f: function (h) { var u = Math.min(1, Math.max(0, (h - 15) / 3)); return 0.55 * u * u * (3 - 2 * u) * Math.exp(-Math.max(0, h - 18) / 2.4) * 0.2; } },
+      { col: '#ffb000', f: function (h) { return 0.25 * gauss(h, 18.6, 1.8) * norm(1.8); } }
     ],
     we: [
-      { key: 'work', col: 'var(--accent)', f: function () { return 0; } },
-      { key: 'home', col: 'var(--ok)', f: function (h) { return 0.6 * gauss(h, 18.5, 3.2) * norm(18.5, 3.2) * 0.8; } },
-      { key: 'leis', col: 'var(--warn)', f: function (h) { return 0.6 * gauss(h, 13.5, 3.2) * norm(13.5, 3.2); } }
+      { col: '#5eb0ff', f: function () { return 0; } },
+      { col: '#3ddc84', f: function (h) { return 0.6 * gauss(h, 18.5, 3.2) * norm(3.2) * 0.8; } },
+      { col: '#ffb000', f: function (h) { return 0.6 * gauss(h, 13.5, 3.2) * norm(3.2); } }
     ]
   };
   var notes = {
-    wk: 'Утренний час пик около 7:40, вечерний возврат домой после 16:00, вечером часть жителей едет отдыхать. Ночью, с 22:00 до 5:00, дороги почти пусты.',
-    we: 'В выходные на работу никто не едет. Основной поток идёт на отдых днём, около 13:30, и домой вечером. Из города приезжает больше гостей.'
+    wk: 'Утренний час пик около 7:40, вечерний возврат домой после 16:00, вечером часть жителей едет отдыхать. С 22:00 до 5:00 дороги почти пусты.',
+    we: 'В выходные на работу никто не едет. Основной поток идёт на отдых днём, около 13:30, и домой вечером. Из других городов приезжает больше гостей.'
   };
   function el(n, a) { var e = document.createElementNS(NS, n); for (var k in a) e.setAttribute(k, a[k]); return e; }
   function drawDay(mode) {
-    var svg = document.getElementById('dayChart');
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var svg = $('dayChart'); while (svg.firstChild) svg.removeChild(svg.firstChild);
     var set = curves[mode], maxV = 0.0001, h;
     set.forEach(function (c) { for (h = 0; h <= 24; h += 0.25) maxV = Math.max(maxV, c.f(h)); });
     maxV *= 1.15;
     var x = function (hh) { return L + hh / 24 * pw; }, y = function (v) { return T + ph - v / maxV * ph; };
-    // night bands: before 5:00 and after 22:00
-    svg.appendChild(el('rect', { x: x(0), y: T, width: x(5) - x(0), height: ph, fill: 'var(--panel-2)' }));
-    svg.appendChild(el('rect', { x: x(22), y: T, width: x(24) - x(22), height: ph, fill: 'var(--panel-2)' }));
+    svg.appendChild(el('rect', { x: x(0), y: T, width: x(5) - x(0), height: ph, fill: '#101214' }));
+    svg.appendChild(el('rect', { x: x(22), y: T, width: x(24) - x(22), height: ph, fill: '#101214' }));
     [0, 4, 8, 12, 16, 20, 24].forEach(function (hh) {
       svg.appendChild(el('line', { x1: x(hh), x2: x(hh), y1: T, y2: T + ph, class: 'gl' }));
-      var t = el('text', { x: x(hh), y: H - 8, 'text-anchor': hh === 0 ? 'start' : hh === 24 ? 'end' : 'middle', class: 'ax' });
+      var t = el('text', { x: x(hh), y: H - 10, 'text-anchor': hh === 0 ? 'start' : hh === 24 ? 'end' : 'middle', class: 'ax' });
       t.textContent = (hh < 10 ? '0' : '') + hh + ':00'; svg.appendChild(t);
     });
-    svg.appendChild(el('line', { x1: L, x2: L + pw, y1: T + ph, y2: T + ph, stroke: 'var(--muted)', 'stroke-width': 1 }));
-    var nt = el('text', { x: x(2.5), y: T + 14, 'text-anchor': 'middle', class: 'ax' }); nt.textContent = 'ночь'; svg.appendChild(nt);
+    svg.appendChild(el('line', { x1: L, x2: L + pw, y1: T + ph, y2: T + ph, stroke: '#9aa1a8', 'stroke-width': 1.5 }));
+    var nt = el('text', { x: x(2.5), y: T + 18, 'text-anchor': 'middle', class: 'ax' }); nt.textContent = 'ночь'; svg.appendChild(nt);
     set.forEach(function (c) {
-      var d = 'M' + x(0) + ' ' + y(0), pts = '';
+      var pts = '';
       for (h = 0; h <= 24; h += 0.25) pts += ' L' + x(h).toFixed(1) + ' ' + y(c.f(h)).toFixed(1);
-      svg.appendChild(el('path', { d: d + pts + ' L' + x(24) + ' ' + y(0) + ' Z', fill: c.col, opacity: 0.16 }));
-      svg.appendChild(el('path', { d: 'M' + pts.slice(2), fill: 'none', stroke: c.col, 'stroke-width': 2.4, 'stroke-linejoin': 'round' }));
+      svg.appendChild(el('path', { d: 'M' + x(0) + ' ' + y(0) + pts + ' L' + x(24) + ' ' + y(0) + ' Z', fill: c.col, opacity: 0.14 }));
+      svg.appendChild(el('path', { d: 'M' + pts.slice(2), fill: 'none', stroke: c.col, 'stroke-width': 3, 'stroke-linejoin': 'round' }));
     });
-    var yl = el('text', { x: L - 6, y: T + 8, 'text-anchor': 'end', class: 'ax' }); yl.textContent = 'поток'; svg.appendChild(yl);
-    document.getElementById('dayNote').textContent = notes[mode];
+    var yl = el('text', { x: L - 8, y: T + 10, 'text-anchor': 'end', class: 'ax' }); yl.textContent = 'поток'; svg.appendChild(yl);
+    $('dayNote').textContent = notes[mode];
   }
-  var bWk = document.getElementById('dayWk'), bWe = document.getElementById('dayWe');
-  function pickDay(m) { bWk.setAttribute('aria-pressed', m === 'wk'); bWe.setAttribute('aria-pressed', m === 'we'); drawDay(m); }
-  bWk.addEventListener('click', function () { pickDay('wk'); });
-  bWe.addEventListener('click', function () { pickDay('we'); });
+  function pickDay(m) { $('dayWk').setAttribute('aria-pressed', m === 'wk'); $('dayWe').setAttribute('aria-pressed', m === 'we'); drawDay(m); }
+  $('dayWk').addEventListener('click', function () { pickDay('wk'); });
+  $('dayWe').addEventListener('click', function () { pickDay('we'); });
   pickDay('wk');
 
+  // ---- two crossroads, same cars: a timer light against a light with detectors ----
+  function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  var SPAN = 1200, arrivals = [[], [], [], []];                // seconds of arrival for approaches N, S, W, E
+  (function () {
+    var r = rng(20240611);
+    for (var a = 0; a < 4; a++) {
+      var t = 0, ns = a < 2;
+      while (t < SPAN) {
+        var heavyNS = Math.floor(t / 70) % 2 === 1, rate = (ns === heavyNS) ? 0.55 : 0.14;      // the busy direction changes every 70 s
+        t += -Math.log(1 - r()) / rate; arrivals[a].push(t);
+      }
+    }
+  })();
+  var VCAR = 34, LEN = 12, GAP = 4, AL = 118, BOX = 64, COLORS = ['#e4572e', '#2e86ab', '#f3a712', '#7b2cbf', '#2a9d8f', '#ef6f8e'];
+  var colorRng = rng(7);
+  function Sim(canvas, smart) {
+    var ctx = canvas.getContext('2d'), s = this;
+    s.t = 0; s.phase = 0; s.pt = 0; s.yel = 0; s.passed = []; s.cars = [[], [], [], []]; s.ai = [0, 0, 0, 0]; s.backlog = [0, 0, 0, 0];
+    var light = function (a) { return a < 2 ? 0 : 1; };
+    s.allowed = function (a) { return s.yel <= 0 && s.phase === light(a); };
+    s.queueNear = function (a, d) { var n = 0; s.cars[a].forEach(function (c) { if (c.p > AL - d && c.p < AL + 2 && c.v < 6) n++; }); return n; };
+    s.comes = function (a, d) { return s.cars[a].some(function (c) { return c.p > AL - d && c.p < AL + 2; }); };
+    s.step = function (dt) {
+      s.t += dt; s.pt += dt;
+      var a;
+      for (a = 0; a < 4; a++) {                                    // arrivals wait outside until there is room
+        while (s.ai[a] < arrivals[a].length && arrivals[a][s.ai[a]] <= s.t) { s.backlog[a]++; s.ai[a]++; }
+        var last = s.cars[a][s.cars[a].length - 1];
+        if (s.backlog[a] > 0 && (!last || last.p > LEN + GAP + 4)) { s.backlog[a]--; s.cars[a].push({ p: -LEN, v: VCAR, c: COLORS[(colorRng() * COLORS.length) | 0], cnt: false }); }
+      }
+      if (s.yel > 0) { s.yel -= dt; if (s.yel <= 0) { s.phase = 1 - s.phase; s.pt = 0; } }
+      else if (!smart) { if (s.pt >= 9) s.yel = 1.6; }
+      else if (s.pt >= 4) {
+        var mine = s.phase === 0 ? [0, 1] : [2, 3], other = s.phase === 0 ? [2, 3] : [0, 1];
+        var wait = other.some(function (q) { return s.queueNear(q, 50) > 0; }), here = mine.some(function (q) { return s.comes(q, 30); });
+        if (wait && (!here || s.pt >= 20)) s.yel = 1.6;
+      }
+      for (a = 0; a < 4; a++) {
+        var arr = s.cars[a];
+        for (var i = 0; i < arr.length; i++) {
+          var c = arr[i], lead = arr[i - 1], limit = Infinity;
+          if (lead) limit = lead.p - LEN - GAP;
+          var stopLimit = (!s.allowed(a) && !(s.yel > 0 && s.phase === light(a) && c.p > AL - 14) && c.p < AL + 1) ? AL - 1 : Infinity;
+          limit = Math.min(limit, stopLimit);
+          var want = Math.max(0, Math.min(VCAR, (limit - c.p) * 3.2));
+          c.v += (want - c.v) * Math.min(1, dt * 6);
+          c.p += c.v * dt; if (c.p > limit) c.p = limit;
+          if (!c.cnt && c.p > AL + BOX / 2) { c.cnt = true; s.passed.push(s.t); }
+        }
+        while (arr.length && arr[0].p > AL * 2 + BOX + 10) arr.shift();
+      }
+      while (s.passed.length && s.passed[0] < s.t - 60) s.passed.shift();
+    };
+    s.stats = function () { var q = 0; for (var a = 0; a < 4; a++) q += s.queueNear(a, 70) + s.backlog[a]; return { pass: s.passed.length, q: q }; };
+    s.draw = function () {
+      var w = 300, cx = w / 2, rw = 54;
+      ctx.setTransform(canvas.width / w, 0, 0, canvas.width / w, 0, 0);
+      ctx.fillStyle = '#202327'; ctx.fillRect(0, 0, w, w);
+      ctx.fillStyle = '#454b52'; ctx.fillRect(cx - rw / 2, 0, rw, w); ctx.fillRect(0, cx - rw / 2, w, rw);
+      ctx.strokeStyle = '#f3f1e8'; ctx.lineWidth = 1.5; ctx.setLineDash([7, 7]);
+      ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, cx - rw / 2); ctx.moveTo(cx, cx + rw / 2); ctx.lineTo(cx, w); ctx.moveTo(0, cx); ctx.lineTo(cx - rw / 2, cx); ctx.moveTo(cx + rw / 2, cx); ctx.lineTo(w, cx); ctx.stroke(); ctx.setLineDash([]);
+      function pos(a, p) {          // world position of a car on approach a at distance p; the stop line is at p = AL
+        var d = p - AL;
+        if (a === 0) return { x: cx - rw / 4, y: cx - rw / 2 + d, ang: 90 };
+        if (a === 1) return { x: cx + rw / 4, y: cx + rw / 2 - d, ang: -90 };
+        if (a === 2) return { x: cx - rw / 2 + d, y: cx + rw / 4, ang: 0 };
+        return { x: cx + rw / 2 - d, y: cx - rw / 4, ang: 180 };
+      }
+      var a;
+      for (a = 0; a < 4; a++) s.cars[a].forEach(function (c) {
+        var q = pos(a, c.p); ctx.save(); ctx.translate(q.x, q.y); ctx.rotate(q.ang * Math.PI / 180);
+        ctx.fillStyle = c.c; ctx.fillRect(-LEN / 2, -5, LEN, 10);
+        ctx.fillStyle = '#bcd3e3'; ctx.fillRect(1.5, -4, 3.4, 8); ctx.restore();
+      });
+      for (a = 0; a < 4; a++) {
+        var q = pos(a, AL + 6), g = s.allowed(a), y = s.yel > 0 && s.phase === light(a);
+        var sx = q.x, sy = q.y;
+        if (a === 0) { sx -= rw / 4 + 9; } else if (a === 1) { sx += rw / 4 + 9; } else if (a === 2) { sy += rw / 4 + 9; } else { sy -= rw / 4 + 9; }
+        ctx.fillStyle = '#0c0d0f'; ctx.beginPath(); ctx.arc(sx, sy, 6, 0, 7); ctx.fill();
+        ctx.fillStyle = g ? '#3ddc84' : y ? '#f7c600' : '#e0372c'; ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 8; ctx.beginPath(); ctx.arc(sx, sy, 3.6, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+      }
+    };
+  }
+  var simA = new Sim($('simA'), false), simB = new Sim($('simB'), true), running = !reduce, lastT = 0;
+  [$('simA'), $('simB')].forEach(function (c) { var d = Math.min(2, window.devicePixelRatio || 1); c.width = 300 * d; c.height = 300 * d; });
+  function readout() {
+    var a = simA.stats(), b = simB.stats();
+    $('aPass').textContent = a.pass; $('aQ').textContent = a.q; $('bPass').textContent = b.pass; $('bQ').textContent = b.q;
+  }
+  function frame(now) {
+    var dt = Math.min(0.05, (now - lastT) / 1000 || 0); lastT = now;
+    if (running) {
+      for (var k = 0; k < 2; k++) { simA.step(dt); simB.step(dt); }
+      if (simA.t > SPAN - 5) { simA.t = simB.t = 0; simA.ai = [0, 0, 0, 0]; simB.ai = [0, 0, 0, 0]; }
+    }
+    simA.draw(); simB.draw(); readout();
+    requestAnimationFrame(frame);
+  }
+  for (var w = 0; w < 600; w++) { simA.step(0.05); simB.step(0.05); }      // warm up so the first picture already has traffic
+  requestAnimationFrame(frame);
+  window.__sims = { a: simA, b: simB };
+  function setBtn() { $('simBtn').textContent = running ? 'Пауза' : 'Запустить'; }
+  $('simBtn').addEventListener('click', function () { running = !running; setBtn(); }); setBtn();
+
   // ---- login through the Telegram bot ----
-  var $ = function (id) { return document.getElementById(id); };
   var dlg = $('auth'), me = null, pollTimer = 0, tickTimer = 0;
   function api(path, opts) {
     opts = opts || {};
@@ -475,13 +573,11 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
     $('accAnon').hidden = on; $('accUser').hidden = !on;
     if (on) {
       $('who').textContent = me.user.name;
-      $('accTitle').textContent = 'Привет, ' + me.user.name;
+      $('accTitle').textContent = 'Пропуск: ' + me.user.name;
       $('accSub').textContent = 'Вы вошли через Telegram. Игра открывается без повторного входа.';
-      var st = me.stats;
-      $('statRow').innerHTML = '';
+      var st = me.stats; $('statRow').innerHTML = '';
       [['Игр', st.sessions], ['Время в игре', fmtTime(st.seconds)], ['Рекорд жителей', st.best_pop], ['Дней в лучшей игре', st.best_days]].forEach(function (x) {
-        var d = document.createElement('div'); d.innerHTML = '<span class="k"></span><b></b>';
-        d.firstChild.textContent = x[0]; d.lastChild.textContent = x[1]; $('statRow').appendChild(d);
+        var d = document.createElement('div'); d.innerHTML = '<span></span><b></b>'; d.firstChild.textContent = x[0]; d.lastChild.textContent = x[1]; $('statRow').appendChild(d);
       });
       var tb = $('hist').querySelector('tbody'); tb.innerHTML = '';
       me.history.forEach(function (h) {
@@ -491,20 +587,15 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
       });
       $('histEmpty').hidden = me.history.length > 0; $('hist').hidden = me.history.length === 0;
     } else {
-      $('accTitle').textContent = 'Войдите через Telegram';
-      $('accSub').textContent = 'Вход нужен, чтобы играть: сервер запоминает ваши игровые сессии. Отдельный пароль не нужен, подтверждение приходит в Telegram.';
+      $('accTitle').textContent = 'Пропуск';
+      $('accSub').textContent = 'Вход через Telegram, пароль не нужен. Сервер запомнит ваши игры.';
     }
   }
-  function loadMe() {
-    return api('/api/me').then(function (r) { me = r.status === 200 ? r.json : null; render(); return me; }).catch(function () { me = null; render(); });
-  }
+  function loadMe() { return api('/api/me').then(function (r) { me = r.status === 200 ? r.json : null; render(); return me; }).catch(function () { me = null; render(); }); }
   function stopPolling() { clearTimeout(pollTimer); clearInterval(tickTimer); }
   function say(text) { var m = $('aMsg'); m.hidden = !text; m.textContent = text || ''; }
-  function resetDialog() { stopPolling(); say(''); $('aOpen').hidden = true; $('aWait').hidden = true; $('aStart').hidden = false; $('aStart').disabled = false; $('aStart').textContent = 'Получить ссылку'; }
-  function openAuth() {
-    resetDialog();
-    if (dlg.showModal) { try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', ''); } } else dlg.setAttribute('open', '');
-  }
+  function resetDialog() { stopPolling(); say(''); $('aOpen').hidden = true; $('aWait').hidden = true; $('aStart').hidden = false; $('aStart').disabled = false; }
+  function openAuth() { resetDialog(); if (dlg.showModal) { try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', ''); } } else dlg.setAttribute('open', ''); }
   function closeAuth() { stopPolling(); if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); }
   function poll(token, secret, until) {
     api('/api/auth/poll?token=' + token + '&secret=' + secret).then(function (r) {
@@ -520,7 +611,7 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
       if (r.status !== 200) { $('aStart').disabled = false; say(r.status === 429 ? 'Слишком много попыток. Подождите несколько минут.' : r.status === 503 ? 'Вход пока не настроен на сервере.' : 'Сервер не отвечает. Попробуйте позже.'); return; }
       var j = r.json, until = Date.now() + j.expiresIn * 1000;
       $('aOpen').href = j.botUrl; $('aOpen').hidden = false; $('aWait').hidden = false; $('aStart').hidden = true;
-      try { window.open(j.botUrl, '_blank', 'noopener'); } catch (e) { /* the button below does the same */ }
+      try { window.open(j.botUrl, '_blank', 'noopener'); } catch (e) { /* the button does the same */ }
       var tick = function () { var left = Math.max(0, Math.round((until - Date.now()) / 1000)); $('aLeft').textContent = Math.floor(left / 60) + ':' + ('0' + (left % 60)).slice(-2); };
       tick(); tickTimer = setInterval(tick, 1000);
       poll(j.token, j.secret, until);
@@ -531,8 +622,7 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
   $('aClose').addEventListener('click', closeAuth);
   dlg.addEventListener('close', stopPolling);
   $('logout').addEventListener('click', function () { api('/api/auth/logout', { method: 'POST', body: {} }).then(function () { me = null; render(); }); });
-  // /play/ sends visitors without a session here as /#login
-  loadMe().then(function () { if (!me && /login/.test(location.hash)) openAuth(); });
+  loadMe().then(function () { if (!me && /login/.test(location.hash)) openAuth(); });   // /play/ sends visitors without a session here as /#login
 })();
 </script>
 </body>
