@@ -265,6 +265,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     </div>
     <button id="editClose" class="btn ghost" type="button" aria-label="Закрыть">✕</button>
     <button id="editRemove" class="btn ghost" type="button">Снести</button>
+    <button id="editOneway" class="btn ghost" type="button">Двустороннее</button>
     <button id="editUpgrade" class="btn go" type="button">Улучшить</button>
   </div>
 </div>
@@ -277,6 +278,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     </div>
     <button id="nodeClose" class="btn ghost" type="button" aria-label="Закрыть">✕</button>
     <button id="nodeLight" class="btn go" type="button">Светофор</button>
+    <button id="nodePrio" class="btn ghost" type="button">Приоритет</button>
     <button id="ringLanes" class="btn go" type="button">2 полосы</button>
     <button id="ringOff" class="btn ghost" type="button">Убрать кольцо</button>
     <button id="ring1" class="btn ghost" type="button">S</button>
@@ -356,6 +358,7 @@ const KIND = {
   3: { name: 'Кольцо', lanes: 1, speed: 1.0, head: 0.4, unit: 9, half: 0.24, offs: [0] },   // one-way ring road
   4: { name: 'Кольцо, 2 полосы', lanes: 2, speed: 1.2, head: 0.35, unit: 15, half: 0.42, offs: [-0.15, 0.15] },
 };
+const ONEWAY_OFFS = { 1: [0], 2: [-0.15, 0.15] };    // lane offsets on a one-way road: the road is not shared, so the lanes are centred
 const RING_SIZES = { 1: { r: 1.0, name: 'S', cost: 45, v: 1.0 }, 2: { r: 1.5, name: 'M', cost: 70, v: 1.1 }, 3: { r: 2.1, name: 'L', cost: 100, v: 1.3 } };   // v: speed on the ring
 const RING2_EXTRA = { 1: 25, 2: 40, 3: 60 };
 const ringTotal = (size, lanes) => RING_SIZES[size].cost + (lanes === 2 ? RING2_EXTRA[size] : 0);
@@ -572,9 +575,11 @@ function rebuildLanes() {
   }
   for (const e of edges.values()) {
     const k = KIND[e.kind];
-    for (let dir = 0; dir < (e.oneway ? 1 : 2); dir++) {
+    const owDir = e.oneway ? (e.owDir || 0) : -1, offs = e.oneway && !e.ring ? ONEWAY_OFFS[e.kind] : k.offs;
+    for (let dir = 0; dir < 2; dir++) {
+      if (owDir >= 0 && dir !== owDir) continue;
       for (let li = 0; li < k.lanes; li++) {
-        const off = k.offs[li], n = e.C.P.length, lp = [];
+        const off = offs[li], n = e.C.P.length, lp = [];
         for (let i = 0; i < n; i++) {
           const idx = dir === 0 ? i : n - 1 - i, sg = dir === 0 ? 1 : -1;
           const p = e.C.P[idx], nn = e.C.N[idx];
@@ -586,7 +591,7 @@ function rebuildLanes() {
         const t0 = trimOf.get(from + ':' + e.id) || 0, t1 = trimOf.get(to + ':' + e.id) || 0;
         if ((t0 || t1) && C.len - t0 - t1 > 0.1) C = makeCurve(subCurve(C, t0, C.len - t1, 0).map(q => ({ x: q.x, y: q.y, z: q.z })));
         const lane = {
-          key, from, to, kind: e.kind,
+          key, from, to, kind: e.kind, off,
           C, len: 0, speed: e.ringSpeed || k.speed, head: k.head, ring: !!e.ring, ringId: e.ring || 0,
         };
         lane.len = lane.C.len;
@@ -645,18 +650,52 @@ function shapeConn(c) {
   c.ringThrough = !!B.ring && !!A.ring;
 }
 // Which turns of one junction cross, merge or overlap each other: a car may only enter a turn while none of those is occupied.
-// Right of way between two crossing turns: the main road (more lanes) first, then a left turn gives way to the
-// oncoming cars, and at an uncontrolled crossing between equal roads the car from the right goes first.
-function givesWay(a, b, plain) {
-  const A = lanes.get(a.inKey), B = lanes.get(b.inKey);
-  if (!A || !B) return false;
-  const rA = KIND[A.kind].lanes, rB = KIND[B.kind].lanes;
-  const dot = a.d0.x * b.d0.x + a.d0.z * b.d0.z;
-  if (plain && rA !== rB && dot < 0.7) return rA < rB;
-  if (dot < -0.7) return a.turn === 'L' && b.turn !== 'L';
-  if (!plain || dot > 0.7) return false;
-  const rx = -a.d0.z, rz = a.d0.x;
-  return -(b.d0.x * rx + b.d0.z * rz) > 0.5;
+// Right of way at a crossing. By default one road is the main road (the better road, or the straightest pair of
+// arms) and the others give way to it; the player can also make the crossing equal. The main arms are node.prio.main.
+const edgeOfLane = key => +key.slice(1).split('.')[0];
+function mainCandidates(n) {
+  const arms = junctionArms(n), out = [];
+  for (let i = 0; i < arms.length; i++) {
+    for (let j = i + 1; j < arms.length; j++) {
+      let d = Math.abs(arms[i].ang - arms[j].ang);
+      if (d > Math.PI) d = Math.PI * 2 - d;
+      const straight = d / Math.PI;                                   // 1 when exactly opposite
+      out.push({ ids: [arms[i].e.id, arms[j].e.id], straight, score: (KIND[arms[i].e.kind].lanes + KIND[arms[j].e.kind].lanes) * 10 + straight * 4 });
+    }
+  }
+  out.sort((p, q) => q.score - p.score);
+  const good = out.filter(c => c.straight >= 0.55);
+  return good.length ? good : out.slice(0, 1);
+}
+function computePriorities() {
+  for (const n of nodes.values()) {
+    if (!isCrossing(n) || n.ringId) { n.prio = null; continue; }
+    if (!n.prio) n.prio = { equal: false, main: null };
+    if (!n.prio.main || !n.prio.main.every(id => n.edges.has(id))) n.prio.main = mainCandidates(n)[0].ids;
+  }
+}
+function cyclePriority(n) {
+  const pr = n.prio;
+  if (!pr) return;
+  const cands = mainCandidates(n);
+  if (pr.equal) { pr.equal = false; pr.main = cands[0].ids; }
+  else {
+    const i = cands.findIndex(c => c.ids.includes(pr.main[0]) && c.ids.includes(pr.main[1]));
+    if (i + 1 < cands.length) pr.main = cands[i + 1].ids; else pr.equal = true;
+  }
+  S.lightKey = null;
+  S.selDirty = true;
+}
+// Must a car on turn a give way to a car on turn b (f is the conflict entry of a)?
+function mustYield(node, a, b, f) {
+  const pr = node.prio;
+  if (pr && !pr.equal) {
+    const ma = pr.main.includes(edgeOfLane(a.inKey)), mb = pr.main.includes(edgeOfLane(b.inKey));
+    if (ma !== mb) return !ma;
+  }
+  if (f.rel === 'opp') return a.turn === 'L' && f.tb !== 'L';
+  if (f.rel === 'perp') return f.right;                               // the car from the right goes first
+  return false;
 }
 function computeConflicts() {
   const byNode = new Map();
@@ -691,8 +730,9 @@ function computeConflicts() {
         }
         if (!hit) continue;
         const same = a.inKey === b.inKey, merge = !same && a.outKey === b.outKey;
-        a.conf.push({ key: b.key, same, merge, entry: !!b.ringEntry, yp: givesWay(a, b, true), yl: givesWay(a, b, false) });
-        b.conf.push({ key: a.key, same, merge, entry: !!a.ringEntry, yp: givesWay(b, a, true), yl: givesWay(b, a, false) });
+        const dotp = a.d0.x * b.d0.x + a.d0.z * b.d0.z, rel = dotp < -0.7 ? 'opp' : dotp > 0.7 ? 'same' : 'perp';
+        a.conf.push({ key: b.key, same, merge, entry: !!b.ringEntry, rel, tb: b.turn, right: -(b.d0.x * -a.d0.z + b.d0.z * a.d0.x) > 0.5 });
+        b.conf.push({ key: a.key, same, merge, entry: !!a.ringEntry, rel, tb: a.turn, right: -(a.d0.x * -b.d0.z + a.d0.z * b.d0.x) > 0.5 });
       }
     }
   }
@@ -739,6 +779,7 @@ function turnAllowed(ik, ok) {
   return true;
 }
 function buildAllConns() {
+  for (const [id, c] of [...conns]) if (!lanes.get(c.inKey) || !lanes.get(c.outKey)) conns.delete(id);     // turns of lanes that no longer exist
   for (const c of conns.values()) {
     if (lanes.get(c.inKey) && lanes.get(c.outKey)) shapeConn(c);
   }
@@ -882,6 +923,7 @@ function splitEdge(e, s) {
   const oldLen = e.len, a = e.a, b = e.b, kind = e.kind, oldPre = `L${e.id}.`;
   removeEdgeRecord(e);
   const e1 = makeEdge(a, X.id, kind, left), e2 = makeEdge(X.id, b, kind, right);
+  if (e.oneway && !e.ring) for (const ne of [e1, e2]) { ne.oneway = true; ne.owDir = e.owDir || 0; }
   if (e.ring) {
     // Splitting a ring road keeps it a one-way part of the same ring.
     const ring = rings.get(e.ring);
@@ -1178,7 +1220,9 @@ function computeLights() {
   for (const n of nodes.values()) {
     if (!n.light) continue;
     if (n.door >= 0 || n.ringId || n.edges.size < 3) { n.light = false; n.phaseOf = null; continue; }
-    const arms = junctionArms(n), used = new Set(), phases = [];
+    // Only roads that can be driven into the junction take part in the signal.
+    const arms = junctionArms(n).filter(a => lanes.has(`L${a.e.id}.${a.e.b === n.id ? 0 : 1}.0`)), used = new Set(), phases = [];
+    if (!arms.length) { n.light = false; n.phaseOf = null; continue; }
     for (let i = 0; i < arms.length; i++) {
       if (used.has(i)) continue;
       used.add(i);
@@ -1264,12 +1308,38 @@ function lightsKey() {
     for (let p = 0; p < n.nPhase; p++) k += lightState(n, p);
     k += ';';
   }
+  for (const n of nodes.values()) if (n.prio) k += n.id + (n.prio.equal ? 'e' : n.prio.main.join('-')) + ';';
   return k + edges.size + '|' + (S.netVer | 0);
 }
 // Stop lines and signal posts at each arm of a signalised junction.
+// A traffic sign on a post: a plaque lying flat above the post so it reads from above. 'main' is the yellow
+// diamond (main road), 'yield' the red-bordered triangle that points back at the driver.
+function signPost(g, x, y, z, fx, fz, type) {
+  g.box(x - 0.022, y, z - 0.022, x + 0.022, y + 0.4, z + 0.022, 0x2b2f36);
+  const rx = -fz, rz = fx, h = y + 0.43;
+  const W = (u, v, dy) => ({ x: x + fx * u + rx * v, y: h + dy, z: z + fz * u + rz * v });
+  const poly = (pts, dy, hex) => { const c = rgb(hex); for (let i = 1; i < pts.length - 1; i++) g.tri(W(pts[0][0], pts[0][1], dy), W(pts[i][0], pts[i][1], dy), W(pts[i + 1][0], pts[i + 1][1], dy), c, c, c); };
+  if (type === 'main') {
+    poly([[0.19, 0], [0, 0.19], [-0.19, 0], [0, -0.19]], 0, 0xffffff);
+    poly([[0.15, 0], [0, 0.15], [-0.15, 0], [0, -0.15]], 0.004, 0xf2c94c);
+  } else {
+    poly([[-0.2, 0], [0.14, 0.2], [0.14, -0.2]], 0, 0xd62d20);
+    poly([[-0.11, 0], [0.1, 0.12], [0.1, -0.12]], 0.004, 0xffffff);
+  }
+}
 function buildLights() {
   const g = new Geo(), post = 0x2b2f36, line = rgb(COL.white);
   for (const n of nodes.values()) {
+    if (n.prio && !n.prio.equal && !(n.light && n.phaseOf)) {
+      for (const a of junctionArms(n)) {
+        const e = a.e, dir = e.b === n.id ? 0 : 1;
+        if (!lanes.has(`L${e.id}.${dir}.0`)) continue;
+        const s = a.atA ? a.t + 0.35 : e.len - a.t - 0.35, q = curveAt(e.C, s);
+        const dx = a.atA ? -q.dx : q.dx, dz = a.atA ? -q.dz : q.dz;       // the way an approaching car is heading
+        const nx = dz, nz = -dx;
+        signPost(g, q.x + nx * (a.hw + 0.16), q.y, q.z + nz * (a.hw + 0.16), dx, dz, n.prio.main.includes(e.id) ? 'main' : 'yield');
+      }
+    }
     if (!n.light || !n.phaseOf) continue;
     for (const a of junctionArms(n)) {
       const e = a.e, key = `L${e.id}.${e.b === n.id ? 0 : 1}.0`, ph = n.phaseOf.get(key);
@@ -1390,6 +1460,7 @@ function afterNetworkChange() {
   S.dirty = true;
   S.selDirty = true;
   S.netVer = (S.netVer | 0) + 1;
+  computePriorities();
   computeLights();
 }
 
@@ -2043,6 +2114,24 @@ function surfaceOf(asph, deck) {
   };
 }
 // Edges stop short of junctions (ta, tb are the trims); the junction itself is one filled polygon, see junctionPoly.
+// A road-marking arrow lying on the surface at p, pointing along (fx, fz): 'S' straight, 'L' left, 'R' right.
+function arrowGlyph(g, p, fx, fz, type, sc = 1) {
+  const rx = -fz, rz = fx, col = rgb(COL.white), y = p.y + 0.022;
+  const W = (u, v) => ({ x: p.x + (fx * u + rx * v) * sc, y, z: p.z + (fz * u + rz * v) * sc });
+  const stroke = pts => {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1], du = b[0] - a[0], dv = b[1] - a[1], L = Math.hypot(du, dv) || 1;
+      const nu = -dv / L * 0.022, nv = du / L * 0.022;
+      g.quad(W(a[0] + nu, a[1] + nv), W(b[0] + nu, b[1] + nv), W(b[0] - nu, b[1] - nv), W(a[0] - nu, a[1] - nv), col);
+    }
+  };
+  const head = (u, v, du, dv) => {
+    const L = Math.hypot(du, dv) || 1, a = du / L, b = dv / L, pu = -b * 0.075, pv = a * 0.075;
+    g.tri(W(u + a * 0.1, v + b * 0.1), W(u - a * 0.01 + pu, v - b * 0.01 + pv), W(u - a * 0.01 - pu, v - b * 0.01 - pv), col, col, col);
+  };
+  if (type === 'S') { stroke([[-0.22, 0], [0.1, 0]]); head(0.1, 0, 1, 0); }
+  else { const sg = type === 'L' ? -1 : 1; stroke([[-0.22, 0], [-0.02, 0], [0.08, 0.1 * sg]]); head(0.08, 0.1 * sg, 0.1, 0.1 * sg); }
+}
 function drawEdge(g, e, ta, tb) {
   const C = e.C, k = KIND[e.kind], s0 = ta, s1 = C.len - tb;
   if (s1 - s0 < 0.05) return;
@@ -2054,6 +2143,15 @@ function drawEdge(g, e, ta, tb) {
     if (e.ring) {
       for (const sg of [-1, 1]) ribbon(g, C, sg * (k.half - 0.03), 0.014, () => rgb(COL.white), 0.02, m0, m1);
       if (e.kind === 4) dashes(g, C, 0, 0.03, 0.3, 0.25, COL.white, 0.02, m0, m1);
+    } else if (e.oneway) {
+      // One-way road: edge lines instead of a centre line, and arrows showing the direction.
+      for (const sg of [-1, 1]) ribbon(g, C, sg * (k.half - 0.04), 0.014, () => rgb(COL.white), 0.02, m0, m1);
+      if (e.kind === 2) dashes(g, C, 0, 0.03, 0.32, 0.25, COL.white, 0.02, m0, m1);
+      const fwd = (e.owDir || 0) === 0;
+      for (let sa = m0 + 0.9; sa < m1 - 0.5; sa += 2.4) {
+        const q = curveAt(C, sa), fx = fwd ? q.dx : -q.dx, fz = fwd ? q.dz : -q.dz;
+        for (const off of ONEWAY_OFFS[e.kind]) arrowGlyph(g, { x: q.x + q.nx * off, y: q.y, z: q.z + q.nz * off }, fx, fz, 'S', 0.9);
+      }
     } else if (e.kind === 1) {
       dashes(g, C, 0, 0.035, 0.32, 0.25, COL.white, 0.02, m0, m1);
     } else {
@@ -2159,6 +2257,22 @@ function buildRoads() {
     return a ? (a.td !== undefined ? a.td : a.t) : 0;
   };
   for (const e of edges.values()) drawEdge(g, e, trimAt(nodes.get(e.a), e), trimAt(nodes.get(e.b), e));
+  // Lane arrows before a crossing: the turns each lane may take.
+  const turnsOf = new Map();
+  for (const c of conns.values()) {
+    if (c.uturn || c.turn === 'U') continue;
+    const nd = nodes.get(c.node);
+    if (!nd || !isCrossing(nd) || nd.ringId) continue;
+    let set = turnsOf.get(c.inKey);
+    if (!set) { set = new Set(); turnsOf.set(c.inKey, set); }
+    set.add(c.turn);
+  }
+  for (const [key, set] of turnsOf) {
+    const ln = lanes.get(key);
+    if (!ln || ln.len < 1.2 || (KIND[ln.kind].lanes < 2 && set.size >= 3)) continue;     // a single lane that allows everything needs none
+    const q = curveAt(ln.C, ln.len - 0.65);
+    for (const t of ['L', 'S', 'R']) if (set.has(t)) arrowGlyph(g, q, q.dx, q.dz, t, 1.2);
+  }
   for (const n of nodes.values()) {
     if (n.door >= 0) continue;
     const arms = armsOf.get(n.id);
@@ -2271,8 +2385,7 @@ function tryLaneChange(car) {
   if (!best) return;
   const rest = pathFromLane(best, car.dest);
   if (!rest || rest[0] !== best) return;
-  const offs = KIND[ln.kind].offs;
-  car.lat = (offs[li0] - offs[+best.split('.')[2]]) + (car.lat || 0);
+  car.lat = (ln.off - lanes.get(best).off) + (car.lat || 0);
   car.route = rest;
   car.idx = 0;
 }
@@ -2424,10 +2537,16 @@ function connBusy(c, need, car) {
     let passed = false;
     for (const f of c.conf) {
       if (car.go > S.t) break;                                  // already decided to go: do not change its mind
-      if (!(lightOn ? f.yl : f.yp)) continue;
+      if (f.rel === 'same') continue;
       const oc = conns.get(Number(f.key.slice(1))), ln = oc && lanes.get(oc.inKey);
       if (!ln) continue;
-      if (lightOn) { const ph = node.phaseOf.get(oc.inKey); if (ph === undefined || lightState(node, ph) !== 'g') continue; }
+      let y;
+      if (lightOn) {
+        const ph = node.phaseOf.get(oc.inKey);
+        if (ph === undefined || lightState(node, ph) !== 'g') continue;
+        y = f.rel === 'opp' && c.turn === 'L' && f.tb !== 'L';
+      } else y = mustYield(node, c, oc, f);
+      if (!y) continue;
       const o = bkOf(oc.inKey)[0];            // only the first car of a lane counts: the ones behind cannot go before it
       if (o) {
         if (o.s < ln.len - 1.8 || o.route[o.idx + 1] !== f.key) continue;
@@ -2808,6 +2927,7 @@ function updateNodeUi() {
   if (!ring && !n) return;
   $('nodeLight').hidden = !!ring;
   $('ringOff').hidden = !ring;
+  $('nodePrio').hidden = !!ring || !n || !n.prio || !!n.light;
   $('ringLanes').hidden = !ring;
   let msg = '';
   if (ring) {
@@ -2836,9 +2956,17 @@ function updateNodeUi() {
       b.disabled = !!ringProbs[k - 1] || S.money < RING_SIZES[k].cost;
       if (ringProbs[k - 1]) msg = msg || `${RING_SIZES[k].name}: ${ringProbs[k - 1]}`;
     }
-    msg = msg || (n.light ? 'Светофор подстраивается под очередь' : 'Без регулировки при потоке будут пробки. Кольцо — поток без остановок, светофор — для плотного потока');
+    if (n.prio && !n.light) setText($('nodePrio'), n.prio.equal ? 'Равнозначный перекрёсток' : 'Главная дорога: сменить');
+    msg = msg || (n.light ? 'Светофор подстраивается под очередь' : n.prio && n.prio.equal ? 'Равнозначный перекрёсток: помеха справа. Кнопка выбирает главную дорогу' : 'Знаки: жёлтый ромб — главная дорога, треугольник — уступи дорогу. Кольцо — поток без остановок, светофор — для плотного потока');
   }
   setText($('nodeMsg'), msg);
+}
+function cycleOneway(e) {
+  if (e.ring) return;
+  if (!e.oneway) { e.oneway = true; e.owDir = 0; }
+  else if ((e.owDir || 0) === 0) e.owDir = 1;
+  else { e.oneway = false; e.owDir = 0; }
+  afterNetworkChange();
 }
 function updateEditUi() {
   updateNodeUi();
@@ -2849,9 +2977,10 @@ function updateEditUi() {
   const refund = Math.floor(nominalCost(e.kind, e.len, e.frac) * 0.5);
   setText($('editTitle'), `${KIND[e.kind].name} · ${Math.round(e.len)} ед.`);
   setText($('editRemove'), `Снести +$${refund}`);
+  setText($('editOneway'), !e.oneway ? 'Двустороннее' : (e.owDir || 0) === 0 ? 'Односторонняя →' : 'Односторонняя ←');
   const up = $('editUpgrade');
   up.hidden = e.kind !== 1;
-  if (e.kind !== 1) { setText($('editMsg'), 'Максимальный уровень'); return; }
+  if (e.kind !== 1) { setText($('editMsg'), e.oneway ? 'Одностороннее движение — стрелки на дороге показывают направление' : 'Максимальный уровень'); return; }
   const bad = cachedProblem(e), cost = upgradeCost(e);
   setText($('editMsg'), bad || (S.money < cost ? 'Не хватает денег' : 'Проспект: больше полос и скорость'));
   setText(up, `Улучшить $${cost}`);
@@ -3014,6 +3143,8 @@ document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () =
 document.querySelectorAll('.sp').forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.speed))));
 $('planApply').addEventListener('click', () => { applyPlan(); });
 $('editClose').addEventListener('click', clearSel);
+$('editOneway').addEventListener('click', () => { const e = edges.get(S.sel); if (e) cycleOneway(e); });
+$('nodePrio').addEventListener('click', () => { const n = nodes.get(S.selNode); if (n) cyclePriority(n); });
 $('nodeClose').addEventListener('click', clearSel);
 $('nodeLight').addEventListener('click', () => toggleLight(nodes.get(S.selNode)));
 for (const k of [1, 2, 3]) $('ring' + k).addEventListener('click', () => {
@@ -3089,7 +3220,7 @@ requestAnimationFrame(frame);
 
 // Debug handle for automated checks.
 window.trafficArchitect = {
-  S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD }, addDistrict, contPoint, districtsLinked, startDemo, buildDemo,
+  S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD }, addDistrict, contPoint, districtsLinked, startDemo, buildDemo, cycleOneway, cyclePriority,
   newGame, step, setTool, setSpeed, carPose, applyPlan, removeNear, upgradeNear, selectNear, upgradeProblem, upgradeEdge, rings, setRingLanes, ringLanesProblem, makeRoundabout, dissolveRing, resizeRing, ringProblem, toggleLight, lightState,
   planAt(points, kind) {
     S.plan = computePlan(points.map(p => ({ x: p.x, z: p.z })), kind === 'avenue' ? 2 : 1);
