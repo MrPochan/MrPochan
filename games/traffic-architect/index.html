@@ -263,6 +263,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     <div class="stats-row">
       <div class="stat"><span class="k" id="dayName">Вс</span><b id="clock">17:00</b></div>
       <div class="stat"><span class="k">Жители</span><b id="popVal">0</b></div>
+      <div class="stat"><span class="k">В пути</span><b id="tripVal">—</b></div>
       <div class="stat"><span class="k">Доехали</span><b id="score">0</b></div>
     </div>
     <div class="speed" role="group" aria-label="Скорость">
@@ -352,7 +353,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     <details>
       <summary>Как играть</summary>
       <ul>
-        <li>Районы бывают жилые 🏠, офисные 🏢, промышленные 🏭 и зоны отдыха 🎡, плюс выезд 🚪 в другой город. Сутки идут 5 минут, в выходные на работу не ездят.</li>
+        <li>Районы бывают жилые 🏠, офисные 🏢, промышленные 🏭 и зоны отдыха 🎡, плюс выезд 🚪 в другой город. Сутки идут 10 минут, в выходные на работу не ездят. Если житель не доехал за минуту, он едет домой, и настроение падает.</li>
         <li>Жители — настоящие люди: машин горожан не больше, чем жителей, а приезжие из других городов считаются отдельно. Над каждым районом видно, сколько людей в нём сейчас. Красный значок 🚗 отмечает пробку. Жители приходят и уходят вслед за настроением.</li>
         <li>Проведите линию — игра сгладит её в кривую. Проверьте цену и нажмите «Построить».</li>
         <li>Дорога соединяется с районом у его выезда. Пересечение с другой дорогой становится перекрёстком.</li>
@@ -403,7 +404,7 @@ const PLAN_STEP = 0.2, PLAN_MIN = 1.0;
 const START_MONEY = 900;
 const MAX_DISTRICTS = 26, MIN_DISTRICT_GAP = 17;
 // City life: a day lasts 5 minutes of game time, a week 7 days (days 0-4 are working days).
-const DAY_LEN = 300, DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const DAY_LEN = 600, TRIP_LIMIT = 60, DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const DTYPE = {
   home: { icon: '🏠', name: 'Жилой район' },
   work: { icon: '🏢', name: 'Офисы' },
@@ -950,7 +951,7 @@ function pickDestination(startKey, originDi, purpose = 'any', force) {
       for (const k of nodes.get(nid).ins) { const dd = dist.get(k); if (dd !== undefined && dd < bd) { bd = dd; goal = k; } }
     }
     if (!goal) return;
-    const w = 1 / (1 + bd / 40);
+    const w = (1 / (1 + bd / 40)) * (bd / 1.1 < TRIP_LIMIT * 0.9 ? 1 : 0.1);       // far goals that cannot be reached in time are rarely chosen
     opts.push({ di, goal, w });
     wsum += w;
   });
@@ -2163,7 +2164,7 @@ const S = {
   money: START_MONEY, delivered: 0, meter: 0, speed: 1, tool: 'road', dirty: true, planDirty: true, sel: null, selNode: null, selRing: null, selDirty: true, contNode: null,
   plan: null, districts: [], cars: [], popups: [], names: [], trees: [],
   nextDistrictIn: 0, jamCool: 0, bestScore: 0, heat: new Map(), view: 0, heatT: 0, jams: [],
-  tod: 17, day: 6, mood: 75, moodTarget: 75, moodT: 0,
+  tod: 22, day: 6, mood: 75, moodTarget: 75, moodT: 0,
 };
 const cam = { tx: FIELD / 2, tz: FIELD / 2, dist: 40, pitch: PITCH };
 let CW = 1, CH = 1, DPR = 1;
@@ -2176,7 +2177,7 @@ const cv = $('world');
 const toastEl = $('toast'), hintEl = $('hint'), labelsEl = $('labels');
 const startEl = $('startOverlay'), planBar = $('planBar'), editBar = $('editBar');
 const hud = {};
-for (const id of ['money', 'score', 'clock', 'dayName', 'popVal', 'moodFill', 'moodVal', 'speedFill', 'speedVal']) hud[id] = $(id);
+for (const id of ['money', 'score', 'clock', 'dayName', 'popVal', 'tripVal', 'moodFill', 'moodVal', 'speedFill', 'speedVal']) hud[id] = $(id);
 
 function setText(el, v) {
   const s = String(v);
@@ -2189,6 +2190,7 @@ function updateHud() {
   setText(hud.clock, `${hh < 10 ? '0' : ''}${hh}:${mm < 10 ? '0' : ''}${mm} ${daylight(S.tod) > 0.4 ? '☀' : '🌙'}`);
   setText(hud.dayName, DAYS[wd] + (wd >= 5 ? ' · выходной' : ''));
   setText(hud.popVal, Math.round(totalPop()).toLocaleString('ru-RU'));
+  setText(hud.tripVal, S.avgTrip === null || S.avgTrip === undefined ? '—' : Math.round(S.avgTrip) + ' с');
   const mood = clamp(S.mood, 0, 100), ml = mood > 60 ? 'ok' : mood > 35 ? 'warn' : 'bad';
   if (hud.moodFill.className !== ml) hud.moodFill.className = ml;
   hud.moodFill.style.transform = `scaleX(${(mood / 100).toFixed(3)})`;
@@ -2752,7 +2754,7 @@ function trySpawn(d, di) {
     id: ++carSeq, route: pick.path, idx: 0, s: 0, v: 0, wait: 0, dead: false, warned: false,
     dest: pick.di, dist: total, len: pick.path.length,
     col: S.districts[pick.di].roof, purpose, res: !!(entry && entry.res), home: entry ? entry.home : undefined,
-    outsider: !!(entry && !entry.res && (purpose === 'in-work' || purpose === 'in-leisure')),
+    outsider: !!(entry && !entry.res && (purpose === 'in-work' || purpose === 'in-leisure')), t0: S.t, late: false,
   };
   let arr = bk.get(best);
   if (!arr) { arr = []; bk.set(best, arr); }
@@ -2935,6 +2937,7 @@ function deliver(car) {
   S.money += fare;
   S.delivered++;
   const dd = S.districts[car.dest];
+  if (car.res) (S.tripLog || (S.tripLog = [])).push({ t: S.t, d: S.t - car.t0 });
   if (dd && car.res) {
     // a resident arrives: home again, or a guest in the district he was heading for
     if (dd.type === 'home' && dd === S.districts[car.home] && car.purpose === 'home') dd.away = Math.max(0, dd.away - 1);
@@ -3010,7 +3013,7 @@ function updateJams() {
 // The number of cars follows the number of residents; residents come and go with the mood of the city.
 const gauss = (h, c, w) => Math.exp(-0.5 * ((h - c) / w) ** 2);
 const window01 = (h, a, b, soft = 1) => ss(clamp((h - a) / soft, 0, 1)) * (1 - ss(clamp((h - b) / soft, 0, 1)));
-const SEC_PER_H = DAY_LEN / 24;
+const SEC_PER_H = DAY_LEN / 24, TS = 300 / DAY_LEN;      // TS keeps per-second rates tuned for a 5-minute day right for a longer one
 function daylight(h) { return Math.min(ss(clamp((h - 5) / 3, 0, 1)), 1 - ss(clamp((h - 17.5) / 3.5, 0, 1))); }
 const residents = d => Math.floor(d.pop);
 function totalPop() { let t = 0; for (const d of S.districts) t += residents(d); return t; }
@@ -3057,13 +3060,37 @@ function accrueVisitor(d, key, rate, dt, purpose) {
   const v = (d.pacc[key] || 0) + rate * dt;
   if (v >= 1) { d.pacc[key] = v - 1; pushTrip(d, 0, { p: purpose, res: false }); } else d.pacc[key] = v;
 }
+// A resident whose trip takes more than a minute gives up and turns for home; the whole city remembers it for a while.
+function giveUp(car) {
+  car.late = true;
+  S.late = (S.late || 0) + 1;
+  if (car.purpose === 'home' || !car.res || car.home === undefined) return;
+  const cur = car.route[car.idx], seg = segOf(cur);
+  if (!seg) return;
+  const rest = pathFromLane(seg.conn ? seg.outKey : cur, car.home);
+  if (!rest) return;
+  car.route = seg.conn ? [cur].concat(rest) : rest;
+  car.idx = 0;
+  car.dest = car.home; car.purpose = 'home'; car.col = S.districts[car.home].roof;
+}
+// Average time residents spend on the road, over trips that ended in the last two minutes.
+function avgTripTime() {
+  const log = S.tripLog;
+  if (!log || !log.length) return null;
+  while (log.length && log[0].t < S.t - 120) log.shift();
+  if (!log.length) return null;
+  let sum = 0;
+  for (const e of log) sum += e.d;
+  return sum / log.length;
+}
 function lifeStep(dt) {
+  for (const car of S.cars) if (car.res && !car.late && !car.dead && S.t - car.t0 > TRIP_LIMIT) giveUp(car);
   S.tod += dt * 24 / DAY_LEN;
-  if (S.tod >= 24) { S.tod -= 24; S.day++; S.money += Math.floor(totalPop() * 0.8); }
+  if (S.tod >= 24) { S.tod -= 24; S.day++; S.money += Math.floor(totalPop() * 0.8 * DAY_LEN / 300); }
   const h = S.tod, wk = S.day % 7 < 5, pop = totalPop();
   const ind = S.districts.filter(d => d.type === 'industry').length || 1, gates = S.districts.filter(d => d.type === 'exit').length || 1;
   const dayWin = window01(h, 7.5, 21, 1.5), work = window01(h, 7, 18, 1.5);
-  const hazard = (d, n, hz) => { d.hacc += n * hz * dt; if (d.hacc >= 1) { d.hacc -= 1; return true; } return false; };
+  const hazard = (d, n, hz) => { d.hacc += n * hz * TS * dt; if (d.hacc >= 1) { d.hacc -= 1; return true; } return false; };
   for (let di = 0; di < S.districts.length; di++) {
     const d = S.districts[di];
     if (!districtHasRoad(d)) continue;
@@ -3081,17 +3108,17 @@ function lifeStep(dt) {
       let hz = !wk ? 0.05 : h >= 16 || h < 5 ? 0.035 : h >= 11.5 && h < 13.5 ? 0.004 : 0;
       if (h >= 21 || h < 5) hz = 0.06;
       if (d.hereList.length && hz > 0 && hazard(d, d.hereList.length, hz)) leaveTrip(d, di, wk && h >= 11.5 && h < 13.5 ? 'leisure' : 'home');
-      if (d.hereOut >= 1) { d.oacc += d.hereOut * 0.03 * dt; if (d.oacc >= 1) { d.oacc -= 1; if (pushTrip(d, di, { p: 'out', res: false })) d.hereOut--; } }
-      if (d.type === 'industry') accrueVisitor(d, 'truck', pop * 0.0005 * (wk ? work : 0.3 * work + 0.05) / ind, dt, 'out');
+      if (d.hereOut >= 1) { d.oacc += d.hereOut * 0.03 * TS * dt; if (d.oacc >= 1) { d.oacc -= 1; if (pushTrip(d, di, { p: 'out', res: false })) d.hereOut--; } }
+      if (d.type === 'industry') accrueVisitor(d, 'truck', pop * 0.0005 * TS * (wk ? work : 0.3 * work + 0.05) / ind, dt, 'out');
     } else if (d.type === 'leisure') {
       const hz = h >= 23 || h < 4 ? 0.1 : 0.022;
       if (d.hereList.length && hazard(d, d.hereList.length, hz)) leaveTrip(d, di, 'home');
-      if (d.hereOut >= 1) { d.oacc += d.hereOut * 0.03 * dt; if (d.oacc >= 1) { d.oacc -= 1; if (pushTrip(d, di, { p: 'out', res: false })) d.hereOut--; } }
+      if (d.hereOut >= 1) { d.oacc += d.hereOut * 0.03 * TS * dt; if (d.oacc >= 1) { d.oacc -= 1; if (pushTrip(d, di, { p: 'out', res: false })) d.hereOut--; } }
     } else if (d.type === 'exit') {
       // residents who travelled to another city come back after a while; visitors and trucks come from there
       if (d.hereList.length && hazard(d, d.hereList.length, 0.01)) leaveTrip(d, di, 'home');
-      accrueVisitor(d, 'inwork', pop * 0.0004 * (wk ? work : 0.2 * work) / gates, dt, 'in-work');
-      accrueVisitor(d, 'inleis', pop * 0.0005 * (wk ? 0.4 : 1.2) * gauss(h, 14, 3.2) / gates, dt, 'in-leisure');
+      accrueVisitor(d, 'inwork', pop * 0.0004 * TS * (wk ? work : 0.2 * work) / gates, dt, 'in-work');
+      accrueVisitor(d, 'inleis', pop * 0.0005 * TS * (wk ? 0.4 : 1.2) * gauss(h, 14, 3.2) / gates, dt, 'in-leisure');
     }
   }
   // Mood follows how the traffic flows; residents move in or out slowly with it.
@@ -3105,9 +3132,13 @@ function lifeStep(dt) {
     for (const d of S.districts) if (d.type !== 'exit' && districtHasRoad(d)) { qf += d.queue / QUEUE_CAP; qn++; }
     qf = qn ? qf / qn : 0;
     const jamShare = cars ? jam / cars : 0;
-    S.moodTarget = 100 * (0.45 * avg / 100 + 0.25 * (1 - clamp(jamShare * 4, 0, 1)) + 0.15 * (1 - clamp(qf * 1.5, 0, 1)) + 0.15 * (1 - clamp((S.drops || 0) / 12, 0, 1)));
+    const tt = avgTripTime();
+    S.avgTrip = tt;
+    S.moodTarget = 100 * (0.3 * avg / 100 + 0.15 * (1 - clamp(jamShare * 4, 0, 1)) + 0.1 * (1 - clamp(qf * 1.5, 0, 1)) + 0.1 * (1 - clamp((S.drops || 0) / 12, 0, 1))
+      + 0.1 * (1 - clamp((S.late || 0) / 6, 0, 1)) + 0.25 * (tt === null ? 1 : 1 - clamp((tt - 15) / 45, 0, 1)));
   }
-  S.drops = (S.drops || 0) * Math.exp(-dt / 30);       // trips that could not even start leave a bad memory for a while
+  S.drops = (S.drops || 0) * Math.exp(-dt / 30);
+  S.late = (S.late || 0) * Math.exp(-dt / 60);       // trips that could not even start leave a bad memory for a while
   S.mood += ((S.moodTarget === undefined ? S.mood : S.moodTarget) - S.mood) * Math.min(1, dt / 60);
   const rate = (S.mood - 50) / 50 * 0.0014;
   for (const d of S.districts) if (d.type === 'home' && districtHasRoad(d) && !d.noLink) d.pop = clamp(d.pop * Math.exp(rate * dt), 8, 30000);
@@ -3437,7 +3468,7 @@ function newGame() {
   S.t = 0; S.money = START_MONEY; S.delivered = 0; S.meter = 0; S.avgV = undefined; S.heat.clear(); S.view = 0; setView(0); S.samp = []; S.acc = null;
   S.over = false; S.running = true;
   S.nextDistrictIn = 12; S.jamCool = 0; S.linkHint = undefined;
-  S.tod = 17; S.day = 6; S.mood = S.moodTarget = 75; S.moodT = 0; S.dcache = null;     // Sunday evening: the first working morning is a few minutes away
+  S.tod = 22; S.day = 6; S.mood = S.moodTarget = 75; S.moodT = 0; S.dcache = null; S.tripLog = []; S.avgTrip = null; S.late = 0;     // Sunday evening: the first working morning is a few minutes away
   addDistrict(0, MIN_DISTRICT_GAP, 'home');
   if (!addDistrict(1, 28, 'work')) addDistrict(1, MIN_DISTRICT_GAP, 'work');
   S.districts[0].pop = 40;
