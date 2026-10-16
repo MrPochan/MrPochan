@@ -1348,7 +1348,7 @@ function endStub(snap) {
       // A free dead end: the road continues smoothly in the direction the old one was heading.
       if (n.edges.size !== 1 || n.ringId) return null;
       const o = outDir(n);
-      return { dx: o.x, dz: o.z, reach: 1.8, either: false, soft: true };
+      return { dx: o.x, dz: o.z, reach: 3.0, either: false, soft: true };
     }
     const d = S.districts[n.door], dw = d && d.driveways[d.doors.indexOf(n.id)];
     if (!dw) return null;
@@ -1373,7 +1373,6 @@ function alignEnd(pts, atStart, snap) {
   const C = P[i];
   let dx = st.dx, dz = st.dz;
   if (st.either && (C.x - T.x) * dx + (C.z - T.z) * dz < 0) { dx = -dx; dz = -dz; }
-  if (st.soft && ((C.x - T.x) * dx + (C.z - T.z) * dz) / (Math.hypot(C.x - T.x, C.z - T.z) || 1) < 0.25) return pts;
   const tc = tangentAt(P, i);
   const k = Math.max(0.3, Math.hypot(C.x - T.x, C.z - T.z) * 0.45);
   const P1 = { x: C.x + tc.x * k, z: C.z + tc.z * k }, P2 = { x: T.x + dx * k, z: T.z + dz * k };
@@ -1402,8 +1401,34 @@ function tangentAt(pts, i) {
   return { x: (b.x - a.x) / L, z: (b.z - a.z) / L };
 }
 // Empty string if the plan can be built, otherwise the reason.
-function planProblem(pts, cum) {
+// Smallest turning radius along a line: the circle through points 0.6 apart on either side.
+function minRadius(pts) {
+  const k = 3;
+  let best = Infinity;
+  for (let i = k; i < pts.length - k; i++) {
+    const a = pts[i - k], b = pts[i], c = pts[i + k];
+    const ab = Math.hypot(b.x - a.x, b.z - a.z), bc = Math.hypot(c.x - b.x, c.z - b.z), ca = Math.hypot(a.x - c.x, a.z - c.z);
+    const area2 = Math.abs((b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x));
+    if (area2 < 1e-9) continue;
+    best = Math.min(best, ab * bc * ca / (2 * area2));
+  }
+  return best;
+}
+// Sharp corners are rounded off: the line is relaxed (ends fixed) until no turn is tighter than the wanted radius.
+function relaxPlan(pts, kind) {
+  const want = kind === 2 ? 1.5 : 1.1;
+  let P = pts;
+  for (let it = 0; it < 120 && P.length > 8 && minRadius(P) < want; it++) {
+    const Q = [P[0]];
+    for (let i = 1; i < P.length - 1; i++) Q.push({ x: (P[i - 1].x + P[i + 1].x + 2 * P[i].x) / 4, z: (P[i - 1].z + P[i + 1].z + 2 * P[i].z) / 4 });
+    Q.push(P[P.length - 1]);
+    P = Q;
+  }
+  return P;
+}
+function planProblem(pts, cum, kind) {
   const n = pts.length, total = cum[n - 1];
+  if (minRadius(pts) < (kind === 2 ? 0.95 : 0.65)) return 'Слишком крутой поворот';
   for (const e of edges.values()) {
     if (!e.ring) continue;
     const P = e.C.P;
@@ -1438,7 +1463,7 @@ function planProblem(pts, cum) {
 function computePlan(raw, kind) {
   const pl = { raw, kind, pts: [], valid: false, msg: '', cost: 0, length: 0, snapA: null, snapB: null, drawing: true };
   if (raw.length < 2) { pl.msg = 'Проведите линию по полю'; return pl; }
-  let pts = resample(chaikin(rdp(raw, 0.12), 3), PLAN_STEP);
+  let pts = relaxPlan(resample(chaikin(rdp(raw, 0.12), 3), PLAN_STEP), kind);
   pl.length = polyLen(pts);
   pl.pts = pts;
   if (pl.length < PLAN_MIN || pts.length < 2) { pl.msg = 'Слишком коротко'; return pl; }
@@ -1452,7 +1477,7 @@ function computePlan(raw, kind) {
     if (pl.snapB) q = alignEnd(q, false, pl.snapB);
     if (q !== pts) { pts = resample(q, PLAN_STEP); pl.pts = pts; pl.length = polyLen(pts); }
   }
-  pl.msg = planProblem(pts, cumOf2(pts));
+  pl.msg = planProblem(pts, cumOf2(pts), kind);
   pl.valid = pl.msg === '';
   pl.cost = planCost(pts, kind);
   return pl;
