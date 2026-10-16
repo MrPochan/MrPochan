@@ -920,6 +920,48 @@ function snapTarget(p) {
   if (s > e.len - 0.4) return { type: 'node', id: e.b, x: nodes.get(e.b).x, z: nodes.get(e.b).z };
   return { type: 'edge', edge: e.id, s, x: near.h.x, z: near.h.z };
 }
+// Magnet: how a road must arrive at a snapped end. Doors take the road straight out of the driveway,
+// a road ending on another road meets it at a right angle.
+function endStub(snap) {
+  if (snap.type === 'node') {
+    const n = nodes.get(snap.id);
+    if (!n || n.door < 0) return null;
+    const d = S.districts[n.door], dw = d && d.driveways[d.doors.indexOf(n.id)];
+    if (!dw) return null;
+    const L = Math.hypot(dw.x1 - dw.x0, dw.z1 - dw.z0) || 1;
+    return { dx: (dw.x1 - dw.x0) / L, dz: (dw.z1 - dw.z0) / L, reach: 2.4, either: false };
+  }
+  const e = edges.get(snap.edge);
+  if (!e) return null;
+  const q = curveAt(e.C, snap.s);
+  return { dx: -q.dz, dz: q.dx, reach: 2.0, either: true };
+}
+// Replaces the last stretch of the line by a curve that arrives along the stub direction.
+function alignEnd(pts, atStart, snap) {
+  const st = endStub(snap);
+  if (!st) return pts;
+  const P = atStart ? pts.slice().reverse() : pts.slice();
+  const T = { x: snap.x, z: snap.z };
+  const lc = Math.min(st.reach, polyLen(P) * 0.5);
+  let i = P.length - 1, acc = 0;
+  while (i > 0 && acc < lc) { acc += Math.hypot(P[i].x - P[i - 1].x, P[i].z - P[i - 1].z); i--; }
+  if (i >= P.length - 1) return pts;
+  const C = P[i];
+  let dx = st.dx, dz = st.dz;
+  if (st.either && (C.x - T.x) * dx + (C.z - T.z) * dz < 0) { dx = -dx; dz = -dz; }
+  const tc = tangentAt(P, i);
+  const k = Math.max(0.3, Math.hypot(C.x - T.x, C.z - T.z) * 0.45);
+  const P1 = { x: C.x + tc.x * k, z: C.z + tc.z * k }, P2 = { x: T.x + dx * k, z: T.z + dz * k };
+  const out = P.slice(0, i + 1);
+  for (let j = 1; j <= 10; j++) {
+    const t = j / 10, u = 1 - t;
+    out.push({
+      x: u * u * u * C.x + 3 * u * u * t * P1.x + 3 * u * t * t * P2.x + t * t * t * T.x,
+      z: u * u * u * C.z + 3 * u * u * t * P1.z + 3 * u * t * t * P2.z + t * t * t * T.z,
+    });
+  }
+  return atStart ? out.reverse() : out;
+}
 function planCost(pts, kind) {
   let total = 0, wet = 0;
   for (let i = 0; i < pts.length - 1; i++) {
@@ -960,7 +1002,7 @@ function planProblem(pts, cum) {
 function computePlan(raw, kind) {
   const pl = { raw, kind, pts: [], valid: false, msg: '', cost: 0, length: 0, snapA: null, snapB: null, drawing: true };
   if (raw.length < 2) { pl.msg = 'Проведите линию по полю'; return pl; }
-  const pts = resample(chaikin(rdp(raw, 0.12), 3), PLAN_STEP);
+  let pts = resample(chaikin(rdp(raw, 0.12), 3), PLAN_STEP);
   pl.length = polyLen(pts);
   pl.pts = pts;
   if (pl.length < PLAN_MIN || pts.length < 2) { pl.msg = 'Слишком коротко'; return pl; }
@@ -968,6 +1010,12 @@ function computePlan(raw, kind) {
   pl.snapB = snapTarget(pts[pts.length - 1]);
   if (pl.snapA) pts[0] = { x: pl.snapA.x, z: pl.snapA.z };
   if (pl.snapB) pts[pts.length - 1] = { x: pl.snapB.x, z: pl.snapB.z };
+  if (pl.snapA || pl.snapB) {
+    let q = pts;
+    if (pl.snapA) q = alignEnd(q, true, pl.snapA);
+    if (pl.snapB) q = alignEnd(q, false, pl.snapB);
+    if (q !== pts) { pts = resample(q, PLAN_STEP); pl.pts = pts; pl.length = polyLen(pts); }
+  }
   pl.msg = planProblem(pts, cumOf2(pts));
   pl.valid = pl.msg === '';
   pl.cost = planCost(pts, kind);
@@ -1454,7 +1502,7 @@ function junctionPoly(n, arms, extra) {
   for (let i = 0; i < N; i++) {
     const a = corners[i], b = corners[(i + 1) % N];
     const A = a.hi, B = b.lo;
-    pts.push(A);
+    pts.push(a.lo, A);
     const det = -(a.dx * b.dz - a.dz * b.dx);
     let X = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, z: (A.z + B.z) / 2 };
     if (Math.abs(det) > 0.05) {
