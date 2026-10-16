@@ -119,6 +119,15 @@ body {
   font: 700 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding: 5px 9px; border-radius: 7px;
 }
 .sp.on { background: var(--accent); color: #0b1620; }
+.views { width: max-content; }
+.legend {
+  width: 190px; padding: 5px 10px 6px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line);
+}
+.legend i {
+  display: block; height: 7px; border-radius: 4px;
+  background: linear-gradient(90deg, #2fc752 0%, #e8d92c 30%, #f08a24 55%, #e0302a 80%, #6e0a1a 100%);
+}
+.legend div { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 
 .bottom {
   left: 0; right: 0; bottom: 0;
@@ -226,14 +235,18 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   <div class="block">
     <div id="money" class="money">$600</div>
     <div class="meter">
-      <span class="k">Пропускная способность</span>
-      <div class="track"><i id="meterFill"></i></div>
-      <b id="meterVal">100%</b>
-    </div>
-    <div class="meter">
       <span class="k">Скорость</span>
       <div class="track"><i id="speedFill"></i></div>
       <b id="speedVal">100%</b>
+    </div>
+    <div class="speed views" role="group" aria-label="Режим карты">
+      <button class="sp vw on" data-view="0" type="button">Обычный</button>
+      <button class="sp vw" data-view="1" type="button">Пробки</button>
+      <button class="sp vw" data-view="2" type="button">Скорость</button>
+    </div>
+    <div id="legend" class="legend" hidden>
+      <i></i>
+      <div><span id="legLo">свободно</span><span id="legHi">пробка</span></div>
     </div>
   </div>
   <div class="block right">
@@ -331,7 +344,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         <li>Проведите линию — игра сгладит её в кривую. Проверьте цену и нажмите «Построить».</li>
         <li>Дорога соединяется с районом у его выезда. Пересечение с другой дорогой становится перекрёстком.</li>
         <li>В режиме «Правка» перекрёсток можно превратить в кольцо или поставить светофор.</li>
-        <li>Пропускная способность — доля машин, которые не стоят на месте; скорость — средняя скорость машин от свободной. Обе считаются за последние 30 секунд. Если машины надолго встают в пробку, город не растёт, но игру можно продолжить и разгрузить дороги.</li>
+        <li>Шкала скорости — средняя скорость машин от свободной за последние 30 секунд. Кнопки «Пробки» и «Скорость» подсвечивают участки дорог от зелёного к бордовому. Если машины надолго встают в пробку, город не растёт, но игру можно продолжить и разгрузить дороги.</li>
       </ul>
     </details>
     <button id="startBtn" class="primary" type="button">Начать</button>
@@ -1976,7 +1989,9 @@ selMesh.renderOrder = 2;
 const lightMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
 const contMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
 contMesh.renderOrder = 3;
-scene.add(groundMesh, waterMesh, roadMesh, treeMesh, planMesh, selMesh, lightMesh, contMesh);
+const heatMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.72, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 }));
+heatMesh.renderOrder = 1;
+scene.add(groundMesh, waterMesh, roadMesh, treeMesh, planMesh, selMesh, heatMesh, lightMesh, contMesh);
 
 const bodyGeo = new THREE.BoxGeometry(CAR_LEN, 0.09, CAR_W);
 bodyGeo.translate(0, 0.085, 0);
@@ -2007,7 +2022,7 @@ const S = {
   running: false, over: false, t: 0,
   money: START_MONEY, delivered: 0, meter: 0, speed: 1, tool: 'road', dirty: true, planDirty: true, sel: null, selNode: null, selRing: null, selDirty: true, contNode: null,
   plan: null, districts: [], cars: [], popups: [], names: [], trees: [],
-  nextDistrictIn: 0, jamCool: 0, bestScore: 0,
+  nextDistrictIn: 0, jamCool: 0, bestScore: 0, heat: new Map(), view: 0, heatT: 0,
 };
 const cam = { tx: FIELD / 2, tz: FIELD / 2, dist: 40, pitch: PITCH };
 let CW = 1, CH = 1, DPR = 1;
@@ -2018,7 +2033,7 @@ const cv = $('world');
 const toastEl = $('toast'), hintEl = $('hint'), labelsEl = $('labels');
 const startEl = $('startOverlay'), planBar = $('planBar'), editBar = $('editBar');
 const hud = {};
-for (const id of ['money', 'score', 'districts', 'meterFill', 'meterVal', 'speedFill', 'speedVal']) hud[id] = $(id);
+for (const id of ['money', 'score', 'districts', 'speedFill', 'speedVal']) hud[id] = $(id);
 
 function setText(el, v) {
   const s = String(v);
@@ -2028,10 +2043,6 @@ function updateHud() {
   setText(hud.money, '$' + Math.floor(S.money).toLocaleString('en-US'));
   setText(hud.score, S.delivered);
   setText(hud.districts, S.districts.length);
-  const cap = S.capV === undefined ? 100 : S.capV, lvl = cap > 60 ? 'ok' : cap > 25 ? 'warn' : 'bad';
-  if (hud.meterFill.className !== lvl) hud.meterFill.className = lvl;
-  hud.meterFill.style.transform = `scaleX(${(cap / 100).toFixed(3)})`;
-  setText(hud.meterVal, Math.round(cap) + '%');
   const sp = S.avgV === undefined ? 100 : S.avgV, sl = sp > 60 ? 'ok' : sp > 35 ? 'warn' : 'bad';
   if (hud.speedFill.className !== sl) hud.speedFill.className = sl;
   hud.speedFill.style.transform = `scaleX(${(sp / 100).toFixed(3)})`;
@@ -2039,6 +2050,7 @@ function updateHud() {
 }
 let toastTimer = 0;
 function toast(msg, ms = 2600) {
+  return;     // pop-up notices are switched off
   if (S.demo) return;
   toastEl.textContent = msg;
   toastEl.classList.add('show');
@@ -2055,7 +2067,7 @@ function setTool(t) {
 }
 function setSpeed(v) {
   S.speed = v;
-  document.querySelectorAll('.sp').forEach(b => b.classList.toggle('on', Number(b.dataset.speed) === v));
+  document.querySelectorAll('.sp[data-speed]').forEach(b => b.classList.toggle('on', Number(b.dataset.speed) === v));
 }
 function loadBest() {
   try { return +localStorage.getItem('traffic-architect-best') || 0; } catch (e) { return 0; }
@@ -2853,25 +2865,25 @@ function step(dt) {
   }
   S.meter = clamp(S.meter + (pressure * 2.5 - 1.5) * dt, 0, 100);
   S.jamCool = Math.max(0, S.jamCool - dt);
+  collectHeat(dt);
   // Capacity (share of cars that are not standing still) and speed (share of the speed they could drive), both
   // averaged over the last 30 seconds of game time: one value per second, the newest second still filling up.
   if (S.cars.length) {
-    let sum = 0, moving = 0;
-    for (const car of S.cars) { sum += car.vr === undefined ? 1 : car.vr; if (car.v >= 0.1) moving++; }
-    const a = S.acc || (S.acc = { t: 0, c: 0, v: 0 });
-    a.t += dt; a.c += 100 * moving / S.cars.length * dt; a.v += 100 * sum / S.cars.length * dt;
+    let sum = 0;
+    for (const car of S.cars) sum += car.vr === undefined ? 1 : car.vr;
+    const a = S.acc || (S.acc = { t: 0, v: 0 });
+    a.t += dt; a.v += 100 * sum / S.cars.length * dt;
     if (a.t >= 1) {
-      (S.samp || (S.samp = [])).push({ c: a.c / a.t, v: a.v / a.t });
+      (S.samp || (S.samp = [])).push({ v: a.v / a.t });
       if (S.samp.length > 30) S.samp.shift();
       S.acc = null;
     }
   }
   {
-    let c = 0, v = 0, n = 0;
-    for (const m of S.samp || []) { c += m.c; v += m.v; n++; }
+    let v = 0, n = 0;
+    for (const m of S.samp || []) { v += m.v; n++; }
     const a = S.acc;
-    if (a && a.t > 0) { c += a.c / a.t * a.t; v += a.v / a.t * a.t; n += a.t; }
-    S.capV = n ? c / n : 100;
+    if (a && a.t > 0) { v += a.v; n += a.t; }
     S.avgV = n ? v / n : 100;
   }
   for (const p of S.popups) p.age += dt;
@@ -2889,6 +2901,137 @@ function step(dt) {
   // The best score is saved as it grows, since a game no longer ends.
   if (S.delivered > S.bestScore) { S.bestScore = S.delivered; S.bestDirty = true; }
   if (S.bestDirty && S.t - (S.bestSaved || 0) > 10) { S.bestSaved = S.t; S.bestDirty = false; saveBest(S.bestScore); }
+}
+
+// ---------- Map views: jams and speed along the roads ----------
+// Every road side is cut into short bins. Each bin remembers, with a memory of about 30 seconds, how long cars spent
+// there (cars), how fast they went (speed ratio) and how long they stood still (stopped).
+const HEAT_BIN = 0.5, HEAT_TAU = 30;
+function heatOf(e, dir) {
+  const k = e.id + '.' + dir;
+  let h = S.heat.get(k);
+  if (!h) {
+    const nb = Math.max(2, Math.ceil(e.len / HEAT_BIN));
+    h = { e: e.id, dir, len: e.len, nb, cars: new Float32Array(nb), spd: new Float32Array(nb), stop: new Float32Array(nb) };
+    S.heat.set(k, h);
+  }
+  return h;
+}
+function collectHeat(dt) {
+  for (const car of S.cars) {
+    const key = car.route[car.idx];
+    if (!key || key[0] !== 'L') continue;
+    const ln = lanes.get(key);
+    if (!ln || ln.len <= 0) continue;
+    const [eid, dir] = key.slice(1).split('.');
+    const e = edges.get(Number(eid));
+    if (!e) continue;
+    const h = heatOf(e, Number(dir)), f = clamp(car.s / ln.len, 0, 1);
+    const arc = Number(dir) === 0 ? f * e.len : (1 - f) * e.len;
+    const b = clamp(Math.floor(arc / e.len * h.nb), 0, h.nb - 1);
+    h.cars[b] += dt;
+    h.spd[b] += dt * (car.vr === undefined ? 1 : car.vr);
+    if (car.v < 0.1) h.stop[b] += dt;
+  }
+  S.heatT += dt;
+  if (S.heatT >= 0.5) {
+    const k = Math.exp(-S.heatT / HEAT_TAU);
+    S.heatT = 0;
+    for (const [key, h] of S.heat) {
+      const e = edges.get(h.e);
+      if (!e || Math.abs(e.len - h.len) > 1e-6) { S.heat.delete(key); continue; }
+      let any = 0;
+      for (let i = 0; i < h.nb; i++) { h.cars[i] *= k; h.spd[i] *= k; h.stop[i] *= k; any += h.cars[i]; }
+      if (any < 0.01) S.heat.delete(key);
+    }
+  }
+}
+// Green to maroon, smooth: t = 0 is fine, t = 1 is the worst.
+const HEAT_STOPS = [[0, [0.18, 0.78, 0.32]], [0.3, [0.91, 0.85, 0.17]], [0.55, [0.94, 0.54, 0.14]], [0.8, [0.88, 0.19, 0.16]], [1, [0.43, 0.04, 0.10]]];
+function heatColor(t) {
+  t = clamp(t, 0, 1);
+  for (let i = 1; i < HEAT_STOPS.length; i++) {
+    const [t1, c1] = HEAT_STOPS[i], [t0, c0] = HEAT_STOPS[i - 1];
+    if (t <= t1) { const u = (t - t0) / (t1 - t0); return [c0[0] + (c1[0] - c0[0]) * u, c0[1] + (c1[1] - c0[1]) * u, c0[2] + (c1[2] - c0[2]) * u]; }
+  }
+  return HEAT_STOPS[HEAT_STOPS.length - 1][1];
+}
+// Value (0 fine .. 1 bad) and how much data there is (0..1) for each bin, blurred along the road so colours melt into each other.
+function heatBins(h, mode, lanesN) {
+  const nb = h.nb, val = new Float32Array(nb), wt = new Float32Array(nb);
+  const raw = new Float32Array(nb), rw = new Float32Array(nb);
+  const pack = HEAT_BIN / (CAR_LEN + MIN_GAP) * lanesN;
+  for (let i = 0; i < nb; i++) {
+    const c = h.cars[i];
+    rw[i] = c;
+    if (c < 0.05) continue;
+    if (mode === 2) raw[i] = 1 - clamp(h.spd[i] / c, 0, 1);
+    else raw[i] = clamp(h.stop[i] / c, 0, 1) * clamp(c / HEAT_TAU / (0.5 * pack), 0, 1);
+  }
+  const K = [1, 2, 3, 2, 1];
+  for (let i = 0; i < nb; i++) {
+    let sv = 0, sw = 0;
+    for (let d = -2; d <= 2; d++) {
+      const j = i + d;
+      if (j < 0 || j >= nb) continue;
+      const w = K[d + 2] * Math.min(1, rw[j] / 1.5);
+      sv += w * raw[j]; sw += w;
+    }
+    val[i] = sw > 0 ? sv / sw : 0;
+    wt[i] = clamp(sw / 6, 0, 1);
+  }
+  return { val, wt };
+}
+function buildHeatGeo() {
+  const g = new Geo(), mode = S.view, asph = rgb(COL.asphalt);
+  if (!mode) return g.geometry();
+  for (const h of S.heat.values()) {
+    const e = edges.get(h.e);
+    if (!e) continue;
+    const A = nodes.get(e.a), B = nodes.get(e.b);
+    const trim = (n) => { if (!n || n.door >= 0 || n.edges.size < 2) return 0; const arm = junctionArms(n).find(x => x.e === e); return arm ? arm.t : 0; };
+    const t0 = trim(A) + 0.05, t1 = e.len - trim(B) - 0.05;
+    if (t1 - t0 < 0.1) continue;
+    const k = KIND[e.kind], nl = k.lanes;
+    const two = !e.oneway && !e.ring;
+    const half = two ? k.half / 2 : k.half, off = two ? (h.dir === 0 ? half : -half) : 0;
+    if ((e.oneway || e.ring) && h.dir !== (e.ring ? 0 : (e.owDir || 0))) continue;
+    const { val, wt } = heatBins(h, mode, e.oneway && !e.ring ? nl : 1);
+    const at = (arrV, s) => {                            // value at arc length s, interpolated between bin centres
+      let u = s / e.len * h.nb - 0.5;
+      u = clamp(u, 0, h.nb - 1);
+      const i = Math.floor(u), j = Math.min(h.nb - 1, i + 1), f = u - i;
+      return arrV[i] * (1 - f) + arrV[j] * f;
+    };
+    const steps = Math.max(2, Math.ceil((t1 - t0) / 0.25));
+    const prev = [];
+    for (let i = 0; i <= steps; i++) {
+      let s = t0 + (t1 - t0) * i / steps;
+      // dir 1 drives against the arc direction; bins were filled in arc order already, so no flipping is needed
+      const q = curveAt(e.C, s), a = at(wt, s), c = heatColor(at(val, s));
+      const al = ss(clamp(a * 1.4, 0, 1)) * 0.92;
+      const col = [asph[0] + (c[0] - asph[0]) * al, asph[1] + (c[1] - asph[1]) * al, asph[2] + (c[2] - asph[2]) * al];
+      const y = q.y + 0.034;
+      prev.push({
+        l: { x: q.x + q.nx * (off + half * 0.94), y, z: q.z + q.nz * (off + half * 0.94) },
+        r: { x: q.x + q.nx * (off - half * 0.94), y, z: q.z + q.nz * (off - half * 0.94) }, col, a: al,
+      });
+    }
+    for (let i = 0; i < steps; i++) {
+      const p = prev[i], n = prev[i + 1];
+      if (p.a < 0.03 && n.a < 0.03) continue;
+      g.quadV(p.l, n.l, n.r, p.r, p.col, n.col, n.col, p.col);
+    }
+  }
+  return g.geometry();
+}
+function setView(v) {
+  S.view = v;
+  S.heatKey = '';
+  document.querySelectorAll('.vw').forEach(b => b.classList.toggle('on', Number(b.dataset.view) === v));
+  const lg = $('legend');
+  lg.hidden = !v;
+  if (v) { setText($('legLo'), v === 1 ? 'свободно' : 'быстро'); setText($('legHi'), v === 1 ? 'пробка' : 'медленно'); }
 }
 
 // ---------- Menu background ----------
@@ -2965,7 +3108,7 @@ function newGame() {
   buildGround();
   buildWater();
   placeTrees();
-  S.t = 0; S.money = START_MONEY; S.delivered = 0; S.meter = 0; S.avgV = S.capV = undefined; S.samp = []; S.acc = null;
+  S.t = 0; S.money = START_MONEY; S.delivered = 0; S.meter = 0; S.avgV = undefined; S.heat.clear(); S.view = 0; setView(0); S.samp = []; S.acc = null;
   S.over = false; S.running = true;
   S.nextDistrictIn = 12; S.jamCool = 0; S.linkHint = undefined;
   addDistrict(0);
@@ -3300,7 +3443,8 @@ cv.addEventListener('wheel', ev => {
 }, { passive: false });
 
 document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
-document.querySelectorAll('.sp').forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.speed))));
+document.querySelectorAll('.sp[data-speed]').forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.speed))));
+document.querySelectorAll('.vw').forEach(b => b.addEventListener('click', () => setView(Number(b.dataset.view))));
 $('planApply').addEventListener('click', () => { applyPlan(); });
 $('editClose').addEventListener('click', clearSel);
 $('editOneway').addEventListener('click', () => { const e = edges.get(S.sel); if (e) cycleOneway(e); });
@@ -3359,6 +3503,10 @@ function frame(now) {
     contMesh.position.set(cp.x, hAt(cp.x, cp.z) + 0.13, cp.z);
     contMesh.scale.set(pulse, 1, pulse);
   }
+  if (S.view) {
+    const hk = `${S.view}|${Math.floor(S.t * 2)}|${S.netVer | 0}`;
+    if (hk !== S.heatKey) { S.heatKey = hk; swapGeometry(heatMesh, buildHeatGeo()); }
+  } else if (S.heatKey !== 'off') { S.heatKey = 'off'; swapGeometry(heatMesh, new THREE.BufferGeometry()); }
   const lk = lightsKey();
   if (lk !== S.lightKey) { S.lightKey = lk; swapGeometry(lightMesh, buildLights()); }
   if (S.planDirty) {
