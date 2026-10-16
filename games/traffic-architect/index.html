@@ -9,7 +9,7 @@
 /* Full-screen 3D view with a dark HUD. Dark is the default; light follows the system setting. */
 :root {
   --bg: #12171c;
-  --panel: rgba(22, 26, 31, 0.9);
+  --panel: rgba(22, 26, 31, 0.92);
   --line: rgba(255, 255, 255, 0.09);
   --fg: #edf2f6;
   --muted: #8b97a3;
@@ -23,7 +23,7 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     --bg: #dfe7ec;
-    --panel: rgba(250, 252, 253, 0.94);
+    --panel: rgba(250, 252, 253, 0.95);
     --line: rgba(20, 30, 40, 0.1);
     --fg: #1c242c;
     --muted: #5f6b77;
@@ -37,7 +37,7 @@
 }
 :root[data-theme="light"] {
   --bg: #dfe7ec;
-  --panel: rgba(250, 252, 253, 0.94);
+  --panel: rgba(250, 252, 253, 0.95);
   --line: rgba(20, 30, 40, 0.1);
   --fg: #1c242c;
   --muted: #5f6b77;
@@ -49,6 +49,7 @@
   color-scheme: light;
 }
 
+*, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body {
@@ -139,8 +140,28 @@ body {
   font: 600 11px/1.1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 .tool.on { background: rgba(90, 180, 255, 0.16); border-color: var(--accent); }
-.tool small { color: var(--muted); font-size: 10px; font-weight: 600; }
 .tool svg { width: 34px; height: 22px; }
+
+.planbar {
+  position: fixed; left: 0; right: 0; z-index: 3;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 128px);
+  display: flex; justify-content: center; padding: 0 12px; pointer-events: none;
+}
+.planbar-in {
+  pointer-events: auto; display: flex; align-items: center; gap: 10px;
+  padding: 8px 8px 8px 14px; border-radius: 14px; max-width: 100%;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.pinfo { display: grid; gap: 2px; min-width: 0; }
+.pcost { font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums; }
+.pmsg { font-size: 12px; color: var(--muted); }
+.btn {
+  border: 0; border-radius: 10px; padding: 9px 14px; cursor: pointer; white-space: nowrap;
+  font: 700 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.btn.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+.btn.go { background: var(--ok); color: #0b1620; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .toast {
   position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 112px);
@@ -151,7 +172,6 @@ body {
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-*, *::before, *::after { box-sizing: border-box; }
 .overlay {
   position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
   padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));
@@ -187,7 +207,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 <header class="hud top">
   <div class="block">
-    <div id="money" class="money">$150</div>
+    <div id="money" class="money">$600</div>
     <div class="meter">
       <span class="k">Пробки</span>
       <div class="track"><i id="meterFill"></i></div>
@@ -209,16 +229,27 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+<div id="planBar" class="planbar" hidden>
+  <div class="planbar-in">
+    <div class="pinfo">
+      <b id="planCost" class="pcost">$0</b>
+      <span id="planMsg" class="pmsg"></span>
+    </div>
+    <button id="planCancel" class="btn ghost" type="button">Отмена</button>
+    <button id="planApply" class="btn go" type="button">Построить</button>
+  </div>
+</div>
+
 <nav class="hud bottom">
   <div id="hint" class="hint"></div>
   <div class="bar">
     <button class="tool on" data-tool="road" type="button">
       <svg viewBox="0 0 34 22"><rect x="0" y="5" width="34" height="12" rx="2" fill="#4a5058"/><path d="M3 11h28" stroke="#f4f4ef" stroke-width="1.6" stroke-dasharray="4 3"/></svg>
-      <span>Дорога</span><small>$8</small>
+      <span>Дорога</span>
     </button>
     <button class="tool" data-tool="avenue" type="button">
       <svg viewBox="0 0 34 22"><rect x="0" y="1" width="34" height="20" rx="2" fill="#4a5058"/><path d="M2 8.5h30M2 13.5h30" stroke="#f2c94c" stroke-width="1"/><path d="M3 11h28" stroke="#f4f4ef" stroke-width="1" stroke-dasharray="4 3"/></svg>
-      <span>Проспект</span><small>$24</small>
+      <span>Проспект</span>
     </button>
     <button class="tool" data-tool="bulldoze" type="button">
       <svg viewBox="0 0 34 22"><path d="M9 4l16 14M25 4L9 18" stroke="#ff6159" stroke-width="3" stroke-linecap="round"/></svg>
@@ -234,10 +265,10 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 <div id="startOverlay" class="overlay">
   <section class="card" aria-labelledby="startTitle">
     <h1 id="startTitle">Архитектор трафика</h1>
-    <p>Районы растут, и машины ездят между ними. Стройте дороги и проспекты, соединяйте районы мостами через реку и не дайте городу встать.</p>
+    <p>Районы растут, и машины ездят между ними. Проведите линию — игра сгладит её в кривую. Проверьте цену и нажмите «Построить».</p>
     <ul>
-      <li>Палец — строить. Два пальца — камера и зум.</li>
-      <li>Машины едут по полосам и держат дистанцию. На перекрёстке они ждут своей очереди.</li>
+      <li>Дорога соединяется с районом у его выезда. Пересечение с другой дорогой становится перекрёстком.</li>
+      <li>У каждого района от одного до трёх выездов.</li>
       <li>Пробки заполняют шкалу. Заполнится — игра окончена.</li>
     </ul>
     <button id="startBtn" class="primary" type="button">Начать</button>
@@ -268,76 +299,82 @@ if (!window.THREE) {
 }
 
 // ---------- Config ----------
-const W = 16, H = 16, N = W * H;
+const FIELD = 30;                      // field size in world units (one unit ≈ a lane width ×10)
 const JAM_T = 6;                       // seconds stuck before a car counts as jammed
-const WATER_MULT = 2.5;                // road on water is a bridge and costs more
-const ROAD_H = 0.03, BRIDGE_H = 0.26;
+const ROAD_H = 0.04, BRIDGE_H = 0.3, WATER_Y = 0.01;
+const RIVER_HALF = 1.0, RIVER_AMP = 3.4, RIVER_FREQ = 0.2, RIVER_BASE = 15, RIVER_PHASE = 0.8;
+const riverY = x => RIVER_BASE + RIVER_AMP * Math.sin(x * RIVER_FREQ + RIVER_PHASE);
+const waterDist = (x, z) => Math.abs(z - riverY(x)) - RIVER_HALF;   // negative inside the water
+const isWater = (x, z) => waterDist(x, z) < 0;
 const KIND = {
-  1: { lanes: 1, speed: 1.3, head: 0.5, cost: 8, half: 0.3 },      // road
-  2: { lanes: 2, speed: 1.8, head: 0.3, cost: 24, half: 0.52 },    // avenue: two lanes each way
+  1: { name: 'Дорога', lanes: 1, speed: 1.3, head: 0.5, unit: 9, half: 0.3, offs: [0.16] },
+  2: { name: 'Проспект', lanes: 2, speed: 1.8, head: 0.3, unit: 22, half: 0.52, offs: [0.16, 0.4] },
 };
-const LANE_OFF = { 1: [0.16], 2: [0.16, 0.4] };   // lane centres from the road centre line
-const CAR_LEN = 0.42, CAR_W = 0.2;
-const MIN_GAP = 0.2;                   // free space between cars in one lane
-const TIME_GAP = 0.5;                  // seconds of following distance
-const ACCEL = 1.2, DECEL = 2.5;
+const WATER_EXTRA = 1.5;               // water length costs (1 + WATER_EXTRA) times the land price
+const CAR_LEN = 0.5, CAR_W = 0.24, MIN_GAP = 0.25, TIME_GAP = 0.5, ACCEL = 1.2, DECEL = 2.5;
 const MAX_CARS = 400;
-const FOV = 40, ZMIN = 9, ZMAX = 75;
+const FOV = 40, ZMIN = 12, ZMAX = 130, PITCH = 0.95;
+const SNAP_NODE = 1.0, SNAP_EDGE = 0.6;  // how close an end of a plan must be to snap
+const PLAN_STEP = 0.2, PLAN_MIN = 1.0;
+const START_MONEY = 600;
+const MAX_DISTRICTS = 14, MIN_DISTRICT_GAP = 7;
 const SPEEDS = [1, 2, 4];
-const RIVER = [6, 6, 7, 7, 8, 8, 8, 9, 9, 9, 8, 8, 7, 7, 6, 6];   // river centre row per column, steps of at most 1
-// Water covers rows between this column's and the next column's centre rows, so the river has no gaps.
-const riverRows = i => { const a = RIVER[i], b = RIVER[Math.min(i + 1, W - 1)]; return [Math.min(a, b), Math.max(a, b)]; };
 const NAMES = ['Сосновый', 'Речной', 'Центральный', 'Зелёный', 'Солнечный', 'Западный', 'Восточный', 'Яблоневый', 'Ясный', 'Тихий', 'Озёрный', 'Парковый', 'Заречный', 'Липовый', 'Северный', 'Новый', 'Лесной', 'Вишнёвый', 'Дубовый', 'Степной'];
 const WALLS = [0xf1e7cf, 0xcfe3f2, 0xf4d35e, 0xe8c7b5, 0xd9e4dd, 0xf6f1e4];
 const ROOFS = [0x8e4b3c, 0x3d6e9e, 0x6b7785, 0xb0543e, 0x4f6d7a, 0x7d5a8f];
 const CAR_COLORS = [0xe4572e, 0xf3a712, 0xf2f2f2, 0x2e86ab, 0x7b2cbf, 0x2a9d8f, 0xef6f8e, 0x3a3f47, 0xffd166];
 const JAM_COLOR = 0xff3b30;
-const GRASS = [0x7b9f56, 0x739a4f, 0x84a65e];
+const GRASS = 0x7b9f56;
 const COL = {
   asphalt: 0x4a5058, bridge: 0x5b626c, curb: 0xb9bfc6, white: 0xf4f4ef, yellow: 0xf2c94c,
-  pillar: 0x9aa3ad, water: 0x2f77a6, bank: 0xb3a072, pave: 0xd6cfb8, dirt: 0x6e5a43, trunk: 0x7a5636, outer: 0x58803f,
+  pillar: 0x9aa3ad, water: 0x2f77a6, bank: 0xb3a072, pave: 0x8d949c, dirt: 0x6e5a43,
+  trunk: 0x7a5636, outer: 0x58803f,
 };
 const HINTS = {
-  road: 'Палец — дорога · два пальца — камера и зум',
-  avenue: 'Проспект: две полосы в каждую сторону',
-  bulldoze: 'Нажмите дорогу, чтобы снести (половина цены вернётся)',
+  road: 'Проведите линию — дорога. Два пальца — камера',
+  avenue: 'Проведите линию — проспект. Тап по дороге — расширить',
+  bulldoze: 'Нажимайте или проводите по дороге, чтобы снести',
   pan: 'Тяните, чтобы двигать камеру',
 };
 
 // ---------- Helpers ----------
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-const idxOf = (i, j) => j * W + i;
-const cx = k => k % W;
-const cy = k => (k / W) | 0;
-const inb = (i, j) => i >= 0 && j >= 0 && i < W && j < H;
-const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
-const dirIdx = (a, b) => DIRS.findIndex(([dx, dy]) => cx(a) + dx === cx(b) && cy(a) + dy === cy(b));
-const ctr = k => ({ x: cx(k) + 0.5, z: cy(k) + 0.5 });
-const lanesAt = (a, b) => { const ka = cells[a].kind, kb = cells[b].kind; return ka && kb ? Math.min(ka, kb) : (ka || kb || 1); };
-const hOf = k => (cells[k].water ? BRIDGE_H : cells[k].district >= 0 ? 0 : ROAD_H);
-const costOf = (kind, water) => Math.round(KIND[kind].cost * (water ? WATER_MULT : 1));
+const ss = t => t * t * (3 - 2 * t);
+const hAt = (x, z) => ROAD_H + (BRIDGE_H - ROAD_H) * (1 - ss(clamp(waterDist(x, z) / 0.8, 0, 1)));
+const rgb = h => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
 const dist2 = (a, b) => Math.max(20, Math.hypot(a.x - b.x, a.y - b.y));
 const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-const rgb = h => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
-function hash(i, j) {
+const polyLen = p => { let L = 0; for (let i = 1; i < p.length; i++) L += Math.hypot(p[i].x - p[i - 1].x, p[i].z - p[i - 1].z); return L; };
+const cumOf2 = p => { const c = [0]; for (let i = 1; i < p.length; i++) c.push(c[i - 1] + Math.hypot(p[i].x - p[i - 1].x, p[i].z - p[i - 1].z)); return c; };
+const nominalCost = (kind, len, frac) => len * KIND[kind].unit * (1 + WATER_EXTRA * frac);
+function hash2(i, j) {
   let h = Math.imul(i + 1, 0x27d4eb2d) ^ Math.imul(j + 1, 0x165667b1);
   h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
   h ^= h >>> 13;
   return (h >>> 0) / 4294967296;
 }
 
-// Vertex-coloured triangle soup; flat normals come from computeVertexNormals.
+// ---------- Geometry ----------
+// Vertex-coloured triangle soup. Normals come from computeVertexNormals (flat shading).
 class Geo {
   constructor() { this.p = []; this.c = []; }
-  tri(a, b, d, col) {
-    for (const v of [a, b, d]) { this.p.push(v[0], v[1], v[2]); this.c.push(col[0], col[1], col[2]); }
-  }
-  quad(a, b, d, e, col) { this.tri(a, b, d, col); this.tri(a, d, e, col); }
+  v(p, c) { this.p.push(p.x, p.y, p.z); this.c.push(c[0], c[1], c[2]); }
+  tri(a, b, d, ca, cb, cd) { this.v(a, ca); this.v(b, cb); this.v(d, cd); }
+  quad(a, b, d, e, col) { this.tri(a, b, d, col, col, col); this.tri(a, d, e, col, col, col); }
+  quadV(a, b, d, e, ca, cb, cd, ce) { this.tri(a, b, d, ca, cb, cd); this.tri(a, d, e, ca, cd, ce); }
   box(x0, y0, z0, x1, y1, z1, hex) {
     const col = rgb(hex);
-    const p = [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]];
+    const p = [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]]
+      .map(([x, y, z]) => ({ x, y, z }));
     const faces = [[0, 1, 2, 3], [4, 7, 6, 5], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]];
     for (const [a, b, c, d] of faces) this.quad(p[a], p[b], p[c], p[d], col);
+  }
+  disk(cx, y, cz, r, col, n = 18) {
+    for (let i = 0; i < n; i++) {
+      const a0 = (i / n) * Math.PI * 2, a1 = ((i + 1) / n) * Math.PI * 2;
+      this.tri({ x: cx, y, z: cz }, { x: cx + Math.cos(a0) * r, y, z: cz + Math.sin(a0) * r },
+        { x: cx + Math.cos(a1) * r, y, z: cz + Math.sin(a1) * r }, col, col, col);
+    }
   }
   geometry() {
     const g = new THREE.BufferGeometry();
@@ -347,37 +384,727 @@ class Geo {
     return g;
   }
 }
-// Ribbon from A to B with half-width across its direction. A and B are {x, z}.
-function strip(g, A, B, ya, yb, half, hex) {
-  const dx = B.x - A.x, dz = B.z - A.z, L = Math.hypot(dx, dz) || 1;
-  const nx = -dz / L * half, nz = dx / L * half, col = rgb(hex);
-  g.quad([A.x + nx, ya, A.z + nz], [B.x + nx, yb, B.z + nz], [B.x - nx, yb, B.z - nz], [A.x - nx, ya, A.z - nz], col);
+
+// A curve is a polyline with cumulative arc length and right-hand normals (x, z).
+function makeCurve(P) {
+  const n = P.length, N = new Array(n), cum = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)];
+    const tx = b.x - a.x, tz = b.z - a.z, L = Math.hypot(tx, tz) || 1;
+    N[i] = { x: -tz / L, z: tx / L };
+    if (i) cum[i] = cum[i - 1] + Math.hypot(P[i].x - P[i - 1].x, P[i].z - P[i - 1].z);
+  }
+  return { P, N, cum, len: cum[n - 1] };
 }
-function shifted(A, B, off) {
-  const dx = B.x - A.x, dz = B.z - A.z, L = Math.hypot(dx, dz) || 1;
-  const nx = -dz / L * off, nz = dx / L * off;
-  return [{ x: A.x + nx, z: A.z + nz }, { x: B.x + nx, z: B.z + nz }];
+// Position, height and direction of a curve at arc length s.
+function curveAt(C, s) {
+  const cum = C.cum, n = cum.length;
+  s = clamp(s, 0, C.len);
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= s) lo = m; else hi = m; }
+  const seg = cum[hi] - cum[lo], t = seg > 1e-9 ? (s - cum[lo]) / seg : 0;
+  const a = C.P[lo], b = C.P[hi], na = C.N[lo], nb = C.N[hi];
+  const tx = b.x - a.x, tz = b.z - a.z, L = Math.hypot(tx, tz) || 1;
+  const nx = na.x + (nb.x - na.x) * t, nz = na.z + (nb.z - na.z) * t, NL = Math.hypot(nx, nz) || 1;
+  return {
+    x: a.x + tx * t, y: a.y + (b.y - a.y) * t, z: a.z + tz * t,
+    dx: tx / L, dz: tz / L, nx: nx / NL, nz: nz / NL,
+  };
+}
+// Vertices of a curve between arc positions s0 and s1, shifted by off along the normal.
+function subCurve(C, s0, s1, off) {
+  const out = [];
+  const pt = (x, y, z, nx, nz) => out.push({ x: x + nx * off, y, z: z + nz * off, nx, nz });
+  const q0 = curveAt(C, s0);
+  pt(q0.x, q0.y, q0.z, q0.nx, q0.nz);
+  for (let i = 0; i < C.P.length; i++) {
+    if (C.cum[i] <= s0 || C.cum[i] >= s1) continue;
+    const p = C.P[i], nn = C.N[i];
+    pt(p.x, p.y, p.z, nn.x, nn.z);
+  }
+  const q1 = curveAt(C, s1);
+  pt(q1.x, q1.y, q1.z, q1.nx, q1.nz);
+  return out;
+}
+// Flat ribbon along a curve. colOf(point) returns an rgb triple.
+function ribbon(g, C, off, hw, colOf, dy, s0 = 0, s1 = C.len) {
+  const q = subCurve(C, s0, s1, off);
+  for (let i = 0; i < q.length - 1; i++) {
+    const a = q[i], b = q[i + 1];
+    const la = { x: a.x + a.nx * hw, y: a.y + dy, z: a.z + a.nz * hw };
+    const ra = { x: a.x - a.nx * hw, y: a.y + dy, z: a.z - a.nz * hw };
+    const lb = { x: b.x + b.nx * hw, y: b.y + dy, z: b.z + b.nz * hw };
+    const rb = { x: b.x - b.nx * hw, y: b.y + dy, z: b.z - b.nz * hw };
+    g.quadV(la, lb, rb, ra, colOf(a), colOf(b), colOf(b), colOf(a));
+  }
+}
+function dashes(g, C, off, hw, dash, gap, hex, dy) {
+  const col = rgb(hex), colOf = () => col;
+  for (let s = 0; s < C.len; s += dash + gap) {
+    const e = Math.min(C.len, s + dash);
+    if (e - s > 0.1) ribbon(g, C, off, hw, colOf, dy, s, e);
+  }
 }
 
+// ---------- Road graph ----------
+// Nodes are junctions, dead ends and district doors. Edges are two-way road pieces with a curve.
+// Lanes are the one-way parts of edges, connectors are the turns through a node.
+// Every segment (lane or connector) has a key; cars keep their route as a list of keys.
+let seq = 0;
+const nodes = new Map();        // id -> node {id, x, y, z, door, edges:Set, ins:[], outs:[]}
+const edges = new Map();        // id -> edge {id, a, b, kind, C, len, frac}
+const lanes = new Map();        // key 'L<edge>.<dir>.<li>' -> lane {key, from, to, C, len, speed, head, kind}
+const conns = new Map();        // id -> connector {id, key 'C<id>', inKey, outKey, node, C, len, speed, head, conn:true}
+const connByPair = new Map();   // inKey + '>' + outKey -> connector id
+const bk = new Map();           // segment key -> cars on it, nearest to the segment end first
+const laneCount = new Map();    // segment key -> number of cars on it
+const EMPTY = [];
+
+function addNode(x, z, door = -1) {
+  const id = ++seq;
+  const n = { id, x, y: hAt(x, z), z, door, edges: new Set(), ins: [], outs: [] };
+  nodes.set(id, n);
+  return n;
+}
+function makeEdge(a, b, kind, pts2) {
+  const id = ++seq;
+  const P = pts2.map(p => ({ x: p.x, y: hAt(p.x, p.z), z: p.z }));
+  const C = makeCurve(P);
+  let wet = 0;
+  for (let i = 0; i < pts2.length - 1; i++) {
+    const L = Math.hypot(pts2[i + 1].x - pts2[i].x, pts2[i + 1].z - pts2[i].z);
+    if (isWater((pts2[i].x + pts2[i + 1].x) / 2, (pts2[i].z + pts2[i + 1].z) / 2)) wet += L;
+  }
+  const frac = C.len > 0 ? wet / C.len : 0;
+  const e = { id, a: a.id !== undefined ? a.id : a, b: b.id !== undefined ? b.id : b, kind, C, len: C.len, frac };
+  edges.set(id, e);
+  nodes.get(e.a).edges.add(id);
+  nodes.get(e.b).edges.add(id);
+  return e;
+}
+function removeEdgeRecord(e) {
+  edges.delete(e.id);
+  const na = nodes.get(e.a), nb = nodes.get(e.b);
+  if (na) na.edges.delete(e.id);
+  if (nb) nb.edges.delete(e.id);
+}
+// Lanes of every edge; keys stay the same when an edge is upgraded, so cars keep their place.
+function rebuildLanes() {
+  lanes.clear();
+  for (const n of nodes.values()) { n.ins = []; n.outs = []; }
+  for (const e of edges.values()) {
+    const k = KIND[e.kind];
+    for (let dir = 0; dir < 2; dir++) {
+      for (let li = 0; li < k.lanes; li++) {
+        const off = k.offs[li], n = e.C.P.length, lp = [];
+        for (let i = 0; i < n; i++) {
+          const idx = dir === 0 ? i : n - 1 - i, sg = dir === 0 ? 1 : -1;
+          const p = e.C.P[idx], nn = e.C.N[idx];
+          lp.push({ x: p.x + sg * nn.x * off, y: p.y, z: p.z + sg * nn.z * off });
+        }
+        const key = `L${e.id}.${dir}.${li}`;
+        const lane = {
+          key, from: dir === 0 ? e.a : e.b, to: dir === 0 ? e.b : e.a, kind: e.kind,
+          C: makeCurve(lp), len: 0, speed: k.speed, head: k.head,
+        };
+        lane.len = lane.C.len;
+        lanes.set(key, lane);
+        nodes.get(lane.from).outs.push(key);
+        nodes.get(lane.to).ins.push(key);
+      }
+    }
+  }
+}
+const reverseKey = key => {
+  const [e, d, li] = key.slice(1).split('.');
+  return `L${e}.${1 - Number(d)}.${li}`;
+};
+function segOf(key) { return key[0] === 'C' ? conns.get(Number(key.slice(1))) : lanes.get(key); }
+// The turn from one lane into another through their shared node.
+function connFor(inKey, outKey) {
+  const pk = inKey + '>' + outKey;
+  const have = connByPair.get(pk);
+  if (have !== undefined) return conns.get(have);
+  const A = lanes.get(inKey), B = lanes.get(outKey);
+  const P0 = A.C.P[A.C.P.length - 1], Pa = A.C.P[A.C.P.length - 2];
+  const P3 = B.C.P[0], Pb = B.C.P[1];
+  const d0l = Math.hypot(P0.x - Pa.x, P0.z - Pa.z) || 1, d1l = Math.hypot(Pb.x - P3.x, Pb.z - P3.z) || 1;
+  const d0x = (P0.x - Pa.x) / d0l, d0z = (P0.z - Pa.z) / d0l, d1x = (Pb.x - P3.x) / d1l, d1z = (Pb.z - P3.z) / d1l;
+  const k = Math.max(0.12, Math.hypot(P3.x - P0.x, P3.z - P0.z) * 0.45);
+  const P1 = { x: P0.x + d0x * k, z: P0.z + d0z * k }, P2 = { x: P3.x - d1x * k, z: P3.z - d1z * k };
+  const pts = [];
+  for (let i = 0; i <= 12; i++) {
+    const t = i / 12, u = 1 - t;
+    pts.push({
+      x: u * u * u * P0.x + 3 * u * u * t * P1.x + 3 * u * t * t * P2.x + t * t * t * P3.x,
+      y: P0.y + (P3.y - P0.y) * t,
+      z: u * u * u * P0.z + 3 * u * u * t * P1.z + 3 * u * t * t * P2.z + t * t * t * P3.z,
+    });
+  }
+  const id = ++seq;
+  const c = {
+    id, key: 'C' + id, inKey, outKey, node: A.to, C: makeCurve(pts), conn: true,
+    speed: 0.75 * Math.min(A.speed, B.speed), head: A.head,
+  };
+  c.len = c.C.len;
+  conns.set(id, c);
+  connByPair.set(pk, id);
+  return c;
+}
+function rebuildConnPairs() {
+  connByPair.clear();
+  for (const c of conns.values()) connByPair.set(c.inKey + '>' + c.outKey, c.id);
+}
+
+// Dijkstra over lane states. Doors are dead ends for through traffic; busy lanes cost more.
+function dijkstraFrom(startKey) {
+  const dist = new Map(), prev = new Map(), done = new Set();
+  const heap = [[0, startKey]];
+  dist.set(startKey, 0);
+  const push = item => {
+    heap.push(item);
+    let i = heap.length - 1;
+    while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; }
+  };
+  const pop = () => {
+    const top = heap[0], last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (m === i) break;
+        [heap[m], heap[i]] = [heap[i], heap[m]]; i = m;
+      }
+    }
+    return top;
+  };
+  while (heap.length) {
+    const [d, u] = pop();
+    if (done.has(u) || d > dist.get(u)) continue;
+    done.add(u);
+    const lane = lanes.get(u), node = nodes.get(lane.to);
+    if (node.door >= 0) continue;
+    for (const ok of node.outs) {
+      if (done.has(ok)) continue;
+      const out = lanes.get(ok);
+      if (!out) continue;
+      if (ok === reverseKey(u) && node.edges.size > 1) continue;     // no U-turns at junctions
+      const cn = connFor(u, ok);
+      const nd = d + cn.len + out.len + 0.5 * (laneCount.get(ok) || 0) / KIND[out.kind].lanes;
+      if (nd < (dist.has(ok) ? dist.get(ok) : Infinity)) {
+        dist.set(ok, nd);
+        prev.set(ok, { from: u, conn: cn.key });
+        push([nd, ok]);
+      }
+    }
+  }
+  return { dist, prev };
+}
+function pathTo(prev, goal) {
+  const out = [goal];
+  let k = goal;
+  while (prev.has(k)) { const p = prev.get(k); out.push(p.conn, p.from); k = p.from; }
+  return out.reverse();
+}
+// Route from a lane to the nearest entrance of district destDi.
+function pathFromLane(startKey, destDi) {
+  const { dist, prev } = dijkstraFrom(startKey);
+  let best = null, bd = Infinity;
+  for (const nid of S.districts[destDi].doors) {
+    for (const k of nodes.get(nid).ins) { const d = dist.get(k); if (d !== undefined && d < bd) { bd = d; best = k; } }
+  }
+  return best ? pathTo(prev, best) : null;
+}
+// Random reachable district other than the origin, with the route to it.
+function pickDestination(startKey, originDi) {
+  const { dist, prev } = dijkstraFrom(startKey);
+  const opts = [];
+  S.districts.forEach((d, di) => {
+    if (di === originDi) return;
+    let goal = null, bd = Infinity;
+    for (const nid of d.doors) {
+      for (const k of nodes.get(nid).ins) { const dd = dist.get(k); if (dd !== undefined && dd < bd) { bd = dd; goal = k; } }
+    }
+    if (goal) opts.push({ di, goal });
+  });
+  if (!opts.length) return null;
+  const o = opts[(Math.random() * opts.length) | 0];
+  return { di: o.di, path: pathTo(prev, o.goal) };
+}
+
+// Point on a polyline nearest to (x, z): distance, arc position, tangent.
+function nearestOnCurve(C, x, z) {
+  let best = { d: Infinity, s: 0, tx: 1, tz: 0, x: 0, z: 0 };
+  const P = C.P;
+  for (let i = 0; i < P.length - 1; i++) {
+    const a = P[i], b = P[i + 1], dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz || 1e-12;
+    const t = clamp(((x - a.x) * dx + (z - a.z) * dz) / L2, 0, 1);
+    const px = a.x + dx * t, pz = a.z + dz * t;
+    const d = Math.hypot(x - px, z - pz);
+    if (d < best.d) {
+      const L = Math.sqrt(L2);
+      best = { d, s: C.cum[i] + t * L, tx: dx / L, tz: dz / L, x: px, z: pz };
+    }
+  }
+  return best;
+}
+function nearestEdge(x, z) {
+  let best = null;
+  for (const e of edges.values()) {
+    const h = nearestOnCurve(e.C, x, z);
+    if (!best || h.d < best.h.d) best = { e, h };
+  }
+  return best;
+}
+
+// Splits edge e at arc position s with a new node. Cars and connectors on its lanes are carried over.
+function splitEdge(e, s) {
+  if (s < 0.05) return nodes.get(e.a);
+  if (s > e.len - 0.05) return nodes.get(e.b);
+  const q = curveAt(e.C, s);
+  const X = addNode(q.x, q.z);
+  let i = 0;
+  while (i < e.C.P.length - 2 && e.C.cum[i + 1] <= s) i++;
+  const P = e.C.P;
+  const left = P.slice(0, i + 1).map(p => ({ x: p.x, z: p.z })).concat([{ x: X.x, z: X.z }]);
+  const right = [{ x: X.x, z: X.z }].concat(P.slice(i + 1).map(p => ({ x: p.x, z: p.z })));
+  const oldLen = e.len, a = e.a, b = e.b, kind = e.kind, oldPre = `L${e.id}.`;
+  removeEdgeRecord(e);
+  const e1 = makeEdge(a, X.id, kind, left), e2 = makeEdge(X.id, b, kind, right);
+  for (const car of S.cars) {
+    const cur = car.route[car.idx];
+    if (!cur.startsWith(oldPre)) continue;
+    const [, dirS, liS] = cur.split('.');
+    const dir = Number(dirS), li = Number(liS);
+    if (dir === 0) {
+      if (car.s <= s) { car.route[car.idx] = `L${e1.id}.0.${li}`; }
+      else { car.route[car.idx] = `L${e2.id}.0.${li}`; car.s -= s; }
+    } else if (car.s >= oldLen - s) {
+      car.route[car.idx] = `L${e1.id}.1.${li}`; car.s -= oldLen - s;
+    } else {
+      car.route[car.idx] = `L${e2.id}.1.${li}`;
+    }
+  }
+  // A connector keeps its geometry: its incoming lane still ends at the same node, and so does its outgoing lane.
+  for (const c of conns.values()) {
+    if (c.inKey.startsWith(oldPre)) c.inKey = remapLane(c.inKey, c.node, true, e1, e2);
+    if (c.outKey.startsWith(oldPre)) c.outKey = remapLane(c.outKey, c.node, false, e1, e2);
+  }
+  rebuildConnPairs();
+  return X;
+}
+// The lane of a split edge that still ends (into=true) or starts (into=false) at the given node.
+function remapLane(key, nodeId, into, e1, e2) {
+  const [, dirS, li] = key.split('.');
+  const dir = Number(dirS);
+  for (const ne of [e1, e2]) {
+    const to = dir === 0 ? ne.b : ne.a, from = dir === 0 ? ne.a : ne.b;
+    if ((into ? to : from) === nodeId) return `L${ne.id}.${dir}.${li}`;
+  }
+  return key;
+}
+function removeEdge(e) {
+  S.money += Math.floor(nominalCost(e.kind, e.len, e.frac) * 0.5);
+  removeEdgeRecord(e);
+  const pre = `L${e.id}.`;
+  for (const [id, c] of [...conns]) {
+    if (c.inKey.startsWith(pre) || c.outKey.startsWith(pre)) conns.delete(id);
+  }
+  for (const nid of [e.a, e.b]) {
+    const n = nodes.get(nid);
+    if (n && n.door < 0 && n.edges.size === 0) nodes.delete(nid);
+  }
+  afterNetworkChange();
+}
+function upgradeEdge(e) {
+  if (e.kind !== 1) return false;
+  const extra = Math.round(nominalCost(2, e.len, e.frac) - nominalCost(1, e.len, e.frac));
+  if (S.money < extra) { toast(`Нужно $${extra} на проспект`, 2200); return false; }
+  S.money -= extra;
+  e.kind = 2;
+  afterNetworkChange();
+  return true;
+}
+// Cars keep their place: segments that still exist are kept, the rest of the route is planned again.
+function afterNetworkChange() {
+  rebuildLanes();
+  rebuildConnPairs();
+  for (const car of S.cars) {
+    if (car.dead) continue;
+    const cur = car.route[car.idx];
+    const seg = segOf(cur);
+    if (!seg) { car.dead = true; continue; }
+    const endKey = seg.conn ? seg.outKey : cur;
+    const rest = pathFromLane(endKey, car.dest);
+    if (!rest) { car.dead = true; continue; }
+    car.route = seg.conn ? [cur].concat(rest) : rest;
+    car.idx = 0;
+  }
+  S.cars = S.cars.filter(c => !c.dead);
+  S.dirty = true;
+}
+
+// ---------- Planning: raw stroke -> smooth curve -> checks -> cost ----------
+function rdp(pts, eps) {
+  if (pts.length < 3) return pts.slice();
+  const keep = new Array(pts.length).fill(false);
+  keep[0] = keep[pts.length - 1] = true;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop();
+    let md = 0, mi = -1;
+    for (let i = a + 1; i < b; i++) {
+      const d = distSeg(pts[i].x, pts[i].z, pts[a].x, pts[a].z, pts[b].x, pts[b].z);
+      if (d > md) { md = d; mi = i; }
+    }
+    if (md > eps) { keep[mi] = true; stack.push([a, mi], [mi, b]); }
+  }
+  return pts.filter((_, i) => keep[i]);
+}
+function distSeg(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz;
+  const t = L2 ? clamp(((px - ax) * dx + (pz - az) * dz) / L2, 0, 1) : 0;
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
+}
+function chaikin(pts, iters) {
+  let P = pts;
+  for (let k = 0; k < iters && P.length >= 3; k++) {
+    const Q = [P[0]];
+    for (let i = 0; i < P.length - 1; i++) {
+      const a = P[i], b = P[i + 1];
+      Q.push({ x: 0.75 * a.x + 0.25 * b.x, z: 0.75 * a.z + 0.25 * b.z }, { x: 0.25 * a.x + 0.75 * b.x, z: 0.25 * a.z + 0.75 * b.z });
+    }
+    Q.push(P[P.length - 1]);
+    P = Q;
+  }
+  return P;
+}
+function resample(pts, step) {
+  const out = [{ x: pts[0].x, z: pts[0].z }];
+  let carry = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1], L = Math.hypot(b.x - a.x, b.z - a.z);
+    if (L < 1e-9) continue;
+    let d = step - carry;
+    while (d <= L) {
+      const t = d / L;
+      out.push({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
+      d += step;
+    }
+    carry = L - (d - step);
+  }
+  const last = pts[pts.length - 1];
+  const tail = out[out.length - 1];
+  if (Math.hypot(tail.x - last.x, tail.z - last.z) < step * 0.4) out[out.length - 1] = { x: last.x, z: last.z };
+  else out.push({ x: last.x, z: last.z });
+  return out;
+}
+// Snap target for a plan end: a junction or door node, an edge (to split it), or nothing.
+function snapTarget(p) {
+  let best = null, bd = SNAP_NODE;
+  for (const n of nodes.values()) {
+    const d = Math.hypot(p.x - n.x, p.z - n.z);
+    if (d < bd) { bd = d; best = { type: 'node', id: n.id, x: n.x, z: n.z }; }
+  }
+  if (best) return best;
+  const near = nearestEdge(p.x, p.z);
+  if (!near || near.h.d >= SNAP_EDGE) return null;
+  const e = near.e, s = near.h.s;
+  if (s < 0.4) return { type: 'node', id: e.a, x: nodes.get(e.a).x, z: nodes.get(e.a).z };
+  if (s > e.len - 0.4) return { type: 'node', id: e.b, x: nodes.get(e.b).x, z: nodes.get(e.b).z };
+  return { type: 'edge', edge: e.id, s, x: near.h.x, z: near.h.z };
+}
+function planCost(pts, kind) {
+  let total = 0, wet = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const L = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z);
+    total += L;
+    if (isWater((pts[i].x + pts[i + 1].x) / 2, (pts[i].z + pts[i + 1].z) / 2)) wet += L;
+  }
+  return Math.round(nominalCost(kind, total, total ? wet / total : 0));
+}
+function tangentAt(pts, i) {
+  const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+  const L = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+  return { x: (b.x - a.x) / L, z: (b.z - a.z) / L };
+}
+// Empty string if the plan can be built, otherwise the reason.
+function planProblem(pts, cum) {
+  const n = pts.length, total = cum[n - 1];
+  for (const p of pts) {
+    if (p.x < 0.4 || p.z < 0.4 || p.x > FIELD - 0.4 || p.z > FIELD - 0.4) return 'За пределами поля';
+    for (const d of S.districts) if (Math.abs(p.x - d.cx) < 1.12 && Math.abs(p.z - d.cz) < 1.12) return 'Через район нельзя';
+  }
+  for (let i = 0; i < n; i++) {
+    if (cum[i] < 1.2 || total - cum[i] < 1.2) continue;
+    const p = pts[i];
+    for (const node of nodes.values()) if (Math.hypot(p.x - node.x, p.z - node.z) < 0.45) return 'Слишком близко к перекрёстку';
+  }
+  for (let i = 1; i < n - 1; i++) {
+    if (cum[i] < 1.2 || total - cum[i] < 1.2) continue;
+    const p = pts[i], t = tangentAt(pts, i);
+    for (const e of edges.values()) {
+      const h = nearestOnCurve(e.C, p.x, p.z);
+      if (h.d < 0.35 && Math.abs(t.x * h.tz - t.z * h.tx) < 0.45) return 'Здесь уже есть дорога';
+    }
+  }
+  return '';
+}
+// Smooth curve for a stroke, snapped ends, validity and price.
+function computePlan(raw, kind) {
+  const pl = { raw, kind, pts: [], valid: false, msg: '', cost: 0, length: 0, snapA: null, snapB: null, drawing: true };
+  if (raw.length < 2) { pl.msg = 'Проведите линию по полю'; return pl; }
+  const pts = resample(chaikin(rdp(raw, 0.12), 3), PLAN_STEP);
+  pl.length = polyLen(pts);
+  pl.pts = pts;
+  if (pl.length < PLAN_MIN || pts.length < 2) { pl.msg = 'Слишком коротко'; return pl; }
+  pl.snapA = snapTarget(pts[0]);
+  pl.snapB = snapTarget(pts[pts.length - 1]);
+  if (pl.snapA) pts[0] = { x: pl.snapA.x, z: pl.snapA.z };
+  if (pl.snapB) pts[pts.length - 1] = { x: pl.snapB.x, z: pl.snapB.z };
+  pl.msg = planProblem(pts, cumOf2(pts));
+  pl.valid = pl.msg === '';
+  pl.cost = planCost(pts, kind);
+  return pl;
+}
+function refreshPlan() {
+  const cur = S.plan;
+  if (!cur) return;
+  const pl = computePlan(cur.raw, cur.kind);
+  pl.drawing = cur.drawing;
+  S.plan = pl;
+  S.planDirty = true;
+}
+function segHit(p0, p1, q0, q1) {
+  const rx = p1.x - p0.x, rz = p1.z - p0.z, sx = q1.x - q0.x, sz = q1.z - q0.z;
+  const den = rx * sz - rz * sx;
+  if (Math.abs(den) < 1e-12) return null;
+  const qx = q0.x - p0.x, qz = q0.z - p0.z;
+  const t = (qx * sz - qz * sx) / den, u = (qx * rz - qz * rx) / den;
+  return t < 0 || t > 1 || u < 0 || u > 1 ? null : [t, u];
+}
+// Where the planned line crosses existing roads, ordered along the plan.
+function findCrossings(pts, cum) {
+  const total = cum[cum.length - 1], out = [];
+  for (const e of edges.values()) {
+    const P = e.C.P;
+    for (let j = 0; j < P.length - 1; j++) {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const hit = segHit(pts[i], pts[i + 1], P[j], P[j + 1]);
+        if (!hit) continue;
+        const arc = cum[i] + hit[0] * (cum[i + 1] - cum[i]);
+        if (arc < 0.5 || total - arc < 0.5) continue;
+        out.push({ arc, x: pts[i].x + hit[0] * (pts[i + 1].x - pts[i].x), z: pts[i].z + hit[0] * (pts[i + 1].z - pts[i].z) });
+      }
+    }
+  }
+  out.sort((p, q) => p.arc - q.arc);
+  const merged = [];
+  for (const c of out) if (!merged.length || c.arc - merged[merged.length - 1].arc > 0.5) merged.push(c);
+  return merged;
+}
+function resolveEndpoint(p) {
+  const sn = snapTarget(p);
+  if (!sn) return addNode(p.x, p.z);
+  if (sn.type === 'node') return nodes.get(sn.id);
+  return splitEdge(edges.get(sn.edge), sn.s);
+}
+function resolveCrossing(c) {
+  let best = null, bd = 0.4;
+  for (const n of nodes.values()) {
+    const d = Math.hypot(c.x - n.x, c.z - n.z);
+    if (d < bd) { bd = d; best = n; }
+  }
+  if (best) return best;
+  const near = nearestEdge(c.x, c.z);
+  if (!near || near.h.d > 0.08) return null;
+  return splitEdge(near.e, near.h.s);
+}
+// Builds the planned road: endpoints, crossings and one edge per piece between stops.
+function applyPlan() {
+  const pl = S.plan;
+  if (!pl || pl.drawing || !pl.valid) return false;
+  if (pl.cost > S.money) { toast('Не хватает денег на эту дорогу', 2200); return false; }
+  const pts = pl.pts, cum = cumOf2(pts), total = cum[cum.length - 1];
+  const a = resolveEndpoint(pts[0]);
+  const b = resolveEndpoint(pts[pts.length - 1]);
+  if (a.id === b.id) { toast('Начало и конец совпали', 2200); S.plan = null; S.planDirty = true; return false; }
+  const stops = [{ arc: 0, node: a }];
+  for (const c of findCrossings(pts, cum)) {
+    const n = resolveCrossing(c);
+    if (!n || n.id === stops[stops.length - 1].node.id || n.id === b.id) continue;
+    stops.push({ arc: c.arc, node: n });
+  }
+  stops.push({ arc: total, node: b });
+  let spent = 0;
+  for (let k = 0; k < stops.length - 1; k++) {
+    const s0 = stops[k], s1 = stops[k + 1];
+    if (s0.node.id === s1.node.id) continue;
+    const piece = [{ x: s0.node.x, z: s0.node.z }];
+    for (let i = 0; i < pts.length; i++) if (cum[i] > s0.arc + 1e-6 && cum[i] < s1.arc - 1e-6) piece.push({ x: pts[i].x, z: pts[i].z });
+    piece.push({ x: s1.node.x, z: s1.node.z });
+    const e = makeEdge(s0.node.id, s1.node.id, pl.kind, piece);
+    spent += nominalCost(pl.kind, e.len, e.frac);
+  }
+  S.money = Math.max(0, S.money - Math.round(spent));
+  S.plan = null;
+  S.planDirty = true;
+  afterNetworkChange();
+  toast(`Дорога построена · −$${Math.round(spent)}`, 2000);
+  return true;
+}
+
+// ---------- Districts ----------
+const matCache = new Map();
+function mat(hex) {
+  if (!matCache.has(hex)) matCache.set(hex, new THREE.MeshLambertMaterial({ color: hex }));
+  return matCache.get(hex);
+}
+const DIRS4 = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+function makeBoxes() {
+  const r = () => Math.random();
+  return [
+    { x0: -0.92, x1: 0.06, z0: -0.92, z1: 0.06, h: 1.4 + r() * 0.6 },
+    { x0: 0.2, x1: 0.92, z0: -0.92, z1: -0.2, h: 0.9 + r() * 0.5 },
+    { x0: -0.62, x1: 0.92, z0: 0.25, z1: 0.92, h: 0.6 + r() * 0.4 },
+  ];
+}
+function createDistrict(x, z) {
+  const di = S.districts.length;
+  const count = 1 + ((Math.random() * 3) | 0);
+  const sides = [0, 1, 2, 3].sort(() => Math.random() - 0.5).slice(0, count);
+  const d = {
+    cx: x, cz: z, name: S.names[di % S.names.length], wall: WALLS[di % WALLS.length], roof: ROOFS[di % ROOFS.length],
+    doors: [], driveways: [], boxes: makeBoxes(), age: 0, acc: 0, queue: 0, retry: 0, noLink: false,
+    group: new THREE.Group(), el: null, nameEl: null, stEl: null, lastKey: '',
+  };
+  for (const sd of sides) {
+    const [dx, dz] = DIRS4[sd];
+    const tx = -dz, tz = dx, off = Math.random() * 0.7 - 0.35;
+    const px = x + dx * 1.3 + tx * off, pz = z + dz * 1.3 + tz * off;
+    const node = addNode(px, pz, di);
+    d.doors.push(node.id);
+    d.driveways.push({ x0: x + dx * 0.9, z0: z + dz * 0.9, x1: px, z1: pz });
+  }
+  for (const b of d.boxes) {
+    const w = b.x1 - b.x0, dd = b.z1 - b.z0;
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, b.h, dd), mat(d.wall));
+    wall.position.set(x + (b.x0 + b.x1) / 2, b.h / 2, z + (b.z0 + b.z1) / 2);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.06, 0.07, dd + 0.06), mat(d.roof));
+    roof.position.set(x + (b.x0 + b.x1) / 2, b.h + 0.035, z + (b.z0 + b.z1) / 2);
+    wall.castShadow = wall.receiveShadow = roof.castShadow = true;
+    d.group.add(wall, roof);
+  }
+  for (const dw of d.driveways) {
+    const L = Math.hypot(dw.x1 - dw.x0, dw.z1 - dw.z0);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(L, 0.03, 0.46), mat(COL.pave));
+    m.position.set((dw.x0 + dw.x1) / 2, 0.03, (dw.z0 + dw.z1) / 2);
+    m.rotation.y = -Math.atan2(dw.z1 - dw.z0, dw.x1 - dw.x0);
+    m.receiveShadow = true;
+    d.group.add(m);
+  }
+  scene.add(d.group);
+  d.el = document.createElement('div');
+  d.el.className = 'dlabel';
+  d.el.hidden = true;
+  d.nameEl = document.createElement('span');
+  d.stEl = document.createElement('span');
+  d.stEl.className = 'st';
+  d.stEl.hidden = true;
+  d.el.append(d.nameEl, d.stEl);
+  labelsEl.appendChild(d.el);
+  S.districts.push(d);
+  S.dirty = true;
+  return d;
+}
+function nearRoad(x, z, r) {
+  for (const e of edges.values()) for (const p of e.C.P) if (Math.hypot(p.x - x, p.z - z) < r) return true;
+  return false;
+}
+function addDistrict(side) {
+  for (let t = 0; t < 400; t++) {
+    const x = 4 + Math.random() * (FIELD - 8), z = 4 + Math.random() * (FIELD - 8);
+    if (waterDist(x, z) < 2.6) continue;
+    if (side !== undefined && (z < riverY(x) ? 0 : 1) !== side) continue;
+    if (S.districts.some(d => Math.hypot(d.cx - x, d.cz - z) < MIN_DISTRICT_GAP)) continue;
+    if (nearRoad(x, z, 2.0)) continue;
+    return createDistrict(x, z);
+  }
+  return null;
+}
+function districtHasRoad(d) { return d.doors.some(nid => nodes.get(nid).edges.size > 0); }
+
+// ---------- Scene ----------
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('world'), antialias: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xbfdcea);
+scene.fog = new THREE.Fog(0xbfdcea, 90, 240);
+const camera = new THREE.PerspectiveCamera(FOV, 1, 0.5, 500);
+
+const sun = new THREE.DirectionalLight(0xfff3dc, 0.75);
+sun.position.set(FIELD / 2 + 8, 22, FIELD / 2 + 12);
+sun.target.position.set(FIELD / 2, 0, FIELD / 2);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -22, right: 22, top: 22, bottom: -22, near: 1, far: 80 });
+sun.shadow.camera.updateProjectionMatrix();
+sun.shadow.bias = -0.0008;
+scene.add(sun, sun.target);
+scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x4f5f36, 0.6));
+
+const vcMat = () => new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+const groundMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
+groundMesh.receiveShadow = true;
+const waterMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
+waterMesh.receiveShadow = true;
+const roadMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
+roadMesh.receiveShadow = true;
+const treeMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
+treeMesh.castShadow = true;
+const planMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }));
+planMesh.renderOrder = 2;
+scene.add(groundMesh, waterMesh, roadMesh, treeMesh, planMesh);
+
+const bodyGeo = new THREE.BoxGeometry(CAR_LEN, 0.09, CAR_W);
+bodyGeo.translate(0, 0.085, 0);
+const cabGeo = new THREE.BoxGeometry(CAR_LEN * 0.5, 0.075, CAR_W * 0.84);
+cabGeo.translate(-0.01, 0.17, 0);
+const carBody = new THREE.InstancedMesh(bodyGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), MAX_CARS);
+const carCab = new THREE.InstancedMesh(cabGeo, new THREE.MeshLambertMaterial({ color: 0xbcd3e3 }), MAX_CARS);
+carBody.castShadow = carCab.castShadow = true;
+carBody.count = carCab.count = 0;
+scene.add(carBody, carCab);
+
+const dummy = new THREE.Object3D();
+const tmpColor = new THREE.Color();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const ray = new THREE.Raycaster();
+const hitPt = new THREE.Vector3();
+const ndc = new THREE.Vector2();
+const projV = new THREE.Vector3();
+
 // ---------- State ----------
-const cells = Array.from({ length: N }, () => ({
-  kind: 0, water: false, tree: false, tv: 0, jx: 0, jz: 0, g: 0,
-  district: -1, occ: 0, cool: 0, bk: [[], [], [], [], [], [], [], []],
-}));
 const S = {
   running: false, over: false, t: 0,
-  money: 0, delivered: 0, meter: 0, speed: 1, tool: 'road', hover: null, dirty: true,
-  districts: [], cars: [], popups: [], names: [],
+  money: START_MONEY, delivered: 0, meter: 0, speed: 1, tool: 'road', dirty: true, planDirty: true,
+  plan: null, districts: [], cars: [], popups: [], names: [], trees: [],
   nextDistrictIn: 0, jamCool: 0, bestScore: 0,
 };
-const cam = { tx: 8, tz: 8, dist: 26, pitch: 0.95 };
-let CW = 1, CH = 1;
+const cam = { tx: FIELD / 2, tz: FIELD / 2, dist: 40, pitch: PITCH };
+let CW = 1, CH = 1, DPR = 1;
 
 // ---------- DOM ----------
 const $ = id => document.getElementById(id);
 const cv = $('world');
 const toastEl = $('toast'), hintEl = $('hint'), labelsEl = $('labels');
-const startEl = $('startOverlay'), overEl = $('overOverlay');
+const startEl = $('startOverlay'), overEl = $('overOverlay'), planBar = $('planBar');
 const hud = {};
 for (const id of ['money', 'score', 'districts', 'meterFill', 'meterVal']) hud[id] = $(id);
 
@@ -403,8 +1130,10 @@ function toast(msg, ms = 2600) {
 }
 function setTool(t) {
   S.tool = t;
+  if (t !== 'road' && t !== 'avenue' && S.plan && S.plan.drawing) S.plan = null;
   document.querySelectorAll('.tool').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
   setText(hintEl, HINTS[t]);
+  S.planDirty = true;
 }
 function setSpeed(v) {
   S.speed = v;
@@ -417,59 +1146,7 @@ function saveBest(v) {
   try { localStorage.setItem('traffic-architect-best', String(v)); } catch (e) { /* storage may be blocked */ }
 }
 
-// ---------- Three.js scene ----------
-const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
-renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xbfdcea);
-scene.fog = new THREE.Fog(0xbfdcea, 50, 130);
-const camera = new THREE.PerspectiveCamera(FOV, 1, 0.5, 400);
-
-const sun = new THREE.DirectionalLight(0xfff3dc, 0.95);
-sun.position.set(6, 14, 11);
-sun.target.position.set(8, 0, 8);
-sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
-sun.intensity = 0.75;
-Object.assign(sun.shadow.camera, { left: -13, right: 13, top: 13, bottom: -13, near: 1, far: 60 });
-sun.shadow.camera.updateProjectionMatrix();
-sun.shadow.bias = -0.0008;
-scene.add(sun, sun.target);
-scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x4f5f36, 0.6));
-
-const groundMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-groundMesh.receiveShadow = true;
-const treeMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-treeMesh.castShadow = true;
-const roadMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-roadMesh.receiveShadow = true;
-scene.add(groundMesh, treeMesh, roadMesh);
-
-const bodyGeo = new THREE.BoxGeometry(CAR_LEN, 0.09, CAR_W);
-bodyGeo.translate(0, 0.085, 0);
-const cabGeo = new THREE.BoxGeometry(CAR_LEN * 0.5, 0.075, CAR_W * 0.84);
-cabGeo.translate(-0.01, 0.17, 0);
-const carBody = new THREE.InstancedMesh(bodyGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), MAX_CARS);
-const carCab = new THREE.InstancedMesh(cabGeo, new THREE.MeshLambertMaterial({ color: 0xbcd3e3 }), MAX_CARS);
-carBody.castShadow = carCab.castShadow = true;
-carBody.count = carCab.count = 0;
-scene.add(carBody, carCab);
-
-const hoverMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0x7ed36b, transparent: true, opacity: 0.45, depthWrite: false }));
-hoverMesh.rotation.x = -Math.PI / 2;
-hoverMesh.visible = false;
-scene.add(hoverMesh);
-
-const dummy = new THREE.Object3D();
-const tmpColor = new THREE.Color();
-const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const ray = new THREE.Raycaster();
-const hitPt = new THREE.Vector3();
-const ndc = new THREE.Vector2();
-const projV = new THREE.Vector3();
-
+// ---------- Camera ----------
 function updateCamera() {
   camera.position.set(cam.tx, cam.dist * Math.sin(cam.pitch), cam.tz + cam.dist * Math.cos(cam.pitch));
   camera.lookAt(cam.tx, 0, cam.tz);
@@ -477,495 +1154,252 @@ function updateCamera() {
 }
 function fitDistance() {
   const tanV = Math.tan(FOV / 2 * Math.PI / 180), aspect = CW / CH;
-  cam.dist = clamp(Math.max(19 / (2 * tanV * aspect), 22), ZMIN, ZMAX);
+  const dW = (FIELD + 2) / (2 * tanV * aspect) * 0.92;
+  const dH = (FIELD + 2) * Math.sin(cam.pitch) / (2 * tanV) * 1.02;
+  cam.dist = clamp(Math.max(dW, dH), ZMIN, ZMAX);
 }
 function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
   CW = window.innerWidth;
   CH = window.innerHeight;
+  renderer.setPixelRatio(DPR);
   renderer.setSize(CW, CH, false);
   camera.aspect = CW / CH;
   camera.updateProjectionMatrix();
   fitDistance();
   updateCamera();
 }
-// Pan so that the ground moves with the finger (dx, dy in pixels).
 function panPx(dx, dy) {
   const wpp = 2 * cam.dist * Math.tan(FOV / 2 * Math.PI / 180) / CH;
-  cam.tx = clamp(cam.tx - dx * wpp, -3, W + 3);
-  cam.tz = clamp(cam.tz - dy * wpp / Math.sin(cam.pitch), -3, H + 3);
+  cam.tx = clamp(cam.tx - dx * wpp, -5, FIELD + 5);
+  cam.tz = clamp(cam.tz - dy * wpp / Math.sin(cam.pitch), -5, FIELD + 5);
   updateCamera();
 }
 function groundAt(x, y) {
   ndc.set((x / CW) * 2 - 1, -(y / CH) * 2 + 1);
   ray.setFromCamera(ndc, camera);
-  return ray.ray.intersectPlane(groundPlane, hitPt);
-}
-function tileAt(x, y) {
-  const p = groundAt(x, y);
-  if (!p) return null;
-  const i = Math.floor(p.x), j = Math.floor(p.z);
-  return inb(i, j) ? { i, j, k: idxOf(i, j) } : null;
+  const h = ray.ray.intersectPlane(groundPlane, hitPt);
+  return h ? { x: h.x, z: h.z } : null;
 }
 
-// ---------- Static geometry ----------
-function addEdge(g, a, b) {
-  const A = ctr(a), B = ctr(b), n = lanesAt(a, b), half = KIND[n].half;
-  const ha = hOf(a), hb = hOf(b);
-  const surf = cells[a].water || cells[b].water ? COL.bridge : COL.asphalt;
-  strip(g, A, B, ha - 0.004, hb - 0.004, half + 0.06, COL.curb);
-  strip(g, A, B, ha + 0.01, hb + 0.01, half, surf);
-  if (n === 1) {
-    dashes(g, A, B, 0, ha, hb, COL.white, 0.035);
-  } else {
-    for (const off of [0.03, -0.03]) {
-      const [P, Q] = shifted(A, B, off);
-      strip(g, P, Q, ha + 0.02, hb + 0.02, 0.022, COL.yellow);
-    }
-    dashes(g, A, B, 0.28, ha, hb, COL.white, 0.03);
-    dashes(g, A, B, -0.28, ha, hb, COL.white, 0.03);
-  }
-}
-function dashes(g, A, B, off, ha, hb, hex, w) {
-  const dx = B.x - A.x, dz = B.z - A.z, L = Math.hypot(dx, dz) || 1;
-  const ux = dx / L, uz = dz / L;
-  const [P0, P1] = shifted(A, B, off);
-  for (let s = 0.12; s + 0.3 < L - 0.12; s += 0.55) {
-    const e = s + 0.3;
-    const p = { x: P0.x + ux * s, z: P0.z + uz * s }, q = { x: P0.x + ux * e, z: P0.z + uz * e };
-    strip(g, p, q, ha + 0.02 + (hb - ha) * (s / L), ha + 0.02 + (hb - ha) * (e / L), w, hex);
-  }
-}
-function addDriveway(g, road, dest) {
-  const A = ctr(road), D = ctr(dest), half = KIND[lanesAt(road, dest)].half;
-  const L = Math.hypot(D.x - A.x, D.z - A.z);
-  const B = { x: A.x + (D.x - A.x) / L * 0.5, z: A.z + (D.z - A.z) / L * 0.5 };
-  const h = hOf(road);
-  strip(g, A, B, h - 0.004, h - 0.004, half + 0.06, COL.curb);
-  strip(g, A, B, h + 0.01, h + 0.01, half, COL.asphalt);
-}
-function buildRoads() {
-  const g = new Geo();
-  for (let k = 0; k < N; k++) {
-    const cell = cells[k];
-    if (!cell.kind) continue;
-    const i = cx(k), j = cy(k), c = ctr(k), h = hOf(k), hf = KIND[cell.kind].half;
-    g.quad([c.x - hf, h + 0.012, c.z - hf], [c.x + hf, h + 0.012, c.z - hf], [c.x + hf, h + 0.012, c.z + hf], [c.x - hf, h + 0.012, c.z + hf], rgb(cell.water ? COL.bridge : COL.asphalt));
-    if (cell.water) g.box(c.x - 0.07, -0.3, c.z - 0.07, c.x + 0.07, h, c.z + 0.07, COL.pillar);
-    for (const [di, dj] of [[1, 0], [0, 1]]) {
-      const ni = i + di, nj = j + dj;
-      if (inb(ni, nj) && cells[idxOf(ni, nj)].kind) addEdge(g, k, idxOf(ni, nj));
-    }
-    for (const [di, dj] of DIRS) {
-      const ni = i + di, nj = j + dj;
-      if (inb(ni, nj) && cells[idxOf(ni, nj)].district >= 0) addDriveway(g, k, idxOf(ni, nj));
-    }
-  }
-  return g.geometry();
-}
+// ---------- Static world ----------
 function buildGround() {
   const g = new Geo();
-  g.quad([-40, -0.14, -40], [56, -0.14, -40], [56, -0.14, 56], [-40, -0.14, 56], rgb(COL.outer));
-  for (let k = 0; k < N; k++) {
-    const cell = cells[k], i = cx(k), j = cy(k);
-    let col, y = 0;
-    if (cell.water) { col = COL.water; y = -0.1; }
-    else if (cell.district >= 0) { col = COL.pave; y = 0.005; }
-    else col = GRASS[cell.g];
-    g.quad([i, y, j], [i + 1, y, j], [i + 1, y, j + 1], [i, y, j + 1], rgb(col));
+  g.quad({ x: -60, y: -0.05, z: -60 }, { x: 90, y: -0.05, z: -60 }, { x: 90, y: -0.05, z: 90 }, { x: -60, y: -0.05, z: 90 }, rgb(COL.outer));
+  const shade = (i, j) => { const f = 0.93 + 0.14 * hash2(i, j); return [rgb(GRASS)[0] * f, rgb(GRASS)[1] * f, rgb(GRASS)[2] * f]; };
+  for (let j = 0; j < FIELD; j++) for (let i = 0; i < FIELD; i++) {
+    const p = (x, z) => ({ x, y: 0, z });
+    g.quadV(p(i, j), p(i + 1, j), p(i + 1, j + 1), p(i, j + 1), shade(i, j), shade(i + 1, j), shade(i + 1, j + 1), shade(i, j + 1));
   }
-  // Banks where water meets land, so the river reads as a sunken channel.
-  for (let k = 0; k < N; k++) {
-    const cell = cells[k];
-    if (!cell.water) continue;
-    const i = cx(k), j = cy(k);
-    const sides = [[1, 0, i + 1, 0], [-1, 0, i, 0], [0, 1, 0, j + 1], [0, -1, 0, j]];
-    for (const [di, dj, x, z] of sides) {
-      const ni = i + di, nj = j + dj;
-      if (!inb(ni, nj) || cells[idxOf(ni, nj)].water) continue;
-      if (di !== 0) g.quad([x, 0, j], [x, 0, j + 1], [x, -0.1, j + 1], [x, -0.1, j], rgb(COL.bank));
-      else g.quad([i, 0, z], [i + 1, 0, z], [i + 1, -0.1, z], [i, -0.1, z], rgb(COL.bank));
+  g.box(0, -1.0, 0, FIELD, -0.05, FIELD, COL.dirt);
+  swapGeometry(groundMesh, g.geometry());
+}
+function buildWater() {
+  const g = new Geo();
+  const xs = [];
+  for (let x = -1; x <= FIELD + 1 + 1e-6; x += 0.5) xs.push(x);
+  const wc = rgb(COL.water), bc = rgb(COL.bank);
+  for (let i = 0; i < xs.length - 1; i++) {
+    const a = xs[i], b = xs[i + 1];
+    const ya = riverY(a), yb = riverY(b);
+    const P = (x, z) => ({ x, y: WATER_Y, z });
+    g.quad(P(a, ya - RIVER_HALF), P(b, yb - RIVER_HALF), P(b, yb + RIVER_HALF), P(a, ya + RIVER_HALF), wc);
+    for (const sg of [-1, 1]) {
+      const o0 = RIVER_HALF, o1 = RIVER_HALF + 0.16;
+      const Q = (x, off) => ({ x, y: WATER_Y + 0.004, z: riverY(x) + sg * off });
+      g.quad(Q(a, o0), Q(b, o0), Q(b, o1), Q(a, o1), bc);
     }
   }
-  g.box(0, -1.2, 0, W, -0.14, H, COL.dirt);
-  return g.geometry();
+  swapGeometry(waterMesh, g.geometry());
 }
-function pyramid(g, x, z, y0, y1, r, hex) {
+function placeTrees() {
+  S.trees = [];
+  for (let k = 0; k < 110; k++) {
+    const x = Math.random() * FIELD, z = Math.random() * FIELD;
+    if (waterDist(x, z) < 1.6) continue;
+    S.trees.push({ x, z, tv: Math.random(), s: 0.85 + Math.random() * 0.4 });
+  }
+}
+function pyramid(g, x, y0, z, y1, r, hex) {
   const col = rgb(hex);
-  const a = [x - r, y0, z - r], b = [x + r, y0, z - r], c = [x + r, y0, z + r], d = [x - r, y0, z + r], t = [x, y1, z];
-  g.tri(a, b, t, col); g.tri(b, c, t, col); g.tri(c, d, t, col); g.tri(d, a, t, col);
+  const a = { x: x - r, y: y0, z: z - r }, b = { x: x + r, y: y0, z: z - r };
+  const c = { x: x + r, y: y0, z: z + r }, d = { x: x - r, y: y0, z: z + r }, t = { x, y: y1, z };
+  g.tri(a, b, t, col, col, col); g.tri(b, c, t, col, col, col); g.tri(c, d, t, col, col, col); g.tri(d, a, t, col, col, col);
 }
 function buildTrees() {
   const g = new Geo();
-  for (let k = 0; k < N; k++) {
-    const cell = cells[k];
-    if (!cell.tree) continue;
-    const x = cx(k) + 0.5 + cell.jx, z = cy(k) + 0.5 + cell.jz;
-    const dark = cell.tv < 0.5;
-    g.box(x - 0.03, 0, z - 0.03, x + 0.03, 0.22, z + 0.03, COL.trunk);
-    pyramid(g, x, z, 0.18, 0.5, 0.2, dark ? 0x3f8a46 : 0x2f6b3d);
-    pyramid(g, x, z, 0.36, 0.76, 0.14, dark ? 0x4f9b52 : 0x3d7f4a);
+  for (const t of S.trees) {
+    if (t.x < 0.5 || t.z < 0.5 || t.x > FIELD - 0.5 || t.z > FIELD - 0.5) continue;
+    if (S.districts.some(d => Math.hypot(d.cx - t.x, d.cz - t.z) < 2.2)) continue;
+    let clear = true;
+    for (const e of edges.values()) {
+      for (const p of e.C.P) if (Math.hypot(p.x - t.x, p.z - t.z) < 0.9) { clear = false; break; }
+      if (!clear) break;
+    }
+    if (!clear) continue;
+    const dark = t.tv < 0.5, x = t.x, z = t.z, s = t.s;
+    g.box(x - 0.03, 0, z - 0.03, x + 0.03, 0.22 * s, z + 0.03, COL.trunk);
+    pyramid(g, x, 0.18 * s, z, 0.5 * s, 0.2 * s, dark ? 0x3f8a46 : 0x2f6b3d);
+    pyramid(g, x, 0.36 * s, z, 0.76 * s, 0.14 * s, dark ? 0x4f9b52 : 0x3d7f4a);
   }
   return g.geometry();
+}
+function drawEdge(g, e) {
+  const C = e.C, k = KIND[e.kind];
+  const asph = rgb(COL.asphalt), brg = rgb(COL.bridge);
+  const surf = p => (isWater(p.x, p.z) ? brg : asph);
+  ribbon(g, C, 0, k.half + 0.07, () => rgb(COL.curb), -0.006);
+  ribbon(g, C, 0, k.half, surf, 0);
+  if (e.kind === 1) {
+    dashes(g, C, 0, 0.035, 0.32, 0.25, COL.white, 0.012);
+  } else {
+    for (const off of [0.03, -0.03]) ribbon(g, C, off, 0.022, () => rgb(COL.yellow), 0.012);
+    dashes(g, C, 0.28, 0.03, 0.32, 0.25, COL.white, 0.012);
+    dashes(g, C, -0.28, 0.03, 0.32, 0.25, COL.white, 0.012);
+  }
+  if (e.frac > 0) {
+    for (let s = 0.8; s < C.len; s += 1.8) {
+      const q = curveAt(C, s);
+      if (!isWater(q.x, q.z)) continue;
+      g.box(q.x - 0.07, -0.35, q.z - 0.07, q.x + 0.07, q.y - 0.01, q.z + 0.07, COL.pillar);
+    }
+  }
+}
+function buildRoads() {
+  const g = new Geo();
+  for (const e of edges.values()) drawEdge(g, e);
+  for (const n of nodes.values()) {
+    if (n.door >= 0) { g.disk(n.x, n.y + 0.005, n.z, 0.3, rgb(COL.pave)); continue; }
+    let r = 0;
+    for (const eid of n.edges) r = Math.max(r, KIND[edges.get(eid).kind].half);
+    if (!r) continue;
+    const wet = isWater(n.x, n.z);
+    g.disk(n.x, n.y - 0.006, n.z, r + 0.07, rgb(COL.curb));
+    g.disk(n.x, n.y + 0.002, n.z, r, rgb(wet ? COL.bridge : COL.asphalt));
+  }
+  swapGeometry(roadMesh, g.geometry());
+  swapGeometry(treeMesh, buildTrees());
 }
 function swapGeometry(mesh, geo) {
   mesh.geometry.dispose();
   mesh.geometry = geo;
 }
-
-// ---------- Map ----------
-function buildMap() {
-  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
-    const cell = cells[idxOf(i, j)];
-    cell.kind = 0; cell.occ = 0; cell.cool = 0; cell.district = -1;
-    const rr = riverRows(i);
-    cell.water = j >= rr[0] && j <= rr[1];
-    cell.tree = !cell.water && Math.random() < 0.16;
-    cell.tv = Math.random();
-    cell.jx = (Math.random() - 0.5) * 0.4;
-    cell.jz = (Math.random() - 0.5) * 0.4;
-    cell.g = (hash(i, j) * GRASS.length) | 0;
-    for (const b of cell.bk) b.length = 0;
-  }
-  swapGeometry(groundMesh, buildGround());
-  swapGeometry(treeMesh, buildTrees());
-  S.dirty = true;
-}
-
-// ---------- Districts ----------
-const matCache = new Map();
-function mat(hex) {
-  if (!matCache.has(hex)) matCache.set(hex, new THREE.MeshLambertMaterial({ color: hex }));
-  return matCache.get(hex);
-}
-function makeBoxes() {
-  const r = () => Math.random();
-  return [
-    { x: 0.08, z: 0.10, w: 0.46, d: 0.44, h: 0.95 + r() * 0.35 },
-    { x: 0.60, z: 0.08, w: 0.32, d: 0.38, h: 0.65 + r() * 0.35 },
-    { x: 0.30, z: 0.60, w: 0.36, d: 0.32, h: 0.45 + r() * 0.2 },
-  ];
-}
-function buildDistrictGroup(d) {
-  const grp = new THREE.Group();
-  grp.position.set(cx(d.cell), 0, cy(d.cell));
-  for (const b of d.boxes) {
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), mat(d.wall));
-    wall.position.set(b.x + b.w / 2, b.h / 2, b.z + b.d / 2);
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(b.w + 0.04, 0.05, b.d + 0.04), mat(d.roof));
-    roof.position.set(b.x + b.w / 2, b.h + 0.025, b.z + b.d / 2);
-    wall.castShadow = wall.receiveShadow = roof.castShadow = true;
-    grp.add(wall, roof);
-  }
-  scene.add(grp);
-  return grp;
-}
-function findSpot(side) {
-  for (let t = 0; t < 500; t++) {
-    const i = (Math.random() * W) | 0, j = (Math.random() * H) | 0, k = idxOf(i, j), cell = cells[k];
-    if (cell.water || cell.kind || cell.district >= 0) continue;
-    if (side !== undefined && (j < riverRows(i)[0] ? 0 : 1) !== side) continue;
-    if (S.districts.some(d => Math.abs(cx(d.cell) - i) + Math.abs(cy(d.cell) - j) < 3)) continue;
-    return k;
-  }
-  return -1;
-}
-function addDistrict(side) {
-  const k = findSpot(side);
-  if (k < 0) return false;
-  const di = S.districts.length;
-  cells[k].tree = false;
-  cells[k].district = di;
-  const d = {
-    cell: k, name: S.names[di], wall: WALLS[di % WALLS.length], roof: ROOFS[di % ROOFS.length],
-    boxes: makeBoxes(), age: 0, acc: 0, queue: 0, retry: 0, hasRoad: false, noLink: false,
-    group: null, el: null, nameEl: null, stEl: null, lastKey: '',
-  };
-  d.group = buildDistrictGroup(d);
-  d.el = document.createElement('div');
-  d.el.className = 'dlabel';
-  d.el.hidden = true;
-  d.nameEl = document.createElement('span');
-  d.stEl = document.createElement('span');
-  d.stEl.className = 'st';
-  d.stEl.hidden = true;
-  d.el.append(d.nameEl, d.stEl);
-  labelsEl.appendChild(d.el);
-  S.districts.push(d);
-  S.dirty = true;
-  return true;
-}
-function clearDistricts() {
-  for (const d of S.districts) {
-    scene.remove(d.group);
-    d.el.remove();
-  }
-  S.districts = [];
-}
-
-// ---------- Routing ----------
-const dist = new Float64Array(N), prev = new Int32Array(N), done = new Uint8Array(N);
-
-// Dijkstra over road tiles. Busy tiles cost more, so cars route around congestion.
-function dijkstra(src) {
-  dist.fill(Infinity); prev.fill(-1); done.fill(0);
-  dist[src] = 0;
-  for (;;) {
-    let u = -1, best = Infinity;
-    for (let k = 0; k < N; k++) if (!done[k] && dist[k] < best) { best = dist[k]; u = k; }
-    if (u < 0) break;
-    done[u] = 1;
-    const i = cx(u), j = cy(u);
-    for (const [di, dj] of DIRS) {
-      const ni = i + di, nj = j + dj;
-      if (!inb(ni, nj)) continue;
-      const v = idxOf(ni, nj), cell = cells[v];
-      if (!cell.kind || done[v]) continue;
-      const nd = best + 1 + 0.5 * cell.occ / KIND[cell.kind].lanes;
-      if (nd < dist[v]) { dist[v] = nd; prev[v] = u; }
-    }
-  }
-}
-function doorsOf(d) {
-  const i = cx(d.cell), j = cy(d.cell), out = [];
-  for (const [di, dj] of DIRS) {
-    const ni = i + di, nj = j + dj;
-    if (inb(ni, nj) && cells[idxOf(ni, nj)].kind) out.push(idxOf(ni, nj));
-  }
-  return out;
-}
-// Closest road tile touching district d, from the last dijkstra(). -1 if unreachable.
-function bestDoor(d) {
-  let door = -1, bd = Infinity;
-  for (const v of doorsOf(d)) if (dist[v] < bd) { bd = dist[v]; door = v; }
-  return door;
-}
-function pathTo(src, end) {
-  const p = [];
-  for (let v = end; v !== -1; v = prev[v]) { p.push(v); if (v === src) break; }
-  return p.reverse();
-}
-// Random reachable district other than the origin, with the route to its door.
-function pickDestination(src, originDi) {
-  dijkstra(src);
-  const opts = [];
-  for (let di = 0; di < S.districts.length; di++) {
-    if (di === originDi) continue;
-    const door = bestDoor(S.districts[di]);
-    if (door >= 0) opts.push({ di, door });
-  }
-  if (!opts.length) return null;
-  const o = opts[(Math.random() * opts.length) | 0];
-  return { di: o.di, path: pathTo(src, o.door) };
-}
-
-// ---------- Cars: geometry of one tile crossing ----------
-// A car crosses a tile on a quadratic Bezier from its entry lane point to its exit lane point.
-function prevOf(car) { return car.idx > 0 ? car.route[car.idx - 1] : car.entry; }
-function nextOf(car) { return car.idx + 1 < car.route.length ? car.route[car.idx + 1] : car.destCell; }
-function curveOf(car) {
-  const X = car.route[car.idx], P = prevOf(car), Nx = nextOf(car);
-  const xc = ctr(X), pc = ctr(P), nc = ctr(Nx);
-  const il = Math.hypot(xc.x - pc.x, xc.z - pc.z) || 1, ol = Math.hypot(nc.x - xc.x, nc.z - xc.z) || 1;
-  const di = { x: (xc.x - pc.x) / il, z: (xc.z - pc.z) / il };
-  const dO = { x: (nc.x - xc.x) / ol, z: (nc.z - xc.z) / ol };
-  const nIn = lanesAt(P, X), nOut = lanesAt(X, Nx);
-  const offIn = LANE_OFF[nIn][Math.min(car.li, nIn - 1)];
-  const offOut = LANE_OFF[nOut][Math.min(car.li, nOut - 1)];
-  const ri = { x: -di.z, z: di.x }, ro = { x: -dO.z, z: dO.x };      // right-hand side of travel
-  const E = { x: xc.x - 0.5 * di.x + offIn * ri.x, z: xc.z - 0.5 * di.z + offIn * ri.z };
-  const F = { x: xc.x + 0.5 * dO.x + offOut * ro.x, z: xc.z + 0.5 * dO.z + offOut * ro.z };
-  const straight = di.x * dO.x + di.z * dO.z > 0.99;
-  const Cp = straight ? { x: (E.x + F.x) / 2, z: (E.z + F.z) / 2 }
-    : { x: xc.x + offIn * ri.x + offOut * ro.x, z: xc.z + offIn * ri.z + offOut * ro.z };
-  return { E, C: Cp, F, yIn: (hOf(P) + hOf(X)) / 2, yOut: (hOf(X) + hOf(Nx)) / 2 };
-}
-function bez(cv, t) {
-  const u = 1 - t, a = u * u, b = 2 * u * t, c = t * t;
-  return { x: a * cv.E.x + b * cv.C.x + c * cv.F.x, z: a * cv.E.z + b * cv.C.z + c * cv.F.z };
-}
-function curveLength(cv) {
-  let L = 0, p = bez(cv, 0);
-  for (let s = 1; s <= 8; s++) { const q = bez(cv, s / 8); L += Math.hypot(q.x - p.x, q.z - p.z); p = q; }
-  return Math.max(0.2, L);
-}
-// Position is stored as distance s along the current tile's curve; t = s / length is only needed for drawing.
-function carPose(car) {
-  const cv = curveOf(car), t = clamp(car.s / curveLength(cv), 0, 1), u = 1 - t;
-  const p = bez(cv, t);
-  let tx = 2 * u * (cv.C.x - cv.E.x) + 2 * t * (cv.F.x - cv.C.x);
-  let tz = 2 * u * (cv.C.z - cv.E.z) + 2 * t * (cv.F.z - cv.C.z);
-  const L = Math.hypot(tx, tz) || 1;
-  return { x: p.x, y: cv.yIn + (cv.yOut - cv.yIn) * t, z: p.z, dx: tx / L, dz: tz / L };
-}
-
-// Bucket cars by tile and entry lane, nearest-to-exit first. Followers look at the car ahead in their bucket.
-function rebuildBuckets() {
-  for (const cell of cells) { for (const b of cell.bk) b.length = 0; cell.occ = 0; }
-  for (const car of S.cars) {
-    if (car.dead) continue;
-    const X = car.route[car.idx];
-    const cell = cells[X];
-    cell.bk[dirIdx(X, prevOf(car)) * 2 + car.li].push(car);
-    cell.occ++;
-  }
-  for (const cell of cells) for (const b of cell.bk) if (b.length > 1) b.sort((p, q) => q.s - p.s);
+function rebuildWorld() {
+  S.dirty = false;
+  buildRoads();
 }
 
 // ---------- Cars: spawning and movement ----------
+function bkOf(key) { return bk.get(key) || EMPTY; }
+function rebuildBuckets() {
+  bk.clear();
+  laneCount.clear();
+  for (const car of S.cars) {
+    if (car.dead) continue;
+    const k = car.route[car.idx];
+    let arr = bk.get(k);
+    if (!arr) { arr = []; bk.set(k, arr); }
+    arr.push(car);
+    laneCount.set(k, (laneCount.get(k) || 0) + 1);
+  }
+  for (const arr of bk.values()) if (arr.length > 1) arr.sort((p, q) => q.s - p.s);
+}
 function trySpawn(d, di) {
   if (S.cars.length >= MAX_CARS) return;
-  let best = -1, bestLi = 0, bestLoad = Infinity;
-  for (const X of doorsOf(d)) {
-    const cell = cells[X];
-    if (cell.cool > 0) continue;
-    const side = dirIdx(X, d.cell);
-    for (let li = 0; li < KIND[cell.kind].lanes; li++) {
-      const b = cell.bk[side * 2 + li];
-      if (b.length && b[b.length - 1].s < CAR_LEN + MIN_GAP) continue;
-      if (cell.occ < bestLoad) { bestLoad = cell.occ; best = X; bestLi = li; }
+  let best = null, bestN = Infinity;
+  for (const nid of d.doors) {
+    for (const k of nodes.get(nid).outs) {
+      const arr = bkOf(k);
+      if (arr.length && arr[arr.length - 1].s < CAR_LEN + MIN_GAP) continue;
+      if (arr.length < bestN) { bestN = arr.length; best = k; }
     }
   }
-  if (best < 0) return;
+  if (!best) return;
   const pick = pickDestination(best, di);
   if (!pick) { d.noLink = true; d.retry = 1; return; }
   d.noLink = false;
   d.queue--;
-  const cell = cells[best];
+  let total = 0;
+  for (const k of pick.path) total += segOf(k).len;
   const car = {
-    route: pick.path, idx: 0, entry: d.cell, li: bestLi, s: 0, v: 0, wait: 0,
-    warned: false, dead: false, dest: pick.di, destCell: S.districts[pick.di].cell,
-    len: pick.path.length, color: CAR_COLORS[(Math.random() * CAR_COLORS.length) | 0],
+    route: pick.path, idx: 0, s: 0, v: 0, wait: 0, dead: false, warned: false,
+    dest: pick.di, dist: total, len: pick.path.length,
+    col: CAR_COLORS[(Math.random() * CAR_COLORS.length) | 0],
   };
-  cell.bk[dirIdx(best, d.cell) * 2 + bestLi].push(car);   // a new car is always the last one in its lane
-  cell.occ++;
-  cell.cool = KIND[cell.kind].head;
+  let arr = bk.get(best);
+  if (!arr) { arr = []; bk.set(best, arr); }
+  arr.push(car);
+  laneCount.set(best, (laneCount.get(best) || 0) + 1);
   S.cars.push(car);
 }
-
-// Advance one car. The car behind never gets closer than the leader allows, so cars in a lane cannot overlap.
+function carPose(car) {
+  const seg = segOf(car.route[car.idx]);
+  if (!seg) return { x: 0, y: 0, z: 0, dx: 1, dz: 0 };
+  return curveAt(seg.C, car.s);
+}
+// Advance one car along its current segment. The car behind keeps the gap to the car ahead in the same lane.
 function moveCar(car, leader, dt) {
-  // A leader that already crossed into another tile no longer constrains us; the junction check covers that case.
+  // A leader that already crossed into another segment no longer constrains us.
   if (leader && (leader.dead || leader.route[leader.idx] !== car.route[car.idx])) leader = null;
-  // All distances here are in tile units along the curve, so curves of different shapes compare correctly.
-  const Lc = curveLength(curveOf(car));
-  const X = car.route[car.idx], vmax = KIND[cells[X].kind].speed, need = CAR_LEN + MIN_GAP;
+  const seg = segOf(car.route[car.idx]);
+  if (!seg) { car.dead = true; return; }
+  const len = seg.len, need = CAR_LEN + MIN_GAP;
   const last = car.idx === car.route.length - 1;
-  let gap, Nx = -1, nli = 0, q = null;
+  let gap, nextSeg = null, q = EMPTY, blocked = false;
   if (!last) {
-    Nx = car.route[car.idx + 1];
-    nli = Math.min(car.li, lanesAt(X, Nx) - 1);
-    q = cells[Nx].bk[dirIdx(Nx, X) * 2 + nli];
+    const nk = car.route[car.idx + 1];
+    nextSeg = segOf(nk);
+    q = bkOf(nk);
+    if (nextSeg && nextSeg.conn) blocked = nodes.get(nextSeg.node).cool > 0;
   }
-  if (leader) {
-    gap = leader.s - car.s - need;
-  } else if (last) {
-    gap = 9;
-  } else {
-    const toLine = Lc - car.s;
-    if (cells[Nx].cool > 0) gap = toLine - 0.02;                        // junction still busy: stop at the line
-    else if (q.length) gap = toLine + q[q.length - 1].s - need;          // room in the next tile's lane
+  if (leader) gap = leader.s - car.s - need;
+  else if (last) gap = 9;
+  else {
+    const toLine = len - car.s;
+    if (blocked) gap = toLine - 0.02;                                   // junction busy: stop at the line
+    else if (q.length) gap = toLine + q[q.length - 1].s - need;          // room in the next segment
     else gap = toLine + 0.6;
   }
-  const vT = clamp(gap / TIME_GAP, 0, vmax);
-  car.v = clamp(car.v + clamp(vT - car.v, -DECEL * dt, ACCEL * dt), 0, vmax);
+  const vT = clamp(gap / TIME_GAP, 0, seg.speed);
+  car.v = clamp(car.v + clamp(vT - car.v, -DECEL * dt, ACCEL * dt), 0, seg.speed);
   let ns = car.s + car.v * dt;
   if (leader) ns = Math.min(ns, leader.s - need);
   ns = Math.max(ns, car.s);
-  if (ns >= Lc) {
+  if (ns >= len) {
     if (last) { deliver(car); return; }
-    const free = cells[Nx].cool <= 0 && (!q.length || q[q.length - 1].s >= need);
+    const free = !blocked && nextSeg && (!q.length || q[q.length - 1].s >= need);
     if (free) {
       car.idx++;
-      car.li = nli;
-      car.s = ns - Lc;
-      cells[Nx].cool = KIND[cells[Nx].kind].head;
+      car.s = ns - len;
+      if (nextSeg.conn) nodes.get(nextSeg.node).cool = nextSeg.head;
     } else {
-      ns = Lc;
+      car.s = len;
       car.v = 0;
-      car.s = ns;
     }
   } else {
     car.s = ns;
   }
   car.wait = car.v < 0.05 && vT < 0.05 ? car.wait + dt : 0;
 }
-
 function deliver(car) {
   car.dead = true;
-  const fare = Math.round(4 + car.len * 0.9);
+  const fare = Math.round(3 + car.dist * 0.6);
   S.money += fare;
   S.delivered++;
   const p = carPose(car);
-  spawnPopup(p.x, p.y + 0.6, p.z, '+$' + fare);
-}
-
-// Reroute cars that still have the removed tile ahead. Cars standing on it are lost.
-function rerouteAfterRemoval(k) {
-  for (const car of S.cars) {
-    if (car.dead) continue;
-    const at = car.route.indexOf(k, car.idx);
-    if (at < 0) continue;
-    if (at === car.idx) { car.dead = true; continue; }
-    const cur = car.route[car.idx];
-    const before = prevOf(car);
-    dijkstra(cur);
-    const door = bestDoor(S.districts[car.dest]);
-    if (door < 0) { car.dead = true; continue; }
-    car.entry = before;
-    car.route = pathTo(cur, door);
-    car.idx = 0;
-    car.len = car.route.length;
-  }
+  spawnPopup(p.x, p.y + 0.5, p.z, '+$' + fare);
 }
 
 // ---------- Player actions ----------
-function previewOf(k) {
-  const cell = cells[k], tool = S.tool;
-  if (tool === 'pan') return null;
-  if (tool === 'bulldoze') {
-    if (!cell.kind) return { ok: false, price: 0 };
-    return { ok: true, price: -Math.floor(costOf(cell.kind, cell.water) * 0.5) };
-  }
-  const want = tool === 'avenue' ? 2 : 1;
-  if (cell.district >= 0 || cell.kind >= want) return { ok: false, price: 0 };
-  const price = costOf(want, cell.water) - (cell.kind ? costOf(cell.kind, cell.water) : 0);
-  return { ok: S.money >= price, price, short: S.money < price };
+function removeNear(x, z, r) {
+  const near = nearestEdge(x, z);
+  if (near && near.h.d < r) removeEdge(near.e);
+}
+function upgradeNear(x, z) {
+  const near = nearestEdge(x, z);
+  if (near && near.h.d < 0.7) upgradeEdge(near.e);
 }
 let lastNoMoney = 0;
-function act(k) {
-  if (!S.running || S.over) return;
-  const pv = previewOf(k);
-  if (!pv) return;
-  if (S.tool === 'bulldoze') {
-    if (!pv.ok) return;
-    S.money -= pv.price;                     // negative price: refund
-    cells[k].kind = 0;
-    rerouteAfterRemoval(k);
-    cells[k].occ = 0;
-    S.cars = S.cars.filter(c => !c.dead);
-    S.dirty = true;
-    return;
-  }
-  if (!pv.ok) {
-    const now = performance.now();
-    if (pv.short && now - lastNoMoney > 2500) {
-      lastNoMoney = now;
-      toast('Не хватает денег. Доставляйте машины, чтобы заработать', 2400);
-    }
-    return;
-  }
-  S.money -= pv.price;
-  cells[k].kind = S.tool === 'avenue' ? 2 : 1;
-  cells[k].tree = false;
-  S.dirty = true;
-}
-function lineCells(i0, j0, i1, j1) {
-  const out = [];
-  let i = i0, j = j0;
-  while (i !== i1) { i += Math.sign(i1 - i); out.push([i, j]); }
-  while (j !== j1) { j += Math.sign(j1 - j); out.push([i, j]); }
-  return out;
-}
 
 // ---------- Popups ----------
 function spawnPopup(x, y, z, text) {
@@ -979,57 +1413,49 @@ function spawnPopup(x, y, z, text) {
 // ---------- Simulation ----------
 function step(dt) {
   S.t += dt;
-  for (const cell of cells) if (cell.cool > 0) cell.cool = Math.max(0, cell.cool - dt);
+  for (const n of nodes.values()) if (n.cool > 0) n.cool = Math.max(0, n.cool - dt);
   rebuildBuckets();
 
-  // New districts appear over time and pay a small bonus.
   S.nextDistrictIn -= dt;
   if (S.nextDistrictIn <= 0) {
-    if (S.districts.length < 20 && addDistrict()) {
+    if (S.districts.length < MAX_DISTRICTS && addDistrict()) {
       const d = S.districts[S.districts.length - 1];
-      S.money += 25;
-      toast(`Новый район «${d.name}» · +$25`, 3000);
-      S.nextDistrictIn = Math.max(9, 20 - S.districts.length * 0.7);
+      S.money += 40;
+      toast(`Новый район «${d.name}» · +$40`, 3000);
+      S.nextDistrictIn = Math.max(14, 24 - S.districts.length * 0.8);
     } else {
-      S.nextDistrictIn = 2;
+      S.nextDistrictIn = 3;
     }
   }
 
-  // Residents grow in number and set off for work; the rate climbs as a district ages.
   for (let di = 0; di < S.districts.length; di++) {
     const d = S.districts[di];
     d.age += dt;
-    d.hasRoad = doorsOf(d).length > 0;
     d.acc += Math.min(0.3, 0.1 + d.age * 0.003) * dt;
     if (d.acc >= 1) { d.acc -= 1; if (d.queue < 12) d.queue++; }
     d.retry = Math.max(0, d.retry - dt);
     if (d.queue > 0 && d.retry === 0) trySpawn(d, di);
   }
 
-  for (const cell of cells) for (const b of cell.bk) {
-    for (let i = 0; i < b.length; i++) if (!b[i].dead) moveCar(b[i], i > 0 ? b[i - 1] : null, dt);
+  for (const arr of bk.values()) {
+    for (let i = 0; i < arr.length; i++) if (!arr[i].dead) moveCar(arr[i], i > 0 ? arr[i - 1] : null, dt);
   }
   S.cars = S.cars.filter(c => !c.dead);
 
-  // Jam meter: stuck cars and long queues at connected districts push it up fast;
-  // queues at unconnected districts push it up more slowly. It drains otherwise.
   let jams = 0;
   for (const car of S.cars) {
     if (car.wait > JAM_T) {
       jams++;
       if (!car.warned) {
         car.warned = true;
-        if (S.jamCool <= 0) {
-          toast('Пробка! Постройте проспект или объездную дорогу', 3200);
-          S.jamCool = 12;
-        }
+        if (S.jamCool <= 0) { toast('Пробка! Постройте проспект или объездную дорогу', 3200); S.jamCool = 12; }
       }
     }
   }
   let pressure = jams;
   for (const d of S.districts) {
     if (d.queue < 8) continue;
-    pressure += d.hasRoad && !d.noLink ? 1 : 0.35;
+    pressure += districtHasRoad(d) && !d.noLink ? 1 : 0.35;
   }
   S.meter = clamp(S.meter + (pressure * 2.5 - 1.5) * dt, 0, 100);
   S.jamCool = Math.max(0, S.jamCool - dt);
@@ -1040,18 +1466,26 @@ function step(dt) {
     p.el.remove();
     return false;
   });
-
   if (S.meter >= 100) gameOver();
 }
 
-function newGame() {
-  clearDistricts();
-  buildMap();
-  S.cars = [];
+function clearWorld() {
+  for (const d of S.districts) { scene.remove(d.group); d.el.remove(); }
   for (const p of S.popups) p.el.remove();
+  S.districts = [];
+  S.cars = [];
   S.popups = [];
+  nodes.clear(); edges.clear(); lanes.clear(); conns.clear(); connByPair.clear();
+  bk.clear(); laneCount.clear();
+  S.plan = null;
+}
+function newGame() {
+  clearWorld();
   S.names = NAMES.slice().sort(() => Math.random() - 0.5);
-  S.t = 0; S.money = 150; S.delivered = 0; S.meter = 0;
+  buildGround();
+  buildWater();
+  placeTrees();
+  S.t = 0; S.money = START_MONEY; S.delivered = 0; S.meter = 0;
   S.over = false; S.running = true;
   S.nextDistrictIn = 12; S.jamCool = 0;
   addDistrict(0);
@@ -1060,8 +1494,9 @@ function newGame() {
   updateCamera();
   startEl.hidden = true;
   overEl.hidden = true;
-  toast('Соедините районы дорогой и мостом через реку', 4200);
+  toast('Соедините районы дорогой через реку — от выезда к выезду', 4200);
   S.dirty = true;
+  S.planDirty = true;
   updateHud();
 }
 function gameOver() {
@@ -1084,7 +1519,7 @@ function syncCars() {
     dummy.updateMatrix();
     carBody.setMatrixAt(i, dummy.matrix);
     carCab.setMatrixAt(i, dummy.matrix);
-    tmpColor.setHex(car.wait > JAM_T ? JAM_COLOR : car.color);
+    tmpColor.setHex(car.wait > JAM_T ? JAM_COLOR : car.col);
     carBody.setColorAt(i, tmpColor);
     carCab.setColorAt(i, tmpColor);
     i++;
@@ -1097,30 +1532,47 @@ function syncCars() {
     carCab.instanceColor.needsUpdate = true;
   }
 }
-function updateHover() {
-  const pv = S.hover != null && S.running && !S.over ? previewOf(S.hover) : null;
-  if (!pv || (!pv.ok && !pv.short)) {
-    hoverMesh.visible = false;
+function buildPlanGeo() {
+  const pl = S.plan;
+  if (!pl || pl.pts.length < 2) return new THREE.BufferGeometry();
+  const P = pl.pts.map(p => ({ x: p.x, y: hAt(p.x, p.z) + 0.08, z: p.z }));
+  const C = makeCurve(P);
+  const g = new Geo();
+  const col = !pl.valid ? [0.84, 0.35, 0.35] : pl.cost <= S.money ? [0.49, 0.83, 0.42] : [0.95, 0.68, 0.2];
+  ribbon(g, C, 0, KIND[pl.kind].half, () => col, 0);
+  return g.geometry();
+}
+function updatePlanUi() {
+  const pl = S.plan;
+  const show = !!pl && !pl.drawing && pl.pts.length > 1;
+  planBar.hidden = !show;
+  if (!show) return;
+  const affordable = pl.cost <= S.money;
+  setText($('planCost'), '$' + pl.cost.toLocaleString('en-US'));
+  setText($('planMsg'), pl.valid ? (affordable ? `${KIND[pl.kind].name} · ${Math.round(pl.length)} ед.` : 'Не хватает денег') : pl.msg);
+  $('planApply').disabled = !(pl.valid && affordable);
+}
+function updateHint() {
+  const pl = S.plan;
+  if (pl && pl.drawing) {
+    const txt = pl.msg || 'Отпустите палец';
+    setText(hintEl, `${txt} · $${pl.cost}`);
+  } else {
     setText(hintEl, HINTS[S.tool]);
-    return;
   }
-  hoverMesh.position.set(cx(S.hover) + 0.5, hOf(S.hover) + 0.045, cy(S.hover) + 0.5);
-  hoverMesh.material.color.setHex(!pv.ok || S.tool === 'bulldoze' ? 0xff6159 : 0x7ed36b);
-  hoverMesh.visible = true;
-  const cost = pv.price > 0 ? ` · −$${pv.price}` : pv.price < 0 ? ` · +$${-pv.price}` : '';
-  setText(hintEl, HINTS[S.tool] + cost);
 }
 function updateLabels() {
   for (const d of S.districts) {
-    const g = 1 + 0.45 * Math.min(1, d.age / 150);
+    const g = 1 + 0.25 * Math.min(1, d.age / 150);
     d.group.scale.y = g;
-    projV.set(cx(d.cell) + 0.5, 0.5 * g + 0.5, cy(d.cell) + 0.5).project(camera);
+    projV.set(d.cx, 2.9 * g, d.cz).project(camera);
     const sx = (projV.x + 1) / 2 * CW, sy = (1 - projV.y) / 2 * CH;
     const onScreen = projV.z < 1 && sx > 60 && sx < CW - 60 && sy > 60 && sy < CH - 120;
     d.el.hidden = !onScreen;
     if (!onScreen) continue;
     d.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, -100%)`;
-    const status = !d.hasRoad ? 'нет дороги' : d.noLink ? 'нет связи' : '';
+    const hasRoad = districtHasRoad(d);
+    const status = !hasRoad ? 'нет дороги' : d.noLink ? 'нет связи' : '';
     const hot = d.queue >= 8;
     const key = `${d.name}|${status}|${d.queue}|${hot}`;
     if (key !== d.lastKey) {
@@ -1147,14 +1599,20 @@ cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId);
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (ptrs.size === 1) {
-    if (S.tool === 'pan') {
-      drag = { mode: 'pan', x: e.clientX, y: e.clientY };
-    } else {
-      const t = tileAt(e.clientX, e.clientY);
-      drag = { mode: 'build', last: t };
-      if (t) act(t.k);
+    if (S.tool === 'pan') { drag = { mode: 'pan', x: e.clientX, y: e.clientY }; return; }
+    const w = groundAt(e.clientX, e.clientY);
+    if (!w) { drag = null; return; }
+    if (S.tool === 'bulldoze') {
+      drag = { mode: 'bulldoze' };
+      removeNear(w.x, w.z, 0.6);
+      return;
     }
+    S.plan = { raw: [w], kind: S.tool === 'avenue' ? 2 : 1, drawing: true, pts: [], valid: false, msg: '', cost: 0 };
+    S.planDirty = true;
+    drag = { mode: 'plan', down: w };
   } else {
+    if (S.plan && S.plan.drawing) S.plan = null;
+    S.planDirty = true;
     const [a, b] = [...ptrs.values()];
     drag = { mode: 'pinch', d: dist2(a, b), m: mid(a, b) };
   }
@@ -1162,17 +1620,20 @@ cv.addEventListener('pointerdown', e => {
 cv.addEventListener('pointermove', e => {
   const p = ptrs.get(e.pointerId);
   if (p) { p.x = e.clientX; p.y = e.clientY; }
-  const t = tileAt(e.clientX, e.clientY);
-  S.hover = t ? t.k : null;
   if (!drag) return;
   if (drag.mode === 'pan' && ptrs.size === 1) {
     panPx(e.clientX - drag.x, e.clientY - drag.y);
     drag.x = e.clientX; drag.y = e.clientY;
-  } else if (drag.mode === 'build' && ptrs.size === 1) {
-    if (t) {
-      if (drag.last) for (const [i, j] of lineCells(drag.last.i, drag.last.j, t.i, t.j)) act(idxOf(i, j));
-      else act(t.k);
-      drag.last = t;
+  } else if (drag.mode === 'bulldoze' && ptrs.size === 1) {
+    const w = groundAt(e.clientX, e.clientY);
+    if (w) removeNear(w.x, w.z, 0.5);
+  } else if (drag.mode === 'plan' && ptrs.size === 1 && S.plan && S.plan.drawing) {
+    const w = groundAt(e.clientX, e.clientY);
+    if (!w) return;
+    const last = S.plan.raw[S.plan.raw.length - 1];
+    if (Math.hypot(w.x - last.x, w.z - last.z) >= 0.2) {
+      S.plan.raw.push(w);
+      refreshPlan();
     }
   } else if (drag.mode === 'pinch' && ptrs.size === 2) {
     const [a, b] = [...ptrs.values()];
@@ -1183,27 +1644,39 @@ cv.addEventListener('pointermove', e => {
   }
 });
 function endPtr(e) {
+  const wasPlan = drag && drag.mode === 'plan';
   ptrs.delete(e.pointerId);
-  if (e.pointerType === 'touch') S.hover = null;
+  if (wasPlan && ptrs.size === 0 && S.plan && S.plan.drawing) {
+    const len = polyLen(S.plan.raw);
+    if (len < 0.5) {
+      S.plan = null;                                             // a tap, not a line
+      if (S.tool === 'avenue') upgradeNear(drag.down.x, drag.down.z);
+    } else {
+      S.plan.drawing = false;
+      refreshPlan();
+      S.plan.drawing = false;
+    }
+    S.planDirty = true;
+  }
   if (ptrs.size === 0) drag = null;
   else if (drag && drag.mode === 'pinch') {
-    // One finger left after a pinch: pan, so the lifted finger never paints roads by accident.
     const q = ptrs.values().next().value;
     drag = { mode: 'pan', x: q.x, y: q.y };
   }
 }
 cv.addEventListener('pointerup', endPtr);
 cv.addEventListener('pointercancel', endPtr);
-cv.addEventListener('pointerleave', () => { if (!ptrs.size) S.hover = null; });
-cv.addEventListener('contextmenu', e => e.preventDefault());
-cv.addEventListener('wheel', e => {
-  e.preventDefault();
-  cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0015), ZMIN, ZMAX);
+cv.addEventListener('contextmenu', ev => ev.preventDefault());
+cv.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  cam.dist = clamp(cam.dist * Math.exp(ev.deltaY * 0.0015), ZMIN, ZMAX);
   updateCamera();
 }, { passive: false });
 
 document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
 document.querySelectorAll('.sp').forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.speed))));
+$('planApply').addEventListener('click', () => { applyPlan(); });
+$('planCancel').addEventListener('click', () => { S.plan = null; S.planDirty = true; });
 $('startBtn').addEventListener('click', newGame);
 $('againBtn').addEventListener('click', newGame);
 window.addEventListener('resize', resize);
@@ -1214,21 +1687,25 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (S.running && !S.over) for (let s = 0; s < S.speed && !S.over; s++) step(dt);
-  if (S.dirty) {
-    S.dirty = false;
-    swapGeometry(roadMesh, buildRoads());
+  if (S.dirty) rebuildWorld();
+  if (S.planDirty) {
+    S.planDirty = false;
+    swapGeometry(planMesh, buildPlanGeo());
   }
   syncCars();
-  updateHover();
   updateLabels();
+  updatePlanUi();
+  updateHint();
   updateHud();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 
-resize();
 S.bestScore = loadBest();
-buildMap();
+resize();
+buildGround();
+buildWater();
+placeTrees();
 setTool('road');
 setSpeed(1);
 updateHud();
@@ -1236,13 +1713,20 @@ requestAnimationFrame(frame);
 
 // Debug handle for automated checks.
 window.trafficArchitect = {
-  S, cells, act, step, newGame, previewOf, setTool, setSpeed, carPose,
-  curveLen: car => curveLength(curveOf(car)),
-  constants: { CAR_LEN, MIN_GAP, JAM_T },
-  project: (i, j) => {
-    projV.set(i + 0.5, hOf(idxOf(i, j)), j + 0.5).project(camera);
+  S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD },
+  newGame, step, setTool, setSpeed, carPose, applyPlan, removeNear, upgradeNear,
+  planAt(points, kind) {
+    S.plan = computePlan(points.map(p => ({ x: p.x, z: p.z })), kind === 'avenue' ? 2 : 1);
+    S.plan.drawing = false;
+    S.planDirty = true;
+    return { valid: S.plan.valid, msg: S.plan.msg, cost: S.plan.cost, length: S.plan.length, snapA: !!S.plan.snapA, snapB: !!S.plan.snapB };
+  },
+  doors: () => S.districts.map(d => d.doors.map(id => ({ id, x: nodes.get(id).x, z: nodes.get(id).z }))),
+  project: (x, z) => {
+    projV.set(x, hAt(x, z), z).project(camera);
     return { x: (projV.x + 1) / 2 * CW, y: (1 - projV.y) / 2 * CH };
   },
+  rebuildWorld,
 };
 })();
 </script>
