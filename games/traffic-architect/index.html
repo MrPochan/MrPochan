@@ -266,6 +266,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     </div>
     <button id="nodeClose" class="btn ghost" type="button" aria-label="Закрыть">✕</button>
     <button id="nodeLight" class="btn go" type="button">Светофор</button>
+    <button id="ringLanes" class="btn go" type="button">2 полосы</button>
     <button id="ringOff" class="btn ghost" type="button">Убрать кольцо</button>
     <button id="ring1" class="btn ghost" type="button">S</button>
     <button id="ring2" class="btn ghost" type="button">M</button>
@@ -348,8 +349,11 @@ const KIND = {
   1: { name: 'Дорога', lanes: 1, speed: 1.3, head: 0.5, unit: 9, half: 0.3, offs: [0.16] },
   2: { name: 'Проспект', lanes: 2, speed: 1.8, head: 0.3, unit: 22, half: 0.52, offs: [0.16, 0.4] },
   3: { name: 'Кольцо', lanes: 1, speed: 1.0, head: 0.4, unit: 9, half: 0.24, offs: [0] },   // one-way ring road
+  4: { name: 'Кольцо, 2 полосы', lanes: 2, speed: 1.2, head: 0.35, unit: 15, half: 0.4, offs: [-0.13, 0.13] },
 };
 const RING_SIZES = { 1: { r: 1.0, name: 'S', cost: 45 }, 2: { r: 1.5, name: 'M', cost: 70 }, 3: { r: 2.1, name: 'L', cost: 100 } };
+const RING2_EXTRA = { 1: 25, 2: 40, 3: 60 };
+const ringTotal = (size, lanes) => RING_SIZES[size].cost + (lanes === 2 ? RING2_EXTRA[size] : 0);
 const LIGHT_COST = 30, LIGHT_SLOT = 6.5, LIGHT_GREEN = 4.8, LIGHT_YELLOW = 0.9;
 const WATER_EXTRA = 1.5;               // water length costs (1 + WATER_EXTRA) times the land price
 const CAR_LEN = 0.5, CAR_W = 0.24, MIN_GAP = 0.25, TIME_GAP = 0.5, ACCEL = 1.2, DECEL = 2.5;
@@ -576,7 +580,7 @@ function rebuildLanes() {
         if ((t0 || t1) && C.len - t0 - t1 > 0.1) C = makeCurve(subCurve(C, t0, C.len - t1, 0).map(q => ({ x: q.x, y: q.y, z: q.z })));
         const lane = {
           key, from, to, kind: e.kind,
-          C, len: 0, speed: k.speed, head: k.head,
+          C, len: 0, speed: k.speed, head: k.head, ring: !!e.ring,
         };
         lane.len = lane.C.len;
         lanes.set(key, lane);
@@ -629,7 +633,7 @@ function shapeConn(c) {
   c.C = makeCurve(pts);
   c.len = c.C.len;
   c.d0 = { x: d0x, z: d0z };
-  c.ringEntry = B.kind === 3 && A.kind !== 3;
+  c.ringEntry = !!B.ring && !A.ring;
 }
 // Which turns of one junction cross, merge or overlap each other: a car may only enter a turn while none of those is occupied.
 function computeConflicts() {
@@ -966,14 +970,14 @@ function ringProblem(n, r) {
 function dropConnsAt(ids) {
   for (const [id, c] of [...conns]) if (ids.has(c.node)) conns.delete(id);
 }
-function makeRoundabout(n, size, free) {
-  const R = RING_SIZES[size].r, cost = RING_SIZES[size].cost;
+function makeRoundabout(n, size, free, lanes = 1) {
+  const R = RING_SIZES[size].r, cost = ringTotal(size, lanes);
   const bad = ringProblem(n, R);
   if (bad) { toast(bad, 2600); return null; }
   if (!free && S.money < cost) { toast(`Нужно $${cost} на кольцо`, 2200); return null; }
   const arms = ringArms(n, R);
   for (const a of arms) a.phi = Math.atan2(a.c.z - n.z, a.c.x - n.x);
-  const ring = { id: ++seq, x: n.x, y: n.y, z: n.z, r: R, size, nodes: [], edges: [] };
+  const ring = { id: ++seq, x: n.x, y: n.y, z: n.z, r: R, size, lanes, nodes: [], edges: [] };
   for (const a of arms) {
     const rn = addNode(n.x + Math.cos(a.phi) * R, n.z + Math.sin(a.phi) * R);
     rn.ringId = ring.id;
@@ -1005,7 +1009,7 @@ function makeRoundabout(n, size, free) {
       const ph = p0 + (p1 - p0) * k / steps;
       pts.push({ x: n.x + Math.cos(ph) * R, z: n.z + Math.sin(ph) * R });
     }
-    const re = makeEdge(A.rn, B.rn, 3, pts);
+    const re = makeEdge(A.rn, B.rn, lanes === 2 ? 4 : 3, pts);
     re.oneway = true;
     re.ring = ring.id;
     ring.edges.push(re.id);
@@ -1041,13 +1045,54 @@ function dissolveRing(ring) {
 }
 function resizeRing(ring, size) {
   if (ring.size === size) return ring;
-  const oldCost = RING_SIZES[ring.size].cost, cost = RING_SIZES[size].cost, diff = cost - Math.floor(oldCost * 0.5);
+  const lanes = ring.lanes || 1;
+  const diff = ringTotal(size, lanes) - Math.floor(ringTotal(ring.size, lanes) * 0.5);
   if (S.money < diff) { toast(`Нужно $${diff} на перестройку`, 2200); return ring; }
   const oldSize = ring.size, X = dissolveRing(ring);
-  const made = makeRoundabout(X, size, true);
-  if (!made) return makeRoundabout(dropLight(X), oldSize, true);
+  const made = makeRoundabout(X, size, true, lanes);
+  if (!made) return makeRoundabout(dropLight(X), oldSize, true, lanes);
   S.money -= diff;
   return made;
+}
+// Why the ring cannot get a second lane: its junctions would no longer fit between the ring nodes.
+function ringLanesProblem(ring) {
+  const saved = ring.edges.map(id => edges.get(id).kind);
+  for (const id of ring.edges) edges.get(id).kind = 4;
+  try {
+    for (const id of ring.nodes) {
+      const n = nodes.get(id);
+      if (nodeNeed(n) > MAX_TRIM) return 'Кольцу не хватает места для двух полос';
+      for (const eid of n.edges) {
+        const f = edges.get(eid), far = nodes.get(f.a === n.id ? f.b : f.a);
+        if (nodeNeed(n) + nodeNeed(far) > f.len - 0.3) return 'Кольцу не хватает места для двух полос';
+      }
+    }
+    for (const f of edges.values()) {
+      if (f.ring === ring.id) continue;
+      if (nearestOnCurve(f.C, ring.x, ring.z).d < ring.r + KIND[f.kind].half + 0.7 && !ring.nodes.some(id => nodes.get(id).edges.has(f.id))) return 'Рядом другая дорога';
+    }
+    return '';
+  } finally {
+    ring.edges.forEach((id, i) => { edges.get(id).kind = saved[i]; });
+  }
+}
+function setRingLanes(ring, lanes) {
+  if ((ring.lanes || 1) === lanes) return;
+  if (lanes === 2) {
+    const bad = ringLanesProblem(ring), cost = RING2_EXTRA[ring.size];
+    if (bad) { toast(bad, 2600); return; }
+    if (S.money < cost) { toast(`Нужно $${cost} на вторую полосу`, 2200); return; }
+    S.money -= cost;
+  } else {
+    S.money += Math.floor(RING2_EXTRA[ring.size] * 0.5);
+    // Cars in the second lane move to the first one; turns that used the second lane disappear.
+    const gone = id => ring.edges.includes(Number(id.slice(1).split('.')[0])) && id.endsWith('.1');
+    for (const [id, c] of [...conns]) if (gone(c.inKey) || gone(c.outKey)) conns.delete(id);
+    for (const car of S.cars) car.route = car.route.map(k => (k[0] === 'L' && gone(k) ? k.slice(0, -1) + '0' : k));
+  }
+  ring.lanes = lanes;
+  for (const id of ring.edges) edges.get(id).kind = lanes === 2 ? 4 : 3;
+  afterNetworkChange();
 }
 function dropLight(n) { n.light = false; return n; }
 // Phases of a signal: opposite arms go together, every other arm gets its own phase.
@@ -1146,7 +1191,7 @@ function selectNear(x, z) {
   }
   if (best) { S.selNode = best.id; return; }
   const near = nearestEdge(x, z);
-  if (near && near.e.kind !== 3 && near.h.d < 0.8) S.sel = near.e.id;
+  if (near && !near.e.ring && near.h.d < 0.8) S.sel = near.e.id;
 }
 // Cars keep their place: segments that still exist are kept, the rest of the route is planned again.
 function afterNetworkChange() {
@@ -1243,7 +1288,7 @@ function snapTarget(p) {
   }
   if (best) return best;
   const near = nearestEdge(p.x, p.z);
-  if (!near || near.h.d >= SNAP_EDGE || near.e.kind === 3) return null;
+  if (!near || near.h.d >= SNAP_EDGE || near.e.ring) return null;
   const e = near.e, s = near.h.s;
   if (s < 0.4) return { type: 'node', id: e.a, x: nodes.get(e.a).x, z: nodes.get(e.a).z };
   if (s > e.len - 0.4) return { type: 'node', id: e.b, x: nodes.get(e.b).x, z: nodes.get(e.b).z };
@@ -1309,7 +1354,7 @@ function tangentAt(pts, i) {
 function planProblem(pts, cum) {
   const n = pts.length, total = cum[n - 1];
   for (const e of edges.values()) {
-    if (e.kind !== 3) continue;
+    if (!e.ring) continue;
     const P = e.C.P;
     for (let j = 0; j < P.length - 1; j++) for (let i = 0; i < pts.length - 1; i++) if (segHit(pts[i], pts[i + 1], P[j], P[j + 1])) return 'Кольцо нельзя пересекать';
   }
@@ -1785,8 +1830,9 @@ function drawEdge(g, e, ta, tb) {
   ribbon(g, C, 0, k.half, surf, 0, s0, s1);
   const m0 = s0 + 0.12, m1 = s1 - 0.12;
   if (m1 - m0 > 0.1) {
-    if (e.kind === 3) {
+    if (e.ring) {
       for (const sg of [-1, 1]) ribbon(g, C, sg * (k.half - 0.03), 0.014, () => rgb(COL.white), 0.02, m0, m1);
+      if (e.kind === 4) dashes(g, C, 0, 0.03, 0.3, 0.25, COL.white, 0.02, m0, m1);
     } else if (e.kind === 1) {
       dashes(g, C, 0, 0.035, 0.32, 0.25, COL.white, 0.02, m0, m1);
     } else {
@@ -2243,15 +2289,22 @@ function updateNodeUi() {
   if (!ring && !n) return;
   $('nodeLight').hidden = !!ring;
   $('ringOff').hidden = !ring;
+  $('ringLanes').hidden = !ring;
   let msg = '';
   if (ring) {
     setText($('nodeTitle'), `Кольцо · ${RING_SIZES[ring.size].name}`);
     for (const k of [1, 2, 3]) {
-      const b = $('ring' + k), diff = RING_SIZES[k].cost - Math.floor(RING_SIZES[ring.size].cost * 0.5);
+      const ln = ring.lanes || 1, b = $('ring' + k), diff = ringTotal(k, ln) - Math.floor(ringTotal(ring.size, ln) * 0.5);
       setText(b, k === ring.size ? `${RING_SIZES[k].name} ✓` : `${RING_SIZES[k].name} · $${diff}`);
       b.disabled = k === ring.size || S.money < diff;
     }
-    msg = 'Размер кольца можно менять';
+    const two = (ring.lanes || 1) === 2;
+    const lkey = `${ring.id}|${S.netVer | 0}|${two}`;
+    if (lkey !== S.lpKey) { S.lpKey = lkey; S.lpVal = two ? '' : ringLanesProblem(ring); }
+    const lp = S.lpVal, cost = RING2_EXTRA[ring.size];
+    setText($('ringLanes'), two ? '1 полоса' : `2 полосы $${cost}`);
+    $('ringLanes').disabled = !two && (!!lp || S.money < cost);
+    msg = lp || (two ? 'Две полосы по кругу' : 'Можно добавить вторую полосу');
   } else {
     const key = `${n.id}|${S.netVer | 0}|${S.districts.length}`;
     if (key !== ringProbKey) { ringProbKey = key; ringProbs = [1, 2, 3].map(k => ringProblem(n, RING_SIZES[k].r)); }
@@ -2435,6 +2488,7 @@ for (const k of [1, 2, 3]) $('ring' + k).addEventListener('click', () => {
   else { const n = nodes.get(S.selNode), r = n && makeRoundabout(n, k, false); if (r) { S.selNode = null; S.selRing = r.id; } }
   S.selDirty = true;
 });
+$('ringLanes').addEventListener('click', () => { const r = rings.get(S.selRing); if (r) setRingLanes(r, (r.lanes || 1) === 2 ? 1 : 2); });
 $('ringOff').addEventListener('click', () => {
   const r = rings.get(S.selRing);
   if (r) { const X = dissolveRing(r); S.selRing = null; S.selNode = X.id; S.selDirty = true; }
@@ -2488,7 +2542,7 @@ requestAnimationFrame(frame);
 // Debug handle for automated checks.
 window.trafficArchitect = {
   S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD },
-  newGame, step, setTool, setSpeed, carPose, applyPlan, removeNear, upgradeNear, selectNear, upgradeProblem, upgradeEdge, rings, makeRoundabout, dissolveRing, resizeRing, ringProblem, toggleLight, lightState,
+  newGame, step, setTool, setSpeed, carPose, applyPlan, removeNear, upgradeNear, selectNear, upgradeProblem, upgradeEdge, rings, setRingLanes, ringLanesProblem, makeRoundabout, dissolveRing, resizeRing, ringProblem, toggleLight, lightState,
   planAt(points, kind) {
     S.plan = computePlan(points.map(p => ({ x: p.x, z: p.z })), kind === 'avenue' ? 2 : 1);
     S.plan.drawing = false;
