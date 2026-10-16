@@ -679,7 +679,12 @@ function shapeConn(c) {
 // Which turns of one junction cross, merge or overlap each other: a car may only enter a turn while none of those is occupied.
 // Right of way at a crossing. By default one road is the main road (the better road, or the straightest pair of
 // arms) and the others give way to it; the player can also make the crossing equal. The main arms are node.prio.main.
-const edgeOfLane = key => +key.slice(1).split('.')[0];
+const eolCache = new Map();
+const edgeOfLane = key => {
+  let v = eolCache.get(key);
+  if (v === undefined) { v = +key.slice(1).split('.')[0]; eolCache.set(key, v); }
+  return v;
+};
 function mainCandidates(n) {
   const arms = junctionArms(n), out = [];
   for (let i = 0; i < arms.length; i++) {
@@ -1973,7 +1978,8 @@ const sun = new THREE.DirectionalLight(0xfff3dc, 0.75);
 sun.position.set(FIELD / 2 + 10, 28, FIELD / 2 + 15);
 sun.target.position.set(FIELD / 2, 0, FIELD / 2);
 sun.castShadow = true;
-sun.shadow.mapSize.set(3072, 3072);
+const SMALL_SCREEN = Math.min(window.innerWidth, window.innerHeight) < 700 || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+sun.shadow.mapSize.set(SMALL_SCREEN ? 2048 : 3072, SMALL_SCREEN ? 2048 : 3072);     // a phone screen shows no difference, its GPU does
 Object.assign(sun.shadow.camera, { left: -FIELD * 0.75, right: FIELD * 0.75, top: FIELD * 0.75, bottom: -FIELD * 0.75, near: 1, far: 120 });
 sun.shadow.camera.updateProjectionMatrix();
 sun.shadow.bias = -0.0004;
@@ -2036,6 +2042,8 @@ const S = {
 };
 const cam = { tx: FIELD / 2, tz: FIELD / 2, dist: 40, pitch: PITCH };
 let CW = 1, CH = 1, DPR = 1;
+// Adaptive quality: if the device cannot keep up, the render resolution (and later the shadow refresh rate) goes down a step.
+const QUAL = { maxDpr: 2, ema: 16.7, slow: 0, shadowEvery: 1, frameNo: 0 };
 
 // ---------- DOM ----------
 const $ = id => document.getElementById(id);
@@ -2100,7 +2108,7 @@ function fitDistance() {
   cam.dist = clamp(Math.max(dW, dH) * 0.8, ZMIN, ZMAX);   // start closer than the whole field; the map is meant to be explored
 }
 function resize() {
-  DPR = Math.min(2, window.devicePixelRatio || 1);
+  DPR = Math.min(QUAL.maxDpr, window.devicePixelRatio || 1);
   CW = window.innerWidth;
   CH = window.innerHeight;
   renderer.setPixelRatio(DPR);
@@ -2478,9 +2486,9 @@ function buildCarGrid() {
 function bodiesOverlap(ax, az, adx, adz, bx, bz, bdx, bdz) {
   const hl = CAR_LEN / 2 + 0.02, hw = CAR_W / 2, dx = bx - ax, dz = bz - az;
   if (dx * dx + dz * dz > 0.65) return false;
-  const axes = [adx, adz, -adz, adx, bdx, bdz, -bdz, bdx];
-  for (let i = 0; i < 8; i += 2) {
-    const ux = axes[i], uz = axes[i + 1];
+  // separating axis test on the four axes: the two car directions and their normals
+  for (let i = 0; i < 4; i++) {
+    const ux = i === 0 ? adx : i === 1 ? -adz : i === 2 ? bdx : -bdz, uz = i === 0 ? adz : i === 1 ? adx : i === 2 ? bdz : bdx;
     const ra = hl * Math.abs(ux * adx + uz * adz) + hw * Math.abs(-ux * adz + uz * adx);
     const rb = hl * Math.abs(ux * bdx + uz * bdz) + hw * Math.abs(-ux * bdz + uz * bdx);
     if (Math.abs(ux * dx + uz * dz) > ra + rb - 0.01) return false;     // side-by-side lanes may touch
@@ -2927,17 +2935,19 @@ function heatOf(e, dir) {
   }
   return h;
 }
+const laneInfo = new Map();     // lane key -> its edge and direction, parsed once
 function collectHeat(dt) {
   for (const car of S.cars) {
     const key = car.route[car.idx];
     if (!key || key[0] !== 'L') continue;
     const ln = lanes.get(key);
     if (!ln || ln.len <= 0) continue;
-    const [eid, dir] = key.slice(1).split('.');
-    const e = edges.get(Number(eid));
+    let li = laneInfo.get(key);
+    if (!li) { const [eid, dr] = key.slice(1).split('.'); li = { eid: Number(eid), dir: Number(dr) }; laneInfo.set(key, li); }
+    const e = edges.get(li.eid);
     if (!e) continue;
-    const h = heatOf(e, Number(dir)), f = clamp(car.s / ln.len, 0, 1);
-    const arc = Number(dir) === 0 ? f * e.len : (1 - f) * e.len;
+    const dir = li.dir, h = heatOf(e, dir), f = clamp(car.s / ln.len, 0, 1);
+    const arc = dir === 0 ? f * e.len : (1 - f) * e.len;
     const b = clamp(Math.floor(arc / e.len * h.nb), 0, h.nb - 1);
     h.cars[b] += dt;
     h.spd[b] += dt * (car.vr === undefined ? 1 : car.vr);
@@ -2993,13 +3003,18 @@ function heatBins(h, mode, lanesN) {
   return { val, wt };
 }
 function buildHeatGeo() {
-  const g = new Geo(), mode = S.view, asph = rgb(COL.asphalt);
+  const g = new Geo(), mode = S.view, asph = rgb(COL.asphalt), trims = new Map();
   if (!mode) return g.geometry();
   for (const h of S.heat.values()) {
     const e = edges.get(h.e);
     if (!e) continue;
     const A = nodes.get(e.a), B = nodes.get(e.b);
-    const trim = (n) => { if (!n || n.door >= 0 || n.edges.size < 2) return 0; const arm = junctionArms(n).find(x => x.e === e); return arm ? arm.t : 0; };
+    const trim = (n) => {
+      if (!n || n.door >= 0 || n.edges.size < 2) return 0;
+      let m = trims.get(n.id);
+      if (!m) { m = new Map(); for (const a of junctionArms(n)) m.set(a.e.id, a.t); trims.set(n.id, m); }
+      return m.get(e.id) || 0;
+    };
     const t0 = trim(A) + 0.05, t1 = e.len - trim(B) - 0.05;
     if (t1 - t0 < 0.1) continue;
     const k = KIND[e.kind], nl = k.lanes;
@@ -3487,7 +3502,21 @@ window.addEventListener('resize', resize);
 
 // ---------- Loop ----------
 let last = performance.now();
+function adaptQuality(raw) {
+  if (raw > 250) return;                                           // the tab was in the background
+  QUAL.ema += (raw - QUAL.ema) * 0.05;
+  QUAL.slow = QUAL.ema > 26 ? QUAL.slow + 1 : Math.max(0, QUAL.slow - 2);
+  if (QUAL.slow > 90 && QUAL.maxDpr > 1) {
+    QUAL.maxDpr = Math.max(1, QUAL.maxDpr - 0.25);
+    QUAL.slow = 0; QUAL.ema = 16.7;
+    if (QUAL.maxDpr <= 1.5) QUAL.shadowEvery = 2;
+    DPR = Math.min(QUAL.maxDpr, window.devicePixelRatio || 1);
+    renderer.setPixelRatio(DPR);
+    renderer.setSize(CW, CH, false);
+  }
+}
 function frame(now) {
+  adaptQuality(now - last);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (S.running && !S.over) for (let s = 0; s < S.speed && !S.over; s++) step(dt);
@@ -3541,6 +3570,8 @@ function frame(now) {
   updateEditUi();
   updateHint();
   updateHud();
+  renderer.shadowMap.autoUpdate = QUAL.shadowEvery === 1;
+  if (QUAL.shadowEvery > 1 && ++QUAL.frameNo % QUAL.shadowEvery === 0) renderer.shadowMap.needsUpdate = true;
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
