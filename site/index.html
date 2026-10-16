@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>RoadFlow</title>
+<style>
+/* Concept: the game's own dark HUD, scaled up to a page. One live scene on top (cars on a small road network),
+   a real day-schedule chart in the middle, account panel last. Colours and weights are taken from the game. */
+:root {
+  --bg: #12171c;
+  --panel: #1a2128;
+  --panel-2: #212a33;
+  --line: rgba(255, 255, 255, 0.09);
+  --fg: #edf2f6;
+  --muted: #8b97a3;
+  --accent: #5ab4ff;
+  --accent-ink: #0b1620;
+  --ok: #7ed36b;
+  --warn: #f2b84b;
+  --bad: #ff6159;
+  --grass: #3f6b3a;
+  --grass-2: #4a7a43;
+  --water: #2f78a8;
+  --asphalt: #4a525c;
+  --mark: #eef2f5;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #dfe7ec;
+    --panel: #f6f9fb;
+    --panel-2: #e9eff3;
+    --line: rgba(20, 30, 40, 0.11);
+    --fg: #1c242c;
+    --muted: #5f6b77;
+    --accent: #1677d2;
+    --accent-ink: #ffffff;
+    --ok: #2f9d4f;
+    --warn: #b97a06;
+    --bad: #d2362e;
+    --grass: #8fc27a;
+    --grass-2: #9bcb86;
+    --water: #5aa9d6;
+    --asphalt: #5a626c;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #dfe7ec;
+  --panel: #f6f9fb;
+  --panel-2: #e9eff3;
+  --line: rgba(20, 30, 40, 0.11);
+  --fg: #1c242c;
+  --muted: #5f6b77;
+  --accent: #1677d2;
+  --accent-ink: #ffffff;
+  --ok: #2f9d4f;
+  --warn: #b97a06;
+  --bad: #d2362e;
+  --grass: #8fc27a;
+  --grass-2: #9bcb86;
+  --water: #5aa9d6;
+  --asphalt: #5a626c;
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 15px/1.5 var(--font);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 40px;
+}
+a { color: var(--accent); }
+.wrap { max-width: 1040px; margin: 0 auto; }
+.k { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+/* top bar */
+.bar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+  margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px)));
+  padding-inline: max(16px, env(safe-area-inset-left, 0px));
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.bar .wrap { display: flex; align-items: center; gap: 12px; padding-block: 10px; }
+.logo { margin: 0; font-size: 26px; line-height: 1; font-weight: 800; letter-spacing: -1px; color: var(--fg); text-decoration: none; }
+.logo b { color: var(--accent); }
+.nav { display: none; gap: 18px; margin-left: 18px; }
+.nav a { color: var(--muted); text-decoration: none; font-weight: 600; font-size: 14px; }
+.nav a:hover { color: var(--fg); }
+.sp { flex: 1; }
+.btn {
+  appearance: none; border: 0; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center;
+  font: 700 14px var(--font); padding: 10px 16px; border-radius: 10px; background: var(--accent); color: var(--accent-ink);
+}
+.btn.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+.btn.go { background: var(--ok); color: #0b1620; }
+.btn.big { font-size: 16px; padding: 14px 24px; border-radius: 12px; }
+.btn:hover { filter: brightness(1.08); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* hero */
+.hero { display: grid; gap: 22px; padding-block: 28px 8px; align-items: center; }
+.hero h1 { margin: 0; font-size: clamp(44px, 11vw, 76px); line-height: 0.95; font-weight: 800; letter-spacing: -0.04em; }
+.hero h1 b { color: var(--accent); }
+.hero .tag { margin: 12px 0 0; font-size: 18px; font-weight: 700; }
+.hero p.lead { margin: 10px 0 0; color: var(--muted); max-width: 46ch; }
+.cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.scene {
+  border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: var(--grass);
+  aspect-ratio: 4 / 3; max-width: 100%; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+.scene svg { display: block; width: 100%; height: 100%; }
+.s-grass { fill: var(--grass); }
+.s-grass2 { fill: var(--grass-2); }
+.s-water { fill: var(--water); }
+.s-road { fill: none; stroke: var(--asphalt); stroke-width: 15; stroke-linecap: round; stroke-linejoin: round; }
+.s-curb { fill: none; stroke: #d6dde2; stroke-width: 18; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
+.s-dash { fill: none; stroke: var(--mark); stroke-width: 1.4; stroke-dasharray: 5 5; stroke-linecap: round; }
+.s-ring { fill: none; stroke: var(--asphalt); stroke-width: 15; }
+.s-ringc { fill: none; stroke: #d6dde2; stroke-width: 18; opacity: 0.85; }
+.s-lbl { font: 700 9px var(--font); fill: #fff; }
+.s-chip { fill: rgba(16, 20, 24, 0.82); }
+
+/* sections */
+section { padding-block: 44px 0; }
+h2 { margin: 6px 0 0; font-size: clamp(26px, 6vw, 36px); line-height: 1.1; font-weight: 800; letter-spacing: -0.02em; text-wrap: balance; }
+.sub { margin: 10px 0 0; color: var(--muted); max-width: 62ch; }
+.grid { display: grid; gap: 12px; margin-top: 22px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; min-width: 0; }
+.card h3 { margin: 0; font-size: 17px; font-weight: 800; }
+.card p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+.ico { font-size: 26px; line-height: 1; }
+.card.type { display: grid; gap: 4px; }
+.roof { width: 34px; height: 5px; border-radius: 3px; margin-top: 8px; }
+
+/* day chart */
+.chart { margin-top: 22px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+.seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.seg button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font: 700 13px var(--font); padding: 6px 14px; border-radius: 7px; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.chart svg { display: block; width: 100%; height: auto; margin-top: 12px; overflow: visible; }
+.chart .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+.chart .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.ax { fill: var(--muted); font: 600 16px var(--font); }
+.gl { stroke: var(--line); stroke-width: 1; }
+.note { margin: 12px 0 0; font-size: 13px; color: var(--muted); }
+
+/* map views */
+.grad { height: 10px; border-radius: 5px; background: linear-gradient(90deg, #2fc752 0%, #e8d92c 30%, #f08a24 55%, #e0302a 80%, #6e0a1a 100%); }
+.gl2 { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* account */
+.account { display: grid; gap: 14px; margin-top: 22px; }
+.soon { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; background: var(--warn); color: #1a1a1a; vertical-align: 2px; margin-left: 6px; }
+ul.plain { margin: 10px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; display: grid; gap: 4px; }
+
+dialog { border: 1px solid var(--line); border-radius: 16px; padding: 0; background: var(--panel); color: var(--fg); width: min(400px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+.dlg { padding: 18px; display: grid; gap: 12px; }
+.dlg h3 { margin: 0; font-size: 22px; font-weight: 800; }
+label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+input[type="email"], input[type="password"], input[type="text"] {
+  font: 16px var(--font); padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); color: var(--fg); width: 100%;
+}
+.msg { font-size: 13px; padding: 9px 12px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.row { display: flex; gap: 8px; }
+.row .btn { flex: 1; }
+
+footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--muted); font-size: 13px; justify-content: space-between; }
+
+@media (min-width: 720px) {
+  .nav { display: flex; }
+  .hero { grid-template-columns: 1fr 1.1fr; gap: 36px; padding-block: 44px 8px; }
+  .grid.c4 { grid-template-columns: repeat(2, 1fr); }
+  .grid.c3 { grid-template-columns: repeat(3, 1fr); }
+  .account { grid-template-columns: 1.1fr 1fr; }
+}
+@media (min-width: 980px) {
+  .grid.c4 { grid-template-columns: repeat(4, 1fr); }
+  .grid.c5 { grid-template-columns: repeat(5, 1fr); }
+}
+@media (min-width: 560px) and (max-width: 979px) { .grid.c5 { grid-template-columns: repeat(2, 1fr); } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="wrap">
+    <a class="logo" href="#top" aria-label="RoadFlow">Road<b>Flow</b></a>
+    <nav class="nav" aria-label="Разделы">
+      <a href="#city">Город</a>
+      <a href="#day">Сутки</a>
+      <a href="#views">Карта</a>
+      <a href="#account">Аккаунт</a>
+    </nav>
+    <span class="sp"></span>
+    <button class="btn ghost" id="openAuth" type="button">Войти</button>
+    <a class="btn go gameLink" href="../games/traffic-architect/index.html">Играть</a>
+  </div>
+</header>
+
+<main class="wrap" id="top">
+  <div class="hero">
+    <div>
+      <p class="k">Градостроительная игра</p>
+      <h1>Road<b>Flow</b></h1>
+      <p class="tag">Строй дороги. Пусти поток.</p>
+      <p class="lead">Жители едут на работу, домой и отдыхать. Вы строите для них дороги, кольца и светофоры, пока город не встал в пробке.</p>
+      <div class="cta">
+        <a class="btn go big gameLink" href="../games/traffic-architect/index.html">Играть сейчас</a>
+        <a class="btn ghost big" href="#day">Как живёт город</a>
+      </div>
+    </div>
+    <div class="scene" aria-label="Схема города: машины едут между районами">
+      <svg id="scene" viewBox="0 0 400 300" role="img" aria-label="Мини-карта города с едущими машинами">
+        <rect class="s-grass" width="400" height="300"/>
+        <circle class="s-grass2" cx="70" cy="250" r="60"/>
+        <circle class="s-grass2" cx="350" cy="60" r="70"/>
+        <path class="s-water" d="M-10 150 C 60 110, 120 190, 200 150 S 340 110, 410 170 L 410 196 C 340 136, 260 176, 200 196 S 60 140, -10 176 Z"/>
+        <g id="roads">
+          <path class="s-curb" d="M60 70 L200 150 L340 80"/>
+          <path class="s-curb" d="M200 150 L 120 250"/>
+          <path class="s-curb" d="M200 150 L 330 240"/>
+          <path class="s-road" d="M60 70 L200 150 L340 80"/>
+          <path class="s-road" d="M200 150 L 120 250"/>
+          <path class="s-road" d="M200 150 L 330 240"/>
+          <path class="s-dash" d="M60 70 L200 150 L340 80"/>
+          <path class="s-dash" d="M200 150 L 120 250"/>
+          <path class="s-dash" d="M200 150 L 330 240"/>
+          <circle class="s-ringc" cx="200" cy="150" r="17"/>
+          <circle class="s-ring" cx="200" cy="150" r="17"/>
+          <circle class="s-grass2" cx="200" cy="150" r="9"/>
+        </g>
+        <!-- districts -->
+        <g>
+          <rect x="40" y="46" width="22" height="22" rx="2" fill="#c9b79a"/><rect x="40" y="46" width="22" height="5" fill="#e4572e"/>
+          <rect x="66" y="40" width="16" height="28" rx="2" fill="#c9b79a"/><rect x="66" y="40" width="16" height="5" fill="#e4572e"/>
+          <rect x="326" y="52" width="14" height="38" rx="2" fill="#a9cde0"/><rect x="326" y="52" width="14" height="5" fill="#2e86ab"/>
+          <rect x="344" y="62" width="14" height="28" rx="2" fill="#a9cde0"/><rect x="344" y="62" width="14" height="5" fill="#2e86ab"/>
+          <rect x="96" y="246" width="34" height="18" rx="2" fill="#c2bfb6"/><rect x="96" y="246" width="34" height="4" fill="#f3a712"/>
+          <rect x="132" y="228" width="5" height="22" fill="#8c8f93"/>
+          <circle cx="330" cy="256" r="16" fill="#86c26c"/><circle cx="330" cy="256" r="9" fill="none" stroke="#7b2cbf" stroke-width="2"/>
+        </g>
+        <g>
+          <rect class="s-chip" x="30" y="22" width="68" height="15" rx="7"/><text class="s-lbl" x="38" y="33">🏠 Сосновый</text>
+          <rect class="s-chip" x="300" y="30" width="62" height="15" rx="7"/><text class="s-lbl" x="308" y="41">🏢 Центр</text>
+          <rect class="s-chip" x="88" y="272" width="60" height="15" rx="7"/><text class="s-lbl" x="96" y="283">🏭 Завод</text>
+          <rect class="s-chip" x="296" y="276" width="62" height="15" rx="7"/><text class="s-lbl" x="304" y="287">🎡 Парк</text>
+        </g>
+        <g id="cars"></g>
+      </svg>
+    </div>
+  </div>
+
+  <section id="city">
+    <p class="k">Город</p>
+    <h2>Пять видов районов, один общий поток</h2>
+    <p class="sub">У каждого района своя роль. Жители живут в жилых, работают в офисах и на заводах, отдыхают в парках и ездят в другие города через выезд.</p>
+    <div class="grid c5">
+      <div class="card type"><span class="ico">🏠</span><h3>Жилой район</h3><p>Здесь живут настоящие люди. Машин горожан не больше, чем жителей.</p><span class="roof" style="background:#e4572e"></span></div>
+      <div class="card type"><span class="ico">🏢</span><h3>Офисы</h3><p>Утром сюда едут на работу, вечером разъезжаются по домам.</p><span class="roof" style="background:#2e86ab"></span></div>
+      <div class="card type"><span class="ico">🏭</span><h3>Промзона</h3><p>Рабочие смены и грузовики, которые уходят в другие города.</p><span class="roof" style="background:#f3a712"></span></div>
+      <div class="card type"><span class="ico">🎡</span><h3>Отдых</h3><p>Вечерами и в выходные сюда едут парки, кафе и друзья.</p><span class="roof" style="background:#7b2cbf"></span></div>
+      <div class="card type"><span class="ico">🚪</span><h3>Выезд</h3><p>Дорога в другой город: оттуда приезжают гости и грузовики.</p><span class="roof" style="background:#2a9d8f"></span></div>
+    </div>
+  </section>
+
+  <section id="day">
+    <p class="k">Сутки</p>
+    <h2>Город живёт по часам</h2>
+    <p class="sub">Сутки в игре идут 10 минут, неделя 70 минут. В будни все едут на работу, в выходные на работу не ездит никто. Так выглядит поток из жилых районов в течение дня.</p>
+    <div class="chart">
+      <div class="seg" role="group" aria-label="День недели">
+        <button type="button" id="dayWk" aria-pressed="true">Будни</button>
+        <button type="button" id="dayWe" aria-pressed="false">Выходные</button>
+      </div>
+      <svg id="dayChart" viewBox="0 0 640 260" role="img" aria-label="График поездок жителей в течение суток"></svg>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>На работу</span>
+        <span><i style="background:var(--ok)"></i>Домой с работы</span>
+        <span><i style="background:var(--warn)"></i>На отдых</span>
+      </div>
+      <p class="note" id="dayNote"></p>
+    </div>
+  </section>
+
+  <section id="views">
+    <p class="k">Карта</p>
+    <h2>Видно, где город задыхается</h2>
+    <div class="grid c3">
+      <div class="card"><h3>Обычный вид</h3><p>Дороги, районы и машины в цветах районов назначения.</p></div>
+      <div class="card"><h3>Пробки</h3><p>Участки, где машины стоят, краснеют. Над затором висит значок с числом машин.</p><div class="grad" style="margin-top:14px"></div><div class="gl2"><span>свободно</span><span>пробка</span></div></div>
+      <div class="card"><h3>Скорость</h3><p>Цвет показывает среднюю скорость на участке. Настроение жителей зависит от времени в пути.</p><div class="grad" style="margin-top:14px"></div><div class="gl2"><span>быстро</span><span>медленно</span></div></div>
+    </div>
+    <div class="grid c4">
+      <div class="card"><h3>Кольца и светофоры</h3><p>Три размера колец, одна или две полосы, умные светофоры.</p></div>
+      <div class="card"><h3>Правила дорог</h3><p>Главная и второстепенная, знаки, стрелки на полосах, одностороннее движение.</p></div>
+      <div class="card"><h3>Правка по участкам</h3><p>Улучшайте и сносите дорогу небольшими кусками, не трогая остальное.</p></div>
+      <div class="card"><h3>Настроение города</h3><p>Если поездка слишком долгая, житель разворачивается домой, и жители уезжают из города.</p></div>
+    </div>
+  </section>
+
+  <section id="account">
+    <p class="k">Аккаунт</p>
+    <h2>Скоро: свой профиль и рейтинг городов<span class="soon">скоро</span></h2>
+    <div class="account">
+      <div class="card">
+        <h3>Что даст вход</h3>
+        <ul class="plain">
+          <li>Сохранение вашего города между сессиями и устройствами.</li>
+          <li>Рейтинг городов по числу жителей и настроению.</li>
+          <li>Лучшие результаты и история игр.</li>
+        </ul>
+        <p style="margin-top:12px">Пока аккаунтов нет. Игра работает без входа, лучший результат хранится в вашем браузере.</p>
+      </div>
+      <div class="card">
+        <h3>Войти или создать аккаунт</h3>
+        <p>Кнопка уже на месте. Вход заработает, когда появится сервер аккаунтов.</p>
+        <div class="cta"><button class="btn" id="openAuth2" type="button">Войти</button><a class="btn ghost gameLink" href="../games/traffic-architect/index.html">Играть без входа</a></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>RoadFlow</span>
+    <span>Игра в браузере, работает на телефоне</span>
+  </footer>
+</main>
+
+<dialog id="auth" aria-labelledby="authTitle">
+  <form class="dlg" id="authForm" method="dialog" novalidate>
+    <h3 id="authTitle">Вход</h3>
+    <div class="seg" role="group" aria-label="Вход или регистрация">
+      <button type="button" id="tabIn" aria-pressed="true">Вход</button>
+      <button type="button" id="tabUp" aria-pressed="false">Регистрация</button>
+    </div>
+    <label for="aName" id="aNameL" hidden>Имя в игре<input type="text" id="aName" autocomplete="nickname" placeholder="Мэр Сосновый"></label>
+    <label for="aMail">Почта<input type="email" id="aMail" autocomplete="email" placeholder="you@example.com"></label>
+    <label for="aPass">Пароль<input type="password" id="aPass" autocomplete="current-password" placeholder="Не меньше 8 символов"></label>
+    <div class="msg" id="aMsg" role="status" hidden></div>
+    <div class="row">
+      <button class="btn ghost" type="button" id="aClose">Закрыть</button>
+      <button class="btn" type="submit" id="aSubmit">Войти</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function () {
+  // The game lives next to this page; change this one line if the site is laid out differently.
+  var GAME_URL = '../games/traffic-architect/index.html';
+  document.querySelectorAll('.gameLink').forEach(function (a) { a.setAttribute('href', GAME_URL); });
+
+  // ---- live scene: cars on three roads, colours of the district they go to ----
+  var NS = 'http://www.w3.org/2000/svg';
+  var routes = [
+    { d: 'M60 70 L200 150 L340 80', col: '#2e86ab', dur: 11 },
+    { d: 'M340 80 L200 150 L60 70', col: '#e4572e', dur: 12 },
+    { d: 'M60 70 L200 150 L120 250', col: '#f3a712', dur: 10 },
+    { d: 'M120 250 L200 150 L340 80', col: '#2e86ab', dur: 13 },
+    { d: 'M330 240 L200 150 L60 70', col: '#e4572e', dur: 14 },
+    { d: 'M60 70 L200 150 L330 240', col: '#7b2cbf', dur: 12 },
+    { d: 'M340 80 L200 150 L330 240', col: '#7b2cbf', dur: 11 },
+    { d: 'M120 250 L200 150 L330 240', col: '#2a9d8f', dur: 9 }
+  ];
+  var carsG = document.getElementById('cars');
+  routes.forEach(function (r, i) {
+    for (var k = 0; k < 2; k++) {
+      var g = document.createElementNS(NS, 'g');
+      var body = document.createElementNS(NS, 'rect');
+      body.setAttribute('x', -6); body.setAttribute('y', -3.2); body.setAttribute('width', 12); body.setAttribute('height', 6.4); body.setAttribute('rx', 2);
+      body.setAttribute('fill', r.col);
+      var cab = document.createElementNS(NS, 'rect');
+      cab.setAttribute('x', -2); cab.setAttribute('y', -2.4); cab.setAttribute('width', 5); cab.setAttribute('height', 4.8); cab.setAttribute('rx', 1);
+      cab.setAttribute('fill', '#bcd3e3');
+      g.appendChild(body); g.appendChild(cab);
+      var m = document.createElementNS(NS, 'animateMotion');
+      m.setAttribute('dur', r.dur + 's'); m.setAttribute('repeatCount', 'indefinite');
+      m.setAttribute('begin', '-' + (k * r.dur / 2 + i * 0.7).toFixed(2) + 's');
+      m.setAttribute('rotate', 'auto'); m.setAttribute('path', r.d);
+      g.appendChild(m);
+      carsG.appendChild(g);
+    }
+  });
+  var sc = document.getElementById('scene');
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches && sc.pauseAnimations) sc.pauseAnimations();
+
+  // ---- day chart: the same schedule the game uses (trips per hour as a share of a day's trips) ----
+  var W = 640, H = 260, L = 52, R = 12, T = 18, B = 34, pw = W - L - R, ph = H - T - B;
+  function gauss(h, c, w) { return Math.exp(-0.5 * Math.pow((h - c) / w, 2)); }
+  function norm(c, w) { return 1 / (w * 2.507); }       // area of a bell is 1 trip per resident-trip
+  var curves = {
+    wk: [
+      { key: 'work', col: 'var(--accent)', f: function (h) { return 0.55 * gauss(h, 7.7, 1.8) * norm(7.7, 1.8); } },
+      { key: 'home', col: 'var(--ok)', f: function (h) { return h >= 15 ? 0.55 * Math.min(1, (h - 15) / 2.5) * Math.exp(-Math.max(0, h - 17.5) / 2.2) * 0.22 : 0; } },
+      { key: 'leis', col: 'var(--warn)', f: function (h) { return 0.25 * gauss(h, 18.6, 1.8) * norm(18.6, 1.8); } }
+    ],
+    we: [
+      { key: 'work', col: 'var(--accent)', f: function () { return 0; } },
+      { key: 'home', col: 'var(--ok)', f: function (h) { return 0.6 * gauss(h, 18.5, 3.2) * norm(18.5, 3.2) * 0.8; } },
+      { key: 'leis', col: 'var(--warn)', f: function (h) { return 0.6 * gauss(h, 13.5, 3.2) * norm(13.5, 3.2); } }
+    ]
+  };
+  var notes = {
+    wk: 'Утренний час пик около 7:40, вечерний возврат домой после 16:00, вечером часть жителей едет отдыхать. Ночью, с 22:00 до 5:00, дороги почти пусты.',
+    we: 'В выходные на работу никто не едет. Основной поток идёт на отдых днём, около 13:30, и домой вечером. Из города приезжает больше гостей.'
+  };
+  function el(n, a) { var e = document.createElementNS(NS, n); for (var k in a) e.setAttribute(k, a[k]); return e; }
+  function drawDay(mode) {
+    var svg = document.getElementById('dayChart');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var set = curves[mode], maxV = 0.0001, h;
+    set.forEach(function (c) { for (h = 0; h <= 24; h += 0.25) maxV = Math.max(maxV, c.f(h)); });
+    maxV *= 1.15;
+    var x = function (hh) { return L + hh / 24 * pw; }, y = function (v) { return T + ph - v / maxV * ph; };
+    // night bands: before 5:00 and after 22:00
+    svg.appendChild(el('rect', { x: x(0), y: T, width: x(5) - x(0), height: ph, fill: 'var(--panel-2)' }));
+    svg.appendChild(el('rect', { x: x(22), y: T, width: x(24) - x(22), height: ph, fill: 'var(--panel-2)' }));
+    [0, 4, 8, 12, 16, 20, 24].forEach(function (hh) {
+      svg.appendChild(el('line', { x1: x(hh), x2: x(hh), y1: T, y2: T + ph, class: 'gl' }));
+      var t = el('text', { x: x(hh), y: H - 8, 'text-anchor': hh === 0 ? 'start' : hh === 24 ? 'end' : 'middle', class: 'ax' });
+      t.textContent = (hh < 10 ? '0' : '') + hh + ':00'; svg.appendChild(t);
+    });
+    svg.appendChild(el('line', { x1: L, x2: L + pw, y1: T + ph, y2: T + ph, stroke: 'var(--muted)', 'stroke-width': 1 }));
+    var nt = el('text', { x: x(2.5), y: T + 14, 'text-anchor': 'middle', class: 'ax' }); nt.textContent = 'ночь'; svg.appendChild(nt);
+    set.forEach(function (c) {
+      var d = 'M' + x(0) + ' ' + y(0), pts = '';
+      for (h = 0; h <= 24; h += 0.25) pts += ' L' + x(h).toFixed(1) + ' ' + y(c.f(h)).toFixed(1);
+      svg.appendChild(el('path', { d: d + pts + ' L' + x(24) + ' ' + y(0) + ' Z', fill: c.col, opacity: 0.16 }));
+      svg.appendChild(el('path', { d: 'M' + pts.slice(2), fill: 'none', stroke: c.col, 'stroke-width': 2.4, 'stroke-linejoin': 'round' }));
+    });
+    var yl = el('text', { x: L - 6, y: T + 8, 'text-anchor': 'end', class: 'ax' }); yl.textContent = 'поток'; svg.appendChild(yl);
+    document.getElementById('dayNote').textContent = notes[mode];
+  }
+  var bWk = document.getElementById('dayWk'), bWe = document.getElementById('dayWe');
+  function pickDay(m) { bWk.setAttribute('aria-pressed', m === 'wk'); bWe.setAttribute('aria-pressed', m === 'we'); drawDay(m); }
+  bWk.addEventListener('click', function () { pickDay('wk'); });
+  bWe.addEventListener('click', function () { pickDay('we'); });
+  pickDay('wk');
+
+  // ---- account dialog: the interface only, there is no account server yet ----
+  var dlg = document.getElementById('auth'), up = false;
+  var tabIn = document.getElementById('tabIn'), tabUp = document.getElementById('tabUp');
+  function setMode(isUp) {
+    up = isUp;
+    tabIn.setAttribute('aria-pressed', !isUp); tabUp.setAttribute('aria-pressed', isUp);
+    document.getElementById('aNameL').hidden = !isUp;
+    document.getElementById('authTitle').textContent = isUp ? 'Регистрация' : 'Вход';
+    document.getElementById('aSubmit').textContent = isUp ? 'Создать аккаунт' : 'Войти';
+    document.getElementById('aPass').setAttribute('autocomplete', isUp ? 'new-password' : 'current-password');
+    document.getElementById('aMsg').hidden = true;
+  }
+  function openAuth() {
+    setMode(false);
+    if (dlg.showModal) { try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', ''); } } else dlg.setAttribute('open', '');
+    document.getElementById('aMail').focus();
+  }
+  document.getElementById('openAuth').addEventListener('click', openAuth);
+  document.getElementById('openAuth2').addEventListener('click', openAuth);
+  tabIn.addEventListener('click', function () { setMode(false); });
+  tabUp.addEventListener('click', function () { setMode(true); });
+  document.getElementById('aClose').addEventListener('click', function () { if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); });
+  document.getElementById('authForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var mail = document.getElementById('aMail').value.trim(), pass = document.getElementById('aPass').value, msg = document.getElementById('aMsg');
+    msg.hidden = false;
+    if (!/^\S+@\S+\.\S+$/.test(mail)) { msg.textContent = 'Введите почту в формате name@example.com.'; return; }
+    if (pass.length < 8) { msg.textContent = 'Пароль должен быть не короче 8 символов.'; return; }
+    msg.textContent = 'Аккаунты пока не работают, данные никуда не отправлены. Играть можно без входа.';
+  });
+})();
+</script>
+</body>
+</html>
