@@ -331,7 +331,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         <li>Проведите линию — игра сгладит её в кривую. Проверьте цену и нажмите «Построить».</li>
         <li>Дорога соединяется с районом у его выезда. Пересечение с другой дорогой становится перекрёстком.</li>
         <li>В режиме «Правка» перекрёсток можно превратить в кольцо или поставить светофор.</li>
-        <li>Пропускная способность падает, когда дороги не справляются с потоком. Пока она на нуле, город не растёт, но игру можно продолжить и разгрузить дороги. Шкала скорости — средняя скорость машин от свободной.</li>
+        <li>Пропускная способность — доля машин, которые не стоят на месте; скорость — средняя скорость машин от свободной. Обе считаются за последние 30 секунд. Если машины надолго встают в пробку, город не растёт, но игру можно продолжить и разгрузить дороги.</li>
       </ul>
     </details>
     <button id="startBtn" class="primary" type="button">Начать</button>
@@ -2028,7 +2028,7 @@ function updateHud() {
   setText(hud.money, '$' + Math.floor(S.money).toLocaleString('en-US'));
   setText(hud.score, S.delivered);
   setText(hud.districts, S.districts.length);
-  const cap = 100 - S.meter, lvl = cap > 60 ? 'ok' : cap > 25 ? 'warn' : 'bad';
+  const cap = S.capV === undefined ? 100 : S.capV, lvl = cap > 60 ? 'ok' : cap > 25 ? 'warn' : 'bad';
   if (hud.meterFill.className !== lvl) hud.meterFill.className = lvl;
   hud.meterFill.style.transform = `scaleX(${(cap / 100).toFixed(3)})`;
   setText(hud.meterVal, Math.round(cap) + '%');
@@ -2853,14 +2853,27 @@ function step(dt) {
   }
   S.meter = clamp(S.meter + (pressure * 2.5 - 1.5) * dt, 0, 100);
   S.jamCool = Math.max(0, S.jamCool - dt);
-  // Average speed of all cars as a share of the speed they could drive; smoothed so the bar does not flicker.
+  // Capacity (share of cars that are not standing still) and speed (share of the speed they could drive), both
+  // averaged over the last 30 seconds of game time: one value per second, the newest second still filling up.
   if (S.cars.length) {
-    let sum = 0;
-    for (const car of S.cars) sum += car.vr === undefined ? 1 : car.vr;
-    const now = 100 * sum / S.cars.length, k = Math.min(1, dt * 0.6);
-    S.avgV = S.avgV === undefined ? now : S.avgV + (now - S.avgV) * k;
-  } else if (S.avgV !== undefined) S.avgV += (100 - S.avgV) * Math.min(1, dt * 0.3);
-
+    let sum = 0, moving = 0;
+    for (const car of S.cars) { sum += car.vr === undefined ? 1 : car.vr; if (car.v >= 0.1) moving++; }
+    const a = S.acc || (S.acc = { t: 0, c: 0, v: 0 });
+    a.t += dt; a.c += 100 * moving / S.cars.length * dt; a.v += 100 * sum / S.cars.length * dt;
+    if (a.t >= 1) {
+      (S.samp || (S.samp = [])).push({ c: a.c / a.t, v: a.v / a.t });
+      if (S.samp.length > 30) S.samp.shift();
+      S.acc = null;
+    }
+  }
+  {
+    let c = 0, v = 0, n = 0;
+    for (const m of S.samp || []) { c += m.c; v += m.v; n++; }
+    const a = S.acc;
+    if (a && a.t > 0) { c += a.c / a.t * a.t; v += a.v / a.t * a.t; n += a.t; }
+    S.capV = n ? c / n : 100;
+    S.avgV = n ? v / n : 100;
+  }
   for (const p of S.popups) p.age += dt;
   S.popups = S.popups.filter(p => {
     if (p.age < 1.2) return true;
@@ -2870,7 +2883,7 @@ function step(dt) {
   if (S.meter >= 100 && S.fullCool <= 0) {
     // The city is jammed, but the game goes on: no new districts until the jam eases, and the player can fix it.
     S.fullCool = 25;
-    toast('Пропускная способность исчерпана — игра продолжается. Постройте кольцо, светофор или объезд', 4200);
+    toast('Город стоит в пробке — игра продолжается. Постройте кольцо, светофор или объезд', 4200);
   }
   S.fullCool = Math.max(0, (S.fullCool || 0) - dt);
   // The best score is saved as it grows, since a game no longer ends.
@@ -2952,7 +2965,7 @@ function newGame() {
   buildGround();
   buildWater();
   placeTrees();
-  S.t = 0; S.money = START_MONEY; S.delivered = 0; S.meter = 0; S.avgV = undefined;
+  S.t = 0; S.money = START_MONEY; S.delivered = 0; S.meter = 0; S.avgV = S.capV = undefined; S.samp = []; S.acc = null;
   S.over = false; S.running = true;
   S.nextDistrictIn = 12; S.jamCool = 0; S.linkHint = undefined;
   addDistrict(0);
@@ -3198,6 +3211,12 @@ cv.addEventListener('pointerdown', e => {
       S.planDirty = true;
       drag = { mode: 'plan', down: w };
       refreshPlan();
+      return;
+    }
+    if (S.plan && !S.plan.drawing) {
+      // A finished plan is waiting: a finger put anywhere else moves the camera and the plan stays.
+      // The road is continued only from its highlighted end; "Отмена" drops it.
+      drag = { mode: 'pan', x: e.clientX, y: e.clientY };
       return;
     }
     S.plan = { raw: [w], kind: S.tool === 'avenue' ? 2 : 1, drawing: true, pts: [], valid: false, msg: '', cost: 0 };
