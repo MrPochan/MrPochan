@@ -1185,6 +1185,32 @@ function buildLights() {
 }
 function clearSel() { S.sel = S.selNode = S.selRing = null; S.selDirty = true; }
 
+// Where the player can carry on building: the end of a plan that is waiting to be built, or the free end of the last road.
+function contPoint() {
+  if (S.tool !== 'road' && S.tool !== 'avenue') return null;
+  const pl = S.plan;
+  if (pl && !pl.drawing && pl.pts.length > 1) {
+    if (pl.snapB) return null;
+    const p = pl.pts[pl.pts.length - 1], t = tangentAt(pl.pts, pl.pts.length - 1);
+    return { x: p.x, z: p.z, dx: t.x, dz: t.z, plan: true };
+  }
+  const n = S.contNode && nodes.get(S.contNode);
+  if (!n || n.edges.size !== 1 || n.door >= 0 || n.ringId) return null;
+  const o = outDir(n);
+  return { x: n.x, z: n.z, dx: o.x, dz: o.z, plan: false, node: n };
+}
+// A ring and an arrow in front of it, around the origin; the mesh is moved and pulsed every frame.
+function buildContGeo(cp) {
+  const g = new Geo(), col = cp.plan ? [0.49, 0.83, 0.42] : [1, 0.78, 0.24], N = 28;
+  const P = (r, a) => ({ x: Math.cos(a) * r, y: 0, z: Math.sin(a) * r });
+  for (let i = 0; i < N; i++) {
+    const a0 = i / N * Math.PI * 2, a1 = (i + 1) / N * Math.PI * 2;
+    g.quad(P(0.4, a0), P(0.4, a1), P(0.58, a1), P(0.58, a0), col);
+  }
+  const nx = -cp.dz, nz = cp.dx, B = (f, o) => ({ x: cp.dx * f + nx * o, y: 0, z: cp.dz * f + nz * o });
+  g.tri(B(1.25, 0), B(0.8, 0.2), B(0.8, -0.2), col, col, col);
+  return g.geometry();
+}
 // upgradeProblem is a full scan, so it is only repeated after the network or the districts change.
 function cachedProblem(e) {
   const k = `${S.netVer | 0}|${S.districts.length}|${e.id}`;
@@ -1305,12 +1331,25 @@ function snapTarget(p) {
   if (s > e.len - m) return { type: 'node', id: e.b, x: nodes.get(e.b).x, z: nodes.get(e.b).z };
   return { type: 'edge', edge: e.id, s, x: near.h.x, z: near.h.z };
 }
+// Direction a dead-end road continues in, pointing away from its end node.
+function outDir(n) {
+  const e = edges.get([...n.edges][0]);
+  if (e.b === n.id) { const q = curveAt(e.C, e.len); return { x: q.dx, z: q.dz }; }
+  const q = curveAt(e.C, 0);
+  return { x: -q.dx, z: -q.dz };
+}
 // Magnet: how a road must arrive at a snapped end. Doors take the road straight out of the driveway,
 // a road ending on another road meets it at a right angle.
 function endStub(snap) {
   if (snap.type === 'node') {
     const n = nodes.get(snap.id);
-    if (!n || n.door < 0) return null;
+    if (!n) return null;
+    if (n.door < 0) {
+      // A free dead end: the road continues smoothly in the direction the old one was heading.
+      if (n.edges.size !== 1 || n.ringId) return null;
+      const o = outDir(n);
+      return { dx: o.x, dz: o.z, reach: 1.8, either: false, soft: true };
+    }
     const d = S.districts[n.door], dw = d && d.driveways[d.doors.indexOf(n.id)];
     if (!dw) return null;
     const L = Math.hypot(dw.x1 - dw.x0, dw.z1 - dw.z0) || 1;
@@ -1334,6 +1373,7 @@ function alignEnd(pts, atStart, snap) {
   const C = P[i];
   let dx = st.dx, dz = st.dz;
   if (st.either && (C.x - T.x) * dx + (C.z - T.z) * dz < 0) { dx = -dx; dz = -dz; }
+  if (st.soft && ((C.x - T.x) * dx + (C.z - T.z) * dz) / (Math.hypot(C.x - T.x, C.z - T.z) || 1) < 0.25) return pts;
   const tc = tangentAt(P, i);
   const k = Math.max(0.3, Math.hypot(C.x - T.x, C.z - T.z) * 0.45);
   const P1 = { x: C.x + tc.x * k, z: C.z + tc.z * k }, P2 = { x: T.x + dx * k, z: T.z + dz * k };
@@ -1500,7 +1540,10 @@ function applyPlan() {
   S.plan = null;
   S.planDirty = true;
   afterNetworkChange();
-  toast(`Дорога построена · −$${Math.round(spent)}`, 2000);
+  S.contNode = nodes.has(b.id) && b.edges.size === 1 && b.door < 0 && !b.ringId ? b.id : null;
+  const more = S.contNode && !S.contHinted ? ' · продолжить можно с подсвеченного конца' : '';
+  if (S.contNode) S.contHinted = true;
+  toast(`Дорога построена · −$${Math.round(spent)}${more}`, S.contNode ? 3200 : 2000);
   return true;
 }
 
@@ -1615,7 +1658,9 @@ planMesh.renderOrder = 2;
 const selMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide }));
 selMesh.renderOrder = 2;
 const lightMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-scene.add(groundMesh, waterMesh, roadMesh, treeMesh, planMesh, selMesh, lightMesh);
+const contMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+contMesh.renderOrder = 3;
+scene.add(groundMesh, waterMesh, roadMesh, treeMesh, planMesh, selMesh, lightMesh, contMesh);
 
 const bodyGeo = new THREE.BoxGeometry(CAR_LEN, 0.09, CAR_W);
 bodyGeo.translate(0, 0.085, 0);
@@ -1644,7 +1689,7 @@ const projV = new THREE.Vector3();
 // ---------- State ----------
 const S = {
   running: false, over: false, t: 0,
-  money: START_MONEY, delivered: 0, meter: 0, speed: 1, tool: 'road', dirty: true, planDirty: true, sel: null, selNode: null, selRing: null, selDirty: true,
+  money: START_MONEY, delivered: 0, meter: 0, speed: 1, tool: 'road', dirty: true, planDirty: true, sel: null, selNode: null, selRing: null, selDirty: true, contNode: null,
   plan: null, districts: [], cars: [], popups: [], names: [], trees: [],
   nextDistrictIn: 0, jamCool: 0, bestScore: 0,
 };
@@ -2233,6 +2278,7 @@ function clearWorld() {
   nodes.clear(); edges.clear(); lanes.clear(); conns.clear(); connByPair.clear(); rings.clear();
   bk.clear(); laneCount.clear();
   S.plan = null;
+  S.contNode = null;
 }
 function newGame() {
   clearWorld();
@@ -2446,6 +2492,20 @@ cv.addEventListener('pointerdown', e => {
       removeNear(w.x, w.z, 0.6);
       return;
     }
+    const cp = contPoint();
+    if (cp && Math.hypot(w.x - cp.x, w.z - cp.z) < 1.6) {
+      if (cp.plan) {
+        // Carry on drawing the plan that is waiting to be built.
+        S.plan.drawing = true;
+        S.plan.raw.push(w);
+      } else {
+        S.plan = { raw: [{ x: cp.x, z: cp.z }, w], kind: S.tool === 'avenue' ? 2 : 1, drawing: true, pts: [], valid: false, msg: '', cost: 0 };
+      }
+      S.planDirty = true;
+      drag = { mode: 'plan', down: w };
+      refreshPlan();
+      return;
+    }
     S.plan = { raw: [w], kind: S.tool === 'avenue' ? 2 : 1, drawing: true, pts: [], valid: false, msg: '', cost: 0 };
     S.planDirty = true;
     drag = { mode: 'plan', down: w };
@@ -2562,6 +2622,14 @@ function frame(now) {
     const key = S.sel + '|' + S.selNode + '|' + S.selRing + '|' + Math.floor(S.money) + '|' + (S.netVer | 0) + '|' + S.districts.length;
     if (key !== S.selKey) { S.selKey = key; swapGeometry(selMesh, buildSelGeo()); }
   }
+  const cp = contPoint(), ck = cp ? `${cp.plan ? 1 : 0}|${cp.dx.toFixed(2)}|${cp.dz.toFixed(2)}` : '';
+  if (ck !== S.contKey) { S.contKey = ck; swapGeometry(contMesh, cp ? buildContGeo(cp) : new THREE.BufferGeometry()); }
+  contMesh.visible = !!cp;
+  if (cp) {
+    const pulse = 1 + 0.16 * Math.sin(performance.now() / 180);
+    contMesh.position.set(cp.x, hAt(cp.x, cp.z) + 0.13, cp.z);
+    contMesh.scale.set(pulse, 1, pulse);
+  }
   const lk = lightsKey();
   if (lk !== S.lightKey) { S.lightKey = lk; swapGeometry(lightMesh, buildLights()); }
   if (S.planDirty) {
@@ -2590,7 +2658,7 @@ requestAnimationFrame(frame);
 
 // Debug handle for automated checks.
 window.trafficArchitect = {
-  S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD }, addDistrict,
+  S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD }, addDistrict, contPoint,
   newGame, step, setTool, setSpeed, carPose, applyPlan, removeNear, upgradeNear, selectNear, upgradeProblem, upgradeEdge, rings, setRingLanes, ringLanesProblem, makeRoundabout, dissolveRing, resizeRing, ringProblem, toggleLight, lightState,
   planAt(points, kind) {
     S.plan = computePlan(points.map(p => ({ x: p.x, z: p.z })), kind === 'avenue' ? 2 : 1);
