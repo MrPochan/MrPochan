@@ -701,6 +701,19 @@ function rebuildConnPairs() {
   for (const c of conns.values()) connByPair.set(c.inKey + '>' + c.outKey, c.id);
 }
 // Every turn through every junction exists up front, so the junction surface can be drawn from the real turn paths.
+// Lane discipline on a two-lane ring (right-hand traffic, the right lane is the outer one): cars leave the ring
+// from the outer lane only, a car in the right lane of a two-lane road joins the outer lane, and on the ring a
+// car may move from the inner lane to the outer one but never back.
+function turnAllowed(ik, ok) {
+  const A = lanes.get(ik), B = lanes.get(ok);
+  if (!A || !B) return true;
+  const la = +ik.split('.')[2], lb = +ok.split('.')[2];
+  const outerA = la === KIND[A.kind].lanes - 1, outerB = lb === KIND[B.kind].lanes - 1;
+  if (A.ring && B.ring) return KIND[B.kind].lanes < 2 || lb >= la;
+  if (A.ring) return KIND[A.kind].lanes < 2 || outerA;
+  if (B.ring) return KIND[B.kind].lanes < 2 || KIND[A.kind].lanes < 2 || !outerA || outerB;
+  return true;
+}
 function buildAllConns() {
   for (const c of conns.values()) {
     if (lanes.get(c.inKey) && lanes.get(c.outKey)) shapeConn(c);
@@ -710,6 +723,7 @@ function buildAllConns() {
     for (const ik of n.ins) {
       for (const ok of n.outs) {
         if (ok === reverseKey(ik) && n.edges.size > 1) continue;
+        if (!turnAllowed(ik, ok)) continue;
         connFor(ik, ok);
       }
     }
@@ -760,8 +774,10 @@ function dijkstraFrom(startKey) {
       const out = lanes.get(ok);
       if (!out) continue;
       if (ok === reverseKey(u) && node.edges.size > 1) continue;     // no U-turns at junctions
+      if (!turnAllowed(u, ok)) continue;
       const cn = connFor(u, ok);
-      const nd = d + cn.len + out.len + 0.5 * (laneCount.get(ok) || 0) / KIND[out.kind].lanes;
+      const change = lane.ring && out.ring && +ok.split('.')[2] !== +u.split('.')[2] ? 0.3 : 0;   // changing lanes on a ring costs a little
+      const nd = d + cn.len + out.len + change + (out.ring ? 1.2 : 0.5) * (laneCount.get(ok) || 0) / KIND[out.kind].lanes;
       if (nd < (dist.has(ok) ? dist.get(ok) : Infinity)) {
         dist.set(ok, nd);
         prev.set(ok, { from: u, conn: cn.key });
@@ -2308,6 +2324,11 @@ function moveCar(car, leader, dt) {
         }
       }
     }
+  }
+  if (blocked && car.wait > 60) {
+    // Last resort against a lock-up: after a minute of waiting the right-of-way rules are dropped, except at a red light.
+    const jn = nextSeg && nextSeg.conn && nodes.get(nextSeg.node), ph = jn && jn.light && jn.phaseOf ? jn.phaseOf.get(nextSeg.inKey) : undefined;
+    if (ph === undefined || lightState(jn, ph) === 'g') blocked = false;
   }
   if (leader) gap = leader.s - car.s - need;
   else if (last) gap = 9;
