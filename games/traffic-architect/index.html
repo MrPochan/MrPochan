@@ -1312,19 +1312,20 @@ function lightsKey() {
   return k + edges.size + '|' + (S.netVer | 0);
 }
 // Stop lines and signal posts at each arm of a signalised junction.
-// A traffic sign on a post: a plaque lying flat above the post so it reads from above. 'main' is the yellow
-// diamond (main road), 'yield' the red-bordered triangle that points back at the driver.
+// A traffic sign on a post, standing at the right of the approaching car and turned towards it. It leans back a
+// little, so it also reads from above. 'main' is the yellow diamond (main road), 'yield' the red-bordered
+// triangle with its point down. (fx, fz) is the direction the approaching car is heading.
 function signPost(g, x, y, z, fx, fz, type) {
-  g.box(x - 0.022, y, z - 0.022, x + 0.022, y + 0.4, z + 0.022, 0x2b2f36);
-  const rx = -fz, rz = fx, h = y + 0.43;
-  const W = (u, v, dy) => ({ x: x + fx * u + rx * v, y: h + dy, z: z + fz * u + rz * v });
-  const poly = (pts, dy, hex) => { const c = rgb(hex); for (let i = 1; i < pts.length - 1; i++) g.tri(W(pts[0][0], pts[0][1], dy), W(pts[i][0], pts[i][1], dy), W(pts[i + 1][0], pts[i + 1][1], dy), c, c, c); };
+  g.box(x - 0.02, y, z - 0.02, x + 0.02, y + 0.52, z + 0.02, 0x2b2f36);
+  const rx = -fz, rz = fx, ph = 1.05, cph = Math.cos(ph), sph = Math.sin(ph), cy = y + 0.68;
+  const W = (u, v, d) => ({ x: x + rx * u + fx * sph * v - fx * cph * d, y: cy + cph * v + sph * d, z: z + rz * u + fz * sph * v - fz * cph * d });
+  const poly = (pts, d, hex) => { const c = rgb(hex); for (let i = 1; i < pts.length - 1; i++) g.tri(W(pts[0][0], pts[0][1], d), W(pts[i][0], pts[i][1], d), W(pts[i + 1][0], pts[i + 1][1], d), c, c, c); };
   if (type === 'main') {
-    poly([[0.19, 0], [0, 0.19], [-0.19, 0], [0, -0.19]], 0, 0xffffff);
-    poly([[0.15, 0], [0, 0.15], [-0.15, 0], [0, -0.15]], 0.004, 0xf2c94c);
+    poly([[0, 0.2], [0.2, 0], [0, -0.2], [-0.2, 0]], 0, 0xffffff);
+    poly([[0, 0.16], [0.16, 0], [0, -0.16], [-0.16, 0]], 0.004, 0xf2c94c);
   } else {
-    poly([[-0.2, 0], [0.14, 0.2], [0.14, -0.2]], 0, 0xd62d20);
-    poly([[-0.11, 0], [0.1, 0.12], [0.1, -0.12]], 0.004, 0xffffff);
+    poly([[0, -0.19], [-0.22, 0.15], [0.22, 0.15]], 0, 0xd62d20);
+    poly([[0, -0.1], [-0.12, 0.1], [0.12, 0.1]], 0.004, 0xffffff);
   }
 }
 function buildLights() {
@@ -1334,10 +1335,10 @@ function buildLights() {
       for (const a of junctionArms(n)) {
         const e = a.e, dir = e.b === n.id ? 0 : 1;
         if (!lanes.has(`L${e.id}.${dir}.0`)) continue;
-        const s = a.atA ? a.t + 0.35 : e.len - a.t - 0.35, q = curveAt(e.C, s);
-        const dx = a.atA ? -q.dx : q.dx, dz = a.atA ? -q.dz : q.dz;       // the way an approaching car is heading
-        const nx = dz, nz = -dx;
-        signPost(g, q.x + nx * (a.hw + 0.16), q.y, q.z + nz * (a.hw + 0.16), dx, dz, n.prio.main.includes(e.id) ? 'main' : 'yield');
+        const s = a.atA ? a.t + 0.85 : e.len - a.t - 0.85, q = curveAt(e.C, s);
+        const fx = a.atA ? -q.dx : q.dx, fz = a.atA ? -q.dz : q.dz;       // the way an approaching car is heading
+        const rx = -fz, rz = fx;                                          // its right-hand side: signs stand there
+        signPost(g, q.x + rx * (a.hw + 0.18), q.y, q.z + rz * (a.hw + 0.18), fx, fz, n.prio.main.includes(e.id) ? 'main' : 'yield');
       }
     }
     if (!n.light || !n.phaseOf) continue;
@@ -2121,16 +2122,17 @@ function arrowGlyph(g, p, fx, fz, type, sc = 1) {
   const stroke = pts => {
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i], b = pts[i + 1], du = b[0] - a[0], dv = b[1] - a[1], L = Math.hypot(du, dv) || 1;
-      const nu = -dv / L * 0.022, nv = du / L * 0.022;
+      const nu = -dv / L * 0.017, nv = du / L * 0.017;
       g.quad(W(a[0] + nu, a[1] + nv), W(b[0] + nu, b[1] + nv), W(b[0] - nu, b[1] - nv), W(a[0] - nu, a[1] - nv), col);
     }
   };
   const head = (u, v, du, dv) => {
-    const L = Math.hypot(du, dv) || 1, a = du / L, b = dv / L, pu = -b * 0.075, pv = a * 0.075;
-    g.tri(W(u + a * 0.1, v + b * 0.1), W(u - a * 0.01 + pu, v - b * 0.01 + pv), W(u - a * 0.01 - pu, v - b * 0.01 - pv), col, col, col);
+    const L = Math.hypot(du, dv) || 1, a = du / L, b = dv / L, pu = -b * 0.05, pv = a * 0.05;
+    g.tri(W(u + a * 0.085, v + b * 0.085), W(u - a * 0.01 + pu, v - b * 0.01 + pv), W(u - a * 0.01 - pu, v - b * 0.01 - pv), col, col, col);
   };
-  if (type === 'S') { stroke([[-0.22, 0], [0.1, 0]]); head(0.1, 0, 1, 0); }
-  else { const sg = type === 'L' ? -1 : 1; stroke([[-0.22, 0], [-0.02, 0], [0.08, 0.1 * sg]]); head(0.08, 0.1 * sg, 0.1, 0.1 * sg); }
+  // About 0.4 long and 0.2 wide at most, so every arrow fits in a lane.
+  if (type === 'S') { stroke([[-0.2, 0], [0.1, 0]]); head(0.1, 0, 1, 0); }
+  else { const sg = type === 'L' ? -1 : 1; stroke([[-0.2, 0], [-0.04, 0], [0.04, 0.065 * sg]]); head(0.04, 0.065 * sg, 0.08, 0.065 * sg); }
 }
 function drawEdge(g, e, ta, tb) {
   const C = e.C, k = KIND[e.kind], s0 = ta, s1 = C.len - tb;
@@ -2257,6 +2259,19 @@ function buildRoads() {
     return a ? (a.td !== undefined ? a.td : a.t) : 0;
   };
   for (const e of edges.values()) drawEdge(g, e, trimAt(nodes.get(e.a), e), trimAt(nodes.get(e.b), e));
+  // Give-way markings: white triangles across the approach of every road that gives way.
+  for (const n of nodes.values()) {
+    if (!n.prio || n.prio.equal || (n.light && n.phaseOf)) continue;
+    for (const a of junctionArms(n)) {
+      const e = a.e;
+      if (n.prio.main.includes(e.id) || !lanes.has(`L${e.id}.${e.b === n.id ? 0 : 1}.0`)) continue;
+      const s = a.atA ? a.t + 0.2 : e.len - a.t - 0.2, q = curveAt(e.C, s);
+      const fx = a.atA ? -q.dx : q.dx, fz = a.atA ? -q.dz : q.dz, rx = -fz, rz = fx;
+      const lo = e.oneway ? -a.hw + 0.03 : 0.03, hi = a.hw - 0.03, col = rgb(COL.white), y = q.y + 0.02;
+      const P = (u, v) => ({ x: q.x + fx * u + rx * v, y, z: q.z + fz * u + rz * v });
+      for (let v = lo; v + 0.13 <= hi + 1e-6; v += 0.15) g.tri(P(-0.15, v + 0.065), P(0.0, v), P(0.0, v + 0.13), col, col, col);   // points at the driver
+    }
+  }
   // Lane arrows before a crossing: the turns each lane may take.
   const turnsOf = new Map();
   for (const c of conns.values()) {
@@ -2271,7 +2286,7 @@ function buildRoads() {
     const ln = lanes.get(key);
     if (!ln || ln.len < 1.2 || (KIND[ln.kind].lanes < 2 && set.size >= 3)) continue;     // a single lane that allows everything needs none
     const q = curveAt(ln.C, ln.len - 0.65);
-    for (const t of ['L', 'S', 'R']) if (set.has(t)) arrowGlyph(g, q, q.dx, q.dz, t, 1.2);
+    for (const t of ['L', 'S', 'R']) if (set.has(t)) arrowGlyph(g, q, q.dx, q.dz, t);
   }
   for (const n of nodes.values()) {
     if (n.door >= 0) continue;
@@ -2905,7 +2920,18 @@ function buildSelGeo() {
   const g = new Geo();
   const rg = S.selRing && rings.get(S.selRing), nd = S.selNode && nodes.get(S.selNode);
   if (rg) g.disk(rg.x, rg.y + 0.08, rg.z, rg.r + 0.4, [0.45, 0.7, 1], 32);
-  else if (nd) g.disk(nd.x, nd.y + 0.08, nd.z, 0.6, [0.45, 0.7, 1], 24);
+  else if (nd) {
+    g.disk(nd.x, nd.y + 0.08, nd.z, 0.6, [0.45, 0.7, 1], 24);
+    if (nd.prio && !nd.light) {
+      // Which road is the main one: yellow; the roads that give way: red.
+      for (const a of junctionArms(nd)) {
+        const main = nd.prio.equal ? null : nd.prio.main.includes(a.e.id), L = a.e.len;
+        const s0 = a.atA ? a.t : Math.max(0, L - a.t - 3.5), s1 = a.atA ? Math.min(L, a.t + 3.5) : L - a.t;
+        const col = main === null ? [0.45, 0.7, 1] : main ? [1, 0.82, 0.15] : [0.92, 0.3, 0.3];
+        ribbon(g, a.e.C, 0, a.hw, () => col, 0.09, s0, s1);
+      }
+    }
+  }
   const e = S.sel && edges.get(S.sel);
   if (!e) return g.geometry();
   let col = [0.45, 0.7, 1], hw = KIND[e.kind].half;
@@ -2957,7 +2983,7 @@ function updateNodeUi() {
       if (ringProbs[k - 1]) msg = msg || `${RING_SIZES[k].name}: ${ringProbs[k - 1]}`;
     }
     if (n.prio && !n.light) setText($('nodePrio'), n.prio.equal ? 'Равнозначный перекрёсток' : 'Главная дорога: сменить');
-    msg = msg || (n.light ? 'Светофор подстраивается под очередь' : n.prio && n.prio.equal ? 'Равнозначный перекрёсток: помеха справа. Кнопка выбирает главную дорогу' : 'Знаки: жёлтый ромб — главная дорога, треугольник — уступи дорогу. Кольцо — поток без остановок, светофор — для плотного потока');
+    msg = msg || (n.light ? 'Светофор подстраивается под очередь' : n.prio && n.prio.equal ? 'Равнозначный перекрёсток: помеха справа. Кнопка выбирает главную дорогу' : 'Жёлтым подсвечена главная дорога (ромб), красным — те, кто уступает (треугольник и зубья на асфальте)');
   }
   setText($('nodeMsg'), msg);
 }
