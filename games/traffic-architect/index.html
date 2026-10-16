@@ -1,0 +1,4049 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>RoadFlow</title>
+<style>
+/* Full-screen 3D view with a dark HUD. Dark is the default; light follows the system setting. */
+:root {
+  --bg: #12171c;
+  --panel: rgba(22, 26, 31, 0.92);
+  --line: rgba(255, 255, 255, 0.09);
+  --fg: #edf2f6;
+  --muted: #8b97a3;
+  --accent: #5ab4ff;
+  --money: #9be58a;
+  --ok: #7ed36b;
+  --warn: #f2b84b;
+  --bad: #ff6159;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #dfe7ec;
+    --panel: rgba(250, 252, 253, 0.95);
+    --line: rgba(20, 30, 40, 0.1);
+    --fg: #1c242c;
+    --muted: #5f6b77;
+    --accent: #1677d2;
+    --money: #237a2c;
+    --ok: #2f9d4f;
+    --warn: #b97a06;
+    --bad: #d2362e;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #dfe7ec;
+  --panel: rgba(250, 252, 253, 0.95);
+  --line: rgba(20, 30, 40, 0.1);
+  --fg: #1c242c;
+  --muted: #5f6b77;
+  --accent: #1677d2;
+  --money: #237a2c;
+  --ok: #2f9d4f;
+  --warn: #b97a06;
+  --bad: #d2362e;
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  overflow: hidden;
+  font: 13px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
+.dlabel {
+  position: absolute; left: 0; top: 0; white-space: nowrap;
+  display: flex; gap: 5px; align-items: center; padding: 2px 6px; border-radius: 7px;
+  background: rgba(16, 20, 24, 0.8); color: #f1f5f8; font-size: 11px; font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.dlabel .st { font-size: 10px; padding: 0 5px; border-radius: 5px; background: var(--warn); color: #1a1a1a; }
+.dlabel .st.bad { background: var(--bad); color: #fff; }
+.jam {
+  position: absolute; left: 0; top: 0; padding: 1px 7px; border-radius: 999px; white-space: nowrap;
+  background: #d93a2f; color: #fff; font-size: 11px; font-weight: 700; border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.jam.turn { background: #e08a1c; }
+.who { margin: 10px 0 0; font-size: 13px; color: var(--muted); text-align: center; }
+.who a { color: var(--accent); }
+.popup {
+  position: absolute; left: 0; top: 0; padding: 2px 7px; border-radius: 7px;
+  background: #f2c14e; color: #3b2a00; font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+
+.hud { position: fixed; pointer-events: none; z-index: 2; }
+.k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.top {
+  top: 0; left: 0; right: 0;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) max(12px, env(safe-area-inset-right, 0px)) 0 max(12px, env(safe-area-inset-left, 0px));
+}
+.block { display: grid; gap: 6px; pointer-events: auto; min-width: 0; }
+.block.right { justify-items: end; }
+.money {
+  width: max-content; padding: 4px 12px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line);
+  font-size: 22px; font-weight: 700; color: var(--money); font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.meter {
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; min-width: 190px; padding: 5px 10px 7px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.track { grid-column: 1 / -1; grid-row: 2; height: 7px; border-radius: 4px; background: rgba(127, 127, 127, 0.22); overflow: hidden; }
+.track i {
+  display: block; height: 100%; width: 100%; background: var(--ok);
+  transform-origin: left center; transform: scaleX(0); transition: background 0.3s;
+}
+.track i.warn { background: var(--warn); }
+.track i.bad { background: var(--bad); }
+.meter b { min-width: 3em; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
+.stats-row { display: grid; gap: 6px; justify-items: end; }
+.stat {
+  display: flex; align-items: baseline; gap: 6px; padding: 5px 10px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line);
+}
+.stat b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.speed {
+  display: flex; gap: 2px; padding: 3px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line);
+}
+.sp {
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  font: 700 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding: 5px 9px; border-radius: 7px;
+}
+.sp.on { background: var(--accent); color: #0b1620; }
+.views { width: max-content; }
+.legend {
+  width: 190px; padding: 5px 10px 6px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line);
+}
+.legend i {
+  display: block; height: 7px; border-radius: 4px;
+  background: linear-gradient(90deg, #2fc752 0%, #e8d92c 30%, #f08a24 55%, #e0302a 80%, #6e0a1a 100%);
+}
+.legend div { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+.bottom {
+  left: 0; right: 0; bottom: 0;
+  display: grid; justify-items: center; gap: 8px;
+  padding: 0 max(12px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 12px) max(12px, env(safe-area-inset-left, 0px));
+}
+.hint {
+  font-size: 12px; font-weight: 600; text-align: center; padding: 5px 12px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--line);
+}
+.bar {
+  display: flex; gap: 4px; padding: 6px; border-radius: 16px; pointer-events: auto;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.tool {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  min-width: 62px; padding: 7px 5px 6px; border-radius: 12px; cursor: pointer;
+  background: transparent; color: var(--fg); border: 1px solid transparent;
+  font: 600 11px/1.1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.tool.on { background: rgba(90, 180, 255, 0.16); border-color: var(--accent); }
+.tool svg { width: 34px; height: 22px; }
+
+.planbar {
+  position: fixed; left: 0; right: 0; z-index: 3;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 128px);
+  display: flex; justify-content: center; padding: 0 12px; pointer-events: none;
+}
+.planbar-in {
+  pointer-events: auto; display: flex; align-items: center; gap: 10px;
+  padding: 8px 8px 8px 14px; border-radius: 14px; width: 100%; max-width: 460px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.editin { flex-wrap: wrap; padding: 10px; }
+.editin .pinfo { flex-basis: 100%; padding: 0 4px; }
+.editin .btn { flex: 1 1 0; }
+.editin #editClose, .editin #nodeClose { flex: 0 0 46px; }
+.nodein .btn { flex: 1 1 28%; padding: 9px 6px; }
+.nodein #nodeClose { flex: 0 0 46px; }
+.pinfo { display: grid; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.pcost { font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums; }
+.pmsg { font-size: 12px; color: var(--muted); }
+.btn {
+  border: 0; border-radius: 10px; padding: 9px 14px; cursor: pointer; white-space: nowrap;
+  font: 700 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.btn.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+.btn.go { background: var(--ok); color: #0b1620; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.toast {
+  position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 112px);
+  transform: translate(-50%, -8px); opacity: 0; pointer-events: none; z-index: 5;
+  max-width: calc(100% - 32px); padding: 9px 14px; border-radius: 12px; text-align: center;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  font-weight: 600; font-size: 13px; transition: opacity 0.25s, transform 0.25s;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.overlay {
+  position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+  padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));
+  background: rgba(8, 12, 16, 0.5); backdrop-filter: blur(3px);
+}
+.card {
+  width: min(360px, 100%); padding: 22px 20px 20px; border-radius: 18px;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+.card h1 { margin: 0 0 8px; font-size: 22px; line-height: 1.15; text-wrap: balance; }
+.card p { margin: 0; color: var(--muted); font-size: 14px; }
+.card ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; display: grid; gap: 4px; }
+.logo { margin: 0; font-size: 56px; line-height: 1; font-weight: 800; letter-spacing: -2px; color: #fff; text-shadow: 0 3px 18px rgba(0, 0, 0, 0.55); }
+.logo b { color: #6cc0ff; }
+.tag { margin: 8px 0 0; font-weight: 700; font-size: 15px; color: #fff; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); }
+#startOverlay { background: linear-gradient(180deg, rgba(8, 12, 16, 0.35), rgba(8, 12, 16, 0) 35%, rgba(8, 12, 16, 0) 60%, rgba(8, 12, 16, 0.45)); backdrop-filter: none; }
+#startOverlay.menu { flex-direction: column; justify-content: space-between; align-items: center; padding-top: calc(env(safe-area-inset-top, 0px) + 56px); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 22px); }
+.menu-top { text-align: center; }
+.menu-card { padding: 16px 16px 14px; backdrop-filter: blur(6px); }
+.menu-card p { font-size: 14px; color: var(--fg); }
+.menu-card summary { margin-top: 10px; cursor: pointer; color: var(--accent); font-weight: 600; font-size: 13px; }
+.menu-card .primary { margin-top: 12px; }
+body.demo .hud, body.demo .planbar, body.demo .toast, body.demo #labels { display: none !important; }
+.primary {
+  width: 100%; margin-top: 16px; padding: 12px; border: 0; border-radius: 12px; cursor: pointer;
+  background: var(--accent); color: #0b1620;
+  font: 700 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.stats div { background: rgba(127, 127, 127, 0.12); border-radius: 12px; padding: 10px 6px; text-align: center; }
+.stats span { display: block; font-size: 11px; color: var(--muted); }
+.stats b { font-size: 20px; font-variant-numeric: tabular-nums; }
+
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .track i, .toast { transition: none; }
+}
+</style>
+</head>
+<body>
+<canvas id="world" aria-label="Карта города"></canvas>
+<div id="labels" class="labels"></div>
+
+<header class="hud top">
+  <div class="block">
+    <div id="money" class="money">$600</div>
+    <div class="meter">
+      <span class="k">Настроение</span>
+      <div class="track"><i id="moodFill"></i></div>
+      <b id="moodVal">75%</b>
+    </div>
+    <div class="meter">
+      <span class="k">Скорость</span>
+      <div class="track"><i id="speedFill"></i></div>
+      <b id="speedVal">100%</b>
+    </div>
+    <div class="speed views" role="group" aria-label="Режим карты">
+      <button class="sp vw on" data-view="0" type="button">Обычный</button>
+      <button class="sp vw" data-view="1" type="button">Пробки</button>
+      <button class="sp vw" data-view="2" type="button">Скорость</button>
+    </div>
+    <div id="legend" class="legend" hidden>
+      <i></i>
+      <div><span id="legLo">свободно</span><span id="legHi">пробка</span></div>
+    </div>
+  </div>
+  <div class="block right">
+    <div class="stats-row">
+      <div class="stat"><span class="k" id="dayName">Вс</span><b id="clock">17:00</b></div>
+      <div class="stat"><span class="k">Жители</span><b id="popVal">0</b></div>
+      <div class="stat"><span class="k">В пути</span><b id="tripVal">—</b></div>
+      <div class="stat"><span class="k">Доехали</span><b id="score">0</b></div>
+    </div>
+    <div class="speed" role="group" aria-label="Скорость">
+      <button class="sp on" data-speed="1" type="button">1×</button>
+      <button class="sp" data-speed="2" type="button">2×</button>
+      <button class="sp" data-speed="4" type="button">4×</button>
+    </div>
+  </div>
+</header>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<div id="planBar" class="planbar" hidden>
+  <div class="planbar-in">
+    <div class="pinfo">
+      <b id="planCost" class="pcost">$0</b>
+      <span id="planMsg" class="pmsg"></span>
+    </div>
+    <button id="planCancel" class="btn ghost" type="button">Отмена</button>
+    <button id="planApply" class="btn go" type="button">Построить</button>
+  </div>
+</div>
+
+<div id="editBar" class="planbar" hidden>
+  <div class="planbar-in editin">
+    <div class="pinfo">
+      <b id="editTitle" class="pcost">Дорога</b>
+      <span id="editMsg" class="pmsg"></span>
+    </div>
+    <button id="editClose" class="btn ghost" type="button" aria-label="Закрыть">✕</button>
+    <button id="editRemove" class="btn ghost" type="button">Снести</button>
+    <button id="editOneway" class="btn ghost" type="button">Двустороннее</button>
+    <button id="editUpgrade" class="btn go" type="button">Улучшить</button>
+  </div>
+</div>
+
+<div id="nodeBar" class="planbar" hidden>
+  <div class="planbar-in editin nodein">
+    <div class="pinfo">
+      <b id="nodeTitle" class="pcost">Перекрёсток</b>
+      <span id="nodeMsg" class="pmsg"></span>
+    </div>
+    <button id="nodeClose" class="btn ghost" type="button" aria-label="Закрыть">✕</button>
+    <button id="nodeLight" class="btn go" type="button">Светофор</button>
+    <button id="nodePrio" class="btn ghost" type="button">Приоритет</button>
+    <button id="ringLanes" class="btn go" type="button">2 полосы</button>
+    <button id="ringOff" class="btn ghost" type="button">Убрать кольцо</button>
+    <button id="ring1" class="btn ghost" type="button">S</button>
+    <button id="ring2" class="btn ghost" type="button">M</button>
+    <button id="ring3" class="btn ghost" type="button">L</button>
+  </div>
+</div>
+
+<nav class="hud bottom">
+  <div id="hint" class="hint"></div>
+  <div class="bar">
+    <button class="tool on" data-tool="road" type="button">
+      <svg viewBox="0 0 34 22"><rect x="0" y="5" width="34" height="12" rx="2" fill="#4a5058"/><path d="M3 11h28" stroke="#f4f4ef" stroke-width="1.6" stroke-dasharray="4 3"/></svg>
+      <span>Дорога</span>
+    </button>
+    <button class="tool" data-tool="avenue" type="button">
+      <svg viewBox="0 0 34 22"><rect x="0" y="1" width="34" height="20" rx="2" fill="#4a5058"/><path d="M2 8.5h30M2 13.5h30" stroke="#f2c94c" stroke-width="1"/><path d="M3 11h28" stroke="#f4f4ef" stroke-width="1" stroke-dasharray="4 3"/></svg>
+      <span>Проспект</span>
+    </button>
+    <button class="tool" data-tool="edit" type="button">
+      <svg viewBox="0 0 34 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l1-5 10-10 4 4-10 10zM18 5l4 4"/></svg>
+      <span>Правка</span>
+    </button>
+    <button class="tool" data-tool="bulldoze" type="button">
+      <svg viewBox="0 0 34 22"><path d="M9 4l16 14M25 4L9 18" stroke="#ff6159" stroke-width="3" stroke-linecap="round"/></svg>
+      <span>Снос</span>
+    </button>
+    <button class="tool" data-tool="pan" type="button">
+      <svg viewBox="0 0 34 22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M17 3v16M8 11h18M17 3l-3 3M17 3l3 3M17 19l-3-3M17 19l3-3M8 11l3-3M8 11l3 3M26 11l-3-3M26 11l-3 3"/></svg>
+      <span>Камера</span>
+    </button>
+  </div>
+</nav>
+
+<div id="startOverlay" class="overlay menu">
+  <div class="menu-top">
+    <h1 id="startTitle" class="logo"><span>Road</span><b>Flow</b></h1>
+    <p class="tag">Строй дороги. Пусти поток.</p>
+  </div>
+  <section class="card menu-card" aria-labelledby="startTitle">
+    <p>Город живёт по часам: утром едут на работу, вечером домой и на отдых. Стройте дороги, чтобы всем хватало потока.</p>
+    <details>
+      <summary>Как играть</summary>
+      <ul>
+        <li>Районы бывают жилые 🏠, офисные 🏢, промышленные 🏭 и зоны отдыха 🎡, плюс выезд 🚪 в другой город. Сутки идут 10 минут, в выходные на работу не ездят. Если поездка жителя длится дольше, чем в 2,5 раза средняя, он разворачивается домой, и настроение падает. Оранжевый значок ↩ показывает, где развернулись.</li>
+        <li>Жители — настоящие люди: машин горожан не больше, чем жителей, а приезжие из других городов считаются отдельно. Над каждым районом видно, сколько людей в нём сейчас. Красный значок 🚗 отмечает пробку. Жители приходят и уходят вслед за настроением.</li>
+        <li>Проведите линию — игра сгладит её в кривую. Проверьте цену и нажмите «Построить».</li>
+        <li>Дорога соединяется с районом у его выезда. Пересечение с другой дорогой становится перекрёстком.</li>
+        <li>В режиме «Правка» перекрёсток можно превратить в кольцо или поставить светофор.</li>
+        <li>Шкала скорости — средняя скорость машин от свободной за последние 30 секунд. Кнопки «Пробки» и «Скорость» подсвечивают участки дорог от зелёного к бордовому. Если машины надолго встают в пробку, город не растёт, но игру можно продолжить и разгрузить дороги.</li>
+      </ul>
+    </details>
+    <p id="whoami" class="who" hidden></p>
+    <button id="startBtn" class="primary" type="button">Начать</button>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+'use strict';
+
+if (!window.THREE) {
+  document.getElementById('hint').textContent = 'Не загрузилась 3D-библиотека. Проверьте интернет и обновите страницу';
+  return;
+}
+
+// ---------- Config ----------
+const FIELD = 72;                      // field size in world units (one unit ≈ a lane width ×10)
+const JAM_T = 6;                       // seconds stuck before a car counts as jammed
+const ROAD_H = 0.04, BRIDGE_H = 0.3, WATER_Y = 0.01;
+const RAMP = 1.4;                       // length of the bridge ramp on each bank
+const RIVER_HALF = 1.3, RIVER_AMP = 7.5, RIVER_FREQ = 0.1, RIVER_BASE = 36, RIVER_PHASE = 0.8;
+const riverY = x => RIVER_BASE + RIVER_AMP * Math.sin(x * RIVER_FREQ + RIVER_PHASE);
+const waterDist = (x, z) => Math.abs(z - riverY(x)) - RIVER_HALF;   // negative inside the water
+const isWater = (x, z) => waterDist(x, z) < 0;
+const KIND = {
+  1: { name: 'Дорога', lanes: 1, speed: 1.3, head: 0.5, unit: 9, half: 0.3, offs: [0.16] },
+  2: { name: 'Проспект', lanes: 2, speed: 1.8, head: 0.3, unit: 22, half: 0.56, offs: [0.15, 0.43] },
+  3: { name: 'Кольцо', lanes: 1, speed: 1.0, head: 0.4, unit: 9, half: 0.24, offs: [0] },   // one-way ring road
+  4: { name: 'Кольцо, 2 полосы', lanes: 2, speed: 1.2, head: 0.35, unit: 15, half: 0.42, offs: [-0.15, 0.15] },
+};
+const ONEWAY_OFFS = { 1: [0], 2: [-0.15, 0.15] };    // lane offsets on a one-way road: the road is not shared, so the lanes are centred
+const RING_SIZES = { 1: { r: 1.0, name: 'S', cost: 45, v: 1.0 }, 2: { r: 1.5, name: 'M', cost: 70, v: 1.1 }, 3: { r: 2.1, name: 'L', cost: 100, v: 1.3 } };   // v: speed on the ring
+const RING2_EXTRA = { 1: 25, 2: 40, 3: 60 };
+const ringTotal = (size, lanes) => RING_SIZES[size].cost + (lanes === 2 ? RING2_EXTRA[size] : 0);
+const LIGHT_COST = 30, LIGHT_MIN_GREEN = 5, LIGHT_MAX_GREEN = 16, LIGHT_YELLOW = 0.7, LIGHT_ALLRED = 0.5;
+const WATER_EXTRA = 1.5;               // water length costs (1 + WATER_EXTRA) times the land price
+const CAR_LEN = 0.5, CAR_W = 0.24, MIN_GAP = 0.25, TIME_GAP = 0.5, ACCEL = 1.2, DECEL = 2.5;
+const MAX_CARS = 400;
+const FOV = 40, ZMIN = 12, ZMAX = 200, PITCH = 0.95;
+const SNAP_NODE = 1.0, SNAP_EDGE = 0.6;  // how close an end of a plan must be to snap
+const PLAN_STEP = 0.2, PLAN_MIN = 1.0;
+const START_MONEY = 900;
+const MAX_DISTRICTS = 26, MIN_DISTRICT_GAP = 17;
+// City life: a day lasts 5 minutes of game time, a week 7 days (days 0-4 are working days).
+const DAY_LEN = 600, TRIP_FACTOR = 2.5, TRIP_MIN = 25, DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const DTYPE = {
+  home: { icon: '🏠', name: 'Жилой район' },
+  work: { icon: '🏢', name: 'Офисы' },
+  industry: { icon: '🏭', name: 'Промзона' },
+  leisure: { icon: '🎡', name: 'Отдых' },
+  exit: { icon: '🚪', name: 'Выезд из города' },
+};
+// Where a trip with a given purpose may end.
+const PURPOSE_TYPES = {
+  work: ['work', 'industry'], home: ['home'], leisure: ['leisure'], visit: ['home', 'work', 'leisure'],
+  out: ['exit'], 'in-work': ['work', 'industry'], 'in-leisure': ['leisure'],
+};
+const QUEUE_CAP = 24;
+const SPEEDS = [1, 2, 4];
+const NAMES = ['Сосновый', 'Речной', 'Центральный', 'Зелёный', 'Солнечный', 'Западный', 'Восточный', 'Яблоневый', 'Ясный', 'Тихий', 'Озёрный', 'Парковый', 'Заречный', 'Липовый', 'Северный', 'Новый', 'Лесной', 'Вишнёвый', 'Дубовый', 'Степной'];
+const WALLS = [0xf1e7cf, 0xcfe3f2, 0xf4d35e, 0xe8c7b5, 0xd9e4dd, 0xf6f1e4];
+const ROOFS = [0xe4572e, 0x2e86ab, 0xf3a712, 0x7b2cbf, 0x2a9d8f, 0xef6f8e];   // also the colour of cars heading there
+const CAR_COLORS = [0xe4572e, 0xf3a712, 0xf2f2f2, 0x2e86ab, 0x7b2cbf, 0x2a9d8f, 0xef6f8e, 0x3a3f47, 0xffd166];
+const JAM_COLOR = 0xff3b30;
+const GRASS = 0x7b9f56;
+const COL = {
+  asphalt: 0x4a5058, bridge: 0x5b626c, curb: 0xb9bfc6, white: 0xf4f4ef, yellow: 0xf2c94c,
+  pillar: 0x9aa3ad, water: 0x2f77a6, bank: 0xb3a072, pave: 0x8d949c, dirt: 0x6e5a43,
+  deck: 0x9ba2aa, fascia: 0x6f767f, rail: 0xe9edf0, pier: 0xb3bac2,
+  trunk: 0x7a5636, outer: 0x58803f,
+};
+const HINTS = {
+  road: 'Проведите линию — дорога. Два пальца — камера',
+  avenue: 'Проведите линию — проспект. Тап по дороге — расширить участок',
+  bulldoze: 'Нажимайте или проводите по дороге, чтобы снести участок',
+  edit: 'Тап по участку дороги или перекрёстку',
+  pan: 'Тяните, чтобы двигать камеру',
+};
+
+// ---------- Helpers ----------
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const ss = t => t * t * (3 - 2 * t);
+const hAt = (x, z) => ROAD_H + (BRIDGE_H - ROAD_H) * (1 - ss(clamp(waterDist(x, z) / RAMP, 0, 1)));
+const rgb = h => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
+const dist2 = (a, b) => Math.max(20, Math.hypot(a.x - b.x, a.y - b.y));
+const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+const polyLen = p => { let L = 0; for (let i = 1; i < p.length; i++) L += Math.hypot(p[i].x - p[i - 1].x, p[i].z - p[i - 1].z); return L; };
+const cumOf2 = p => { const c = [0]; for (let i = 1; i < p.length; i++) c.push(c[i - 1] + Math.hypot(p[i].x - p[i - 1].x, p[i].z - p[i - 1].z)); return c; };
+const nominalCost = (kind, len, frac) => len * KIND[kind].unit * (1 + WATER_EXTRA * frac);
+function hash2(i, j) {
+  let h = Math.imul(i + 1, 0x27d4eb2d) ^ Math.imul(j + 1, 0x165667b1);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+}
+
+// ---------- Geometry ----------
+// Vertex-coloured triangle soup. Normals come from computeVertexNormals (flat shading).
+class Geo {
+  constructor() { this.p = []; this.c = []; }
+  v(p, c) { this.p.push(p.x, p.y, p.z); this.c.push(c[0], c[1], c[2]); }
+  tri(a, b, d, ca, cb, cd) { this.v(a, ca); this.v(b, cb); this.v(d, cd); }
+  quad(a, b, d, e, col) { this.tri(a, b, d, col, col, col); this.tri(a, d, e, col, col, col); }
+  quadV(a, b, d, e, ca, cb, cd, ce) { this.tri(a, b, d, ca, cb, cd); this.tri(a, d, e, ca, cd, ce); }
+  box(x0, y0, z0, x1, y1, z1, hex) {
+    const col = rgb(hex);
+    const p = [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]]
+      .map(([x, y, z]) => ({ x, y, z }));
+    const faces = [[0, 1, 2, 3], [4, 7, 6, 5], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]];
+    for (const [a, b, c, d] of faces) this.quad(p[a], p[b], p[c], p[d], col);
+  }
+  // col is a colour, or a function of position so a disk can follow the same surface colour as the road around it.
+  disk(cx, y, cz, r, col, n = 18) {
+    const colOf = typeof col === 'function' ? col : () => col;
+    const c0 = { x: cx, y, z: cz };
+    for (let i = 0; i < n; i++) {
+      const a0 = (i / n) * Math.PI * 2, a1 = ((i + 1) / n) * Math.PI * 2;
+      const p0 = { x: cx + Math.cos(a0) * r, y, z: cz + Math.sin(a0) * r };
+      const p1 = { x: cx + Math.cos(a1) * r, y, z: cz + Math.sin(a1) * r };
+      this.tri(c0, p0, p1, colOf(c0), colOf(p0), colOf(p1));
+    }
+  }
+  // flat: pull the normals of near-horizontal faces towards straight up, so sloped road surfaces are lit evenly
+  // instead of showing every triangle of a fan.
+  geometry(flat = false) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
+    g.computeVertexNormals();
+    if (flat) {
+      const nr = g.attributes.normal;
+      for (let i = 0; i < nr.count; i++) {
+        const y = nr.getY(i);
+        if (Math.abs(y) < 0.6) continue;
+        const sg = y < 0 ? -1 : 1, x = nr.getX(i) * 0.25, z = nr.getZ(i) * 0.25, yy = sg * 0.9;
+        const L = Math.hypot(x, yy, z);
+        nr.setXYZ(i, x / L, yy / L, z / L);
+      }
+    }
+    return g;
+  }
+}
+
+// A curve is a polyline with cumulative arc length and right-hand normals (x, z).
+function makeCurve(P) {
+  const n = P.length, N = new Array(n), cum = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)];
+    const tx = b.x - a.x, tz = b.z - a.z, L = Math.hypot(tx, tz) || 1;
+    N[i] = { x: -tz / L, z: tx / L };
+    if (i) cum[i] = cum[i - 1] + Math.hypot(P[i].x - P[i - 1].x, P[i].z - P[i - 1].z);
+  }
+  return { P, N, cum, len: cum[n - 1] };
+}
+// Position, height and direction of a curve at arc length s.
+function curveAt(C, s) {
+  const cum = C.cum, n = cum.length;
+  s = clamp(s, 0, C.len);
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= s) lo = m; else hi = m; }
+  const seg = cum[hi] - cum[lo], t = seg > 1e-9 ? (s - cum[lo]) / seg : 0;
+  const a = C.P[lo], b = C.P[hi], na = C.N[lo], nb = C.N[hi];
+  const tx = b.x - a.x, tz = b.z - a.z, L = Math.hypot(tx, tz) || 1;
+  const nx = na.x + (nb.x - na.x) * t, nz = na.z + (nb.z - na.z) * t, NL = Math.hypot(nx, nz) || 1;
+  return {
+    x: a.x + tx * t, y: a.y + (b.y - a.y) * t, z: a.z + tz * t,
+    dx: tx / L, dz: tz / L, nx: nx / NL, nz: nz / NL,
+  };
+}
+// Vertices of a curve between arc positions s0 and s1, shifted by off along the normal.
+function subCurve(C, s0, s1, off) {
+  const out = [];
+  const pt = (x, y, z, nx, nz) => out.push({ x: x + nx * off, y, z: z + nz * off, nx, nz });
+  const q0 = curveAt(C, s0);
+  pt(q0.x, q0.y, q0.z, q0.nx, q0.nz);
+  for (let i = 0; i < C.P.length; i++) {
+    if (C.cum[i] <= s0 || C.cum[i] >= s1) continue;
+    const p = C.P[i], nn = C.N[i];
+    pt(p.x, p.y, p.z, nn.x, nn.z);
+  }
+  const q1 = curveAt(C, s1);
+  pt(q1.x, q1.y, q1.z, q1.nx, q1.nz);
+  return out;
+}
+// Flat ribbon along a curve. colOf(point) returns an rgb triple.
+function ribbon(g, C, off, hw, colOf, dy, s0 = 0, s1 = C.len) {
+  const q = subCurve(C, s0, s1, off);
+  for (let i = 0; i < q.length - 1; i++) {
+    const a = q[i], b = q[i + 1];
+    const la = { x: a.x + a.nx * hw, y: a.y + dy, z: a.z + a.nz * hw };
+    const ra = { x: a.x - a.nx * hw, y: a.y + dy, z: a.z - a.nz * hw };
+    const lb = { x: b.x + b.nx * hw, y: b.y + dy, z: b.z + b.nz * hw };
+    const rb = { x: b.x - b.nx * hw, y: b.y + dy, z: b.z - b.nz * hw };
+    g.quadV(la, lb, rb, ra, colOf(a), colOf(b), colOf(b), colOf(a));
+  }
+}
+function dashes(g, C, off, hw, dash, gap, hex, dy, s0 = 0, s1 = C.len) {
+  const col = rgb(hex), colOf = () => col;
+  for (let s = s0; s < s1; s += dash + gap) {
+    const e = Math.min(s1, s + dash);
+    if (e - s > 0.1) ribbon(g, C, off, hw, colOf, dy, s, e);
+  }
+}
+
+// Dashes that fit the piece exactly with half a gap at each end, so two pieces joined end to end keep one even rhythm.
+function dashesFit(g, C, off, hw, dash, gap, hex, dy, s0, s1) {
+  const L = s1 - s0, n = Math.max(1, Math.round((L + gap) / (dash + gap))), per = L / n, d = per * dash / (dash + gap);
+  const col = rgb(hex), colOf = () => col;
+  for (let i = 0; i < n; i++) {
+    const a = s0 + i * per + (per - d) / 2;
+    if (d > 0.1) ribbon(g, C, off, hw, colOf, dy, a, a + d);
+  }
+}
+// ---------- Road graph ----------
+// Nodes are junctions, dead ends and district doors. Edges are two-way road pieces with a curve.
+// Lanes are the one-way parts of edges, connectors are the turns through a node.
+// Every segment (lane or connector) has a key; cars keep their route as a list of keys.
+let seq = 0;
+const nodes = new Map();        // id -> node {id, x, y, z, door, edges:Set, ins:[], outs:[]}
+const edges = new Map();        // id -> edge {id, a, b, kind, C, len, frac}
+const lanes = new Map();        // key 'L<edge>.<dir>.<li>' -> lane {key, from, to, C, len, speed, head, kind}
+const conns = new Map();        // id -> connector {id, key 'C<id>', inKey, outKey, node, C, len, speed, head, conn:true}
+const rings = new Map();         // id -> roundabout {id, x, y, z, r, size, nodes:[], edges:[]}
+const connByPair = new Map();   // inKey + '>' + outKey -> connector id
+const bk = new Map();           // segment key -> cars on it, nearest to the segment end first
+const pendingNext = new Map();  // lane key -> cars on a connector that will enter it next
+const connsInto = new Map();    // lane key -> keys of the turns that lead into it
+const pendingFrom = new Map();  // lane key + '|' + connector key -> how many of those cars are on that connector
+const laneCount = new Map();    // segment key -> number of cars on it
+const EMPTY = [];
+
+function addNode(x, z, door = -1) {
+  const id = ++seq;
+  const n = { id, x, y: hAt(x, z), z, door, edges: new Set(), ins: [], outs: [] };
+  nodes.set(id, n);
+  return n;
+}
+function makeEdge(a, b, kind, pts2) {
+  const id = ++seq;
+  const P = pts2.map(p => ({ x: p.x, y: hAt(p.x, p.z), z: p.z }));
+  const C = makeCurve(P);
+  let wet = 0;
+  for (let i = 0; i < pts2.length - 1; i++) {
+    const L = Math.hypot(pts2[i + 1].x - pts2[i].x, pts2[i + 1].z - pts2[i].z);
+    if (isWater((pts2[i].x + pts2[i + 1].x) / 2, (pts2[i].z + pts2[i + 1].z) / 2)) wet += L;
+  }
+  const frac = C.len > 0 ? wet / C.len : 0;
+  const e = { id, a: a.id !== undefined ? a.id : a, b: b.id !== undefined ? b.id : b, kind, C, len: C.len, frac };
+  edges.set(id, e);
+  nodes.get(e.a).edges.add(id);
+  nodes.get(e.b).edges.add(id);
+  return e;
+}
+function removeEdgeRecord(e) {
+  edges.delete(e.id);
+  const na = nodes.get(e.a), nb = nodes.get(e.b);
+  if (na) na.edges.delete(e.id);
+  if (nb) nb.edges.delete(e.id);
+}
+// Lanes of every edge; keys stay the same when an edge is upgraded, so cars keep their place.
+function rebuildLanes() {
+  lanes.clear();
+  for (const n of nodes.values()) { n.ins = []; n.outs = []; }
+  // Lanes stop where the junction polygon starts (the same trim the road drawing uses), so turns are wide arcs through it.
+  const trimOf = new Map();
+  for (const n of nodes.values()) {
+    if (n.door >= 0 || n.edges.size < 2) continue;
+    for (const a of junctionArms(n)) trimOf.set(n.id + ':' + a.e.id, a.t);
+  }
+  for (const e of edges.values()) {
+    const k = KIND[e.kind];
+    const owDir = e.oneway ? (e.owDir || 0) : -1, offs = e.oneway && !e.ring ? ONEWAY_OFFS[e.kind] : k.offs;
+    for (let dir = 0; dir < 2; dir++) {
+      if (owDir >= 0 && dir !== owDir) continue;
+      for (let li = 0; li < k.lanes; li++) {
+        const off = offs[li], n = e.C.P.length, lp = [];
+        for (let i = 0; i < n; i++) {
+          const idx = dir === 0 ? i : n - 1 - i, sg = dir === 0 ? 1 : -1;
+          const p = e.C.P[idx], nn = e.C.N[idx];
+          lp.push({ x: p.x + sg * nn.x * off, y: p.y, z: p.z + sg * nn.z * off });
+        }
+        const key = `L${e.id}.${dir}.${li}`;
+        const from = dir === 0 ? e.a : e.b, to = dir === 0 ? e.b : e.a;
+        let C = makeCurve(lp);
+        const t0 = trimOf.get(from + ':' + e.id) || 0, t1 = trimOf.get(to + ':' + e.id) || 0;
+        if ((t0 || t1) && C.len - t0 - t1 > 0.1) C = makeCurve(subCurve(C, t0, C.len - t1, 0).map(q => ({ x: q.x, y: q.y, z: q.z })));
+        const lane = {
+          key, from, to, kind: e.kind, off,
+          C, len: 0, speed: e.ringSpeed || k.speed, head: k.head, ring: !!e.ring, ringId: e.ring || 0,
+        };
+        lane.len = lane.C.len;
+        lanes.set(key, lane);
+        nodes.get(lane.from).outs.push(key);
+        nodes.get(lane.to).ins.push(key);
+      }
+    }
+  }
+}
+const reverseKey = key => {
+  const [e, d, li] = key.slice(1).split('.');
+  return `L${e}.${1 - Number(d)}.${li}`;
+};
+function segOf(key) { return key[0] === 'C' ? conns.get(Number(key.slice(1))) : lanes.get(key); }
+// The turn from one lane into another through their shared node.
+function connFor(inKey, outKey) {
+  const pk = inKey + '>' + outKey;
+  const have = connByPair.get(pk);
+  if (have !== undefined) return conns.get(have);
+  const id = ++seq;
+  const c = { id, key: 'C' + id, inKey, outKey, node: lanes.get(inKey).to, conn: true, conf: [] };
+  conns.set(id, c);
+  connByPair.set(pk, id);
+  shapeConn(c);
+  return c;
+}
+// Turn path: a cubic Bezier from the end of the incoming lane to the start of the outgoing lane.
+function shapeConn(c) {
+  const A = lanes.get(c.inKey), B = lanes.get(c.outKey);
+  const P0 = A.C.P[A.C.P.length - 1], Pa = A.C.P[A.C.P.length - 2];
+  const P3 = B.C.P[0], Pb = B.C.P[1];
+  const d0l = Math.hypot(P0.x - Pa.x, P0.z - Pa.z) || 1, d1l = Math.hypot(Pb.x - P3.x, Pb.z - P3.z) || 1;
+  const d0x = (P0.x - Pa.x) / d0l, d0z = (P0.z - Pa.z) / d0l, d1x = (Pb.x - P3.x) / d1l, d1z = (Pb.z - P3.z) / d1l;
+  const k = Math.max(0.12, Math.hypot(P3.x - P0.x, P3.z - P0.z) * 0.42);
+  const P1 = { x: P0.x + d0x * k, z: P0.z + d0z * k }, P2 = { x: P3.x - d1x * k, z: P3.z - d1z * k };
+  const pts = [], N = 16;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N, u = 1 - t;
+    pts.push({
+      x: u * u * u * P0.x + 3 * u * u * t * P1.x + 3 * u * t * t * P2.x + t * t * t * P3.x,
+      y: P0.y + (P3.y - P0.y) * t,
+      z: u * u * u * P0.z + 3 * u * u * t * P1.z + 3 * u * t * t * P2.z + t * t * t * P3.z,
+    });
+  }
+  c.node = A.to;
+  c.uturn = d0x * d1x + d0z * d1z < -0.5;
+  c.half = Math.max(KIND[A.kind].half, KIND[B.kind].half);
+  c.speed = 0.75 * Math.min(A.speed, B.speed);
+  c.head = A.head;
+  c.C = makeCurve(pts);
+  c.len = c.C.len;
+  c.d0 = { x: d0x, z: d0z };
+  c.turn = laneTurn(A, B);
+  c.ringEntry = !!B.ring && !A.ring;
+  c.ringThrough = !!B.ring && !!A.ring;
+}
+// Which turns of one junction cross, merge or overlap each other: a car may only enter a turn while none of those is occupied.
+// Right of way at a crossing. By default one road is the main road (the better road, or the straightest pair of
+// arms) and the others give way to it; the player can also make the crossing equal. The main arms are node.prio.main.
+const eolCache = new Map();
+const edgeOfLane = key => {
+  let v = eolCache.get(key);
+  if (v === undefined) { v = +key.slice(1).split('.')[0]; eolCache.set(key, v); }
+  return v;
+};
+function mainCandidates(n) {
+  const arms = junctionArms(n), out = [];
+  for (let i = 0; i < arms.length; i++) {
+    for (let j = i + 1; j < arms.length; j++) {
+      let d = Math.abs(arms[i].ang - arms[j].ang);
+      if (d > Math.PI) d = Math.PI * 2 - d;
+      const straight = d / Math.PI;                                   // 1 when exactly opposite
+      out.push({ ids: [arms[i].e.id, arms[j].e.id], straight, score: (KIND[arms[i].e.kind].lanes + KIND[arms[j].e.kind].lanes) * 10 + straight * 4 });
+    }
+  }
+  out.sort((p, q) => q.score - p.score);
+  const good = out.filter(c => c.straight >= 0.55);
+  return good.length ? good : out.slice(0, 1);
+}
+function computePriorities() {
+  for (const n of nodes.values()) {
+    if (!isCrossing(n) || n.ringId) { n.prio = null; continue; }
+    if (!n.prio) n.prio = { equal: false, main: null };
+    if (!n.prio.main || !n.prio.main.every(id => n.edges.has(id))) n.prio.main = mainCandidates(n)[0].ids;
+  }
+}
+function cyclePriority(n) {
+  const pr = n.prio;
+  if (!pr) return;
+  const cands = mainCandidates(n);
+  if (pr.equal) { pr.equal = false; pr.main = cands[0].ids; }
+  else {
+    const i = cands.findIndex(c => c.ids.includes(pr.main[0]) && c.ids.includes(pr.main[1]));
+    if (i + 1 < cands.length) pr.main = cands[i + 1].ids; else pr.equal = true;
+  }
+  S.lightKey = null;
+  S.selDirty = true;
+}
+// Must a car on turn a give way to a car on turn b (f is the conflict entry of a)?
+function mustYield(node, a, b, f) {
+  const pr = node.prio;
+  if (pr && !pr.equal) {
+    const ma = pr.main.includes(edgeOfLane(a.inKey)), mb = pr.main.includes(edgeOfLane(b.inKey));
+    if (ma !== mb) return !ma;
+  }
+  if (f.rel === 'opp') return a.turn === 'L' && f.tb !== 'L';
+  if (f.rel === 'perp') return f.right;                               // the car from the right goes first
+  return false;
+}
+function computeConflicts() {
+  const byNode = new Map();
+  for (const c of conns.values()) {
+    c.conf = [];
+    let arr = byNode.get(c.node);
+    if (!arr) { arr = []; byNode.set(c.node, arr); }
+    arr.push(c);
+  }
+  const mark = c => {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const p of c.C.P) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+    c.bb = [x0 - 0.3, x1 + 0.3, z0 - 0.3, z1 + 0.3];
+  };
+  for (const arr of byNode.values()) {
+    for (const c of arr) mark(c);
+    for (let i = 0; i < arr.length; i++) {
+      for (let j = i + 1; j < arr.length; j++) {
+        const a = arr[i], b = arr[j];
+        if (a.bb[1] < b.bb[0] || b.bb[1] < a.bb[0] || a.bb[3] < b.bb[2] || b.bb[3] < a.bb[2]) continue;
+        let hit = false;
+        for (let m = 0; m < a.C.P.length && !hit; m++) {
+          const p = a.C.P[m], ta = a.C.N[m];
+          for (let q = 0; q < b.C.P.length; q++) {
+            const r = b.C.P[q], d = Math.hypot(p.x - r.x, p.z - r.z);
+            if (d < 0.2) { hit = true; break; }
+            if (d < 0.3) {
+              const tb = b.C.N[q];
+              if (ta.x * tb.x + ta.z * tb.z < 0.9) { hit = true; break; }
+            }
+          }
+        }
+        if (!hit) continue;
+        const same = a.inKey === b.inKey, merge = !same && a.outKey === b.outKey;
+        const dotp = a.d0.x * b.d0.x + a.d0.z * b.d0.z, rel = dotp < -0.7 ? 'opp' : dotp > 0.7 ? 'same' : 'perp';
+        a.conf.push({ key: b.key, same, merge, entry: !!b.ringEntry, rel, tb: b.turn, right: -(b.d0.x * -a.d0.z + b.d0.z * a.d0.x) > 0.5 });
+        b.conf.push({ key: a.key, same, merge, entry: !!a.ringEntry, rel, tb: a.turn, right: -(a.d0.x * -b.d0.z + a.d0.z * b.d0.x) > 0.5 });
+      }
+    }
+  }  // A joint between two roads (nothing crosses there): only lanes merging into one lane can get in each other's way.
+  // The two directions run side by side, and waiting for each other there deadlocked.
+  for (const c of conns.values()) {
+    const nd = nodes.get(c.node);
+    if (nd && nd.edges.size < 3 && !nd.ringId) c.conf = c.conf.filter(f => f.same || f.merge);
+  }
+}
+function rebuildConnPairs() {
+  connByPair.clear();
+  for (const c of conns.values()) connByPair.set(c.inKey + '>' + c.outKey, c.id);
+}
+// Every turn through every junction exists up front, so the junction surface can be drawn from the real turn paths.
+// Lane discipline on a two-lane ring (right-hand traffic, the right lane is the outer one): cars leave the ring
+// from the outer lane only, a car in the right lane of a two-lane road joins the outer lane, and on the ring a
+// car may move from the inner lane to the outer one but never back.
+// Which way a car turns when it goes from lane A into lane B: R, S, L or U.
+function laneTurn(A, B) {
+  const P0 = A.C.P[A.C.P.length - 1], Pa = A.C.P[A.C.P.length - 2], P3 = B.C.P[0], Pb = B.C.P[1];
+  const d0l = Math.hypot(P0.x - Pa.x, P0.z - Pa.z) || 1, d1l = Math.hypot(Pb.x - P3.x, Pb.z - P3.z) || 1;
+  const d0x = (P0.x - Pa.x) / d0l, d0z = (P0.z - Pa.z) / d0l, d1x = (Pb.x - P3.x) / d1l, d1z = (Pb.z - P3.z) / d1l;
+  const ang = Math.atan2(d0x * d1z - d0z * d1x, d0x * d1x + d0z * d1z);      // positive: to the right on the screen
+  return Math.abs(ang) > 2.6 ? 'U' : ang > 0.5 ? 'R' : ang < -0.5 ? 'L' : 'S';
+}
+function turnAllowed(ik, ok) {
+  const A = lanes.get(ik), B = lanes.get(ok);
+  if (!A || !B) return true;
+  const la = +ik.split('.')[2], lb = +ok.split('.')[2];
+  const outerA = la === KIND[A.kind].lanes - 1, outerB = lb === KIND[B.kind].lanes - 1;
+  if (A.ring && B.ring) return KIND[B.kind].lanes < 2 || lb >= la;
+  if (A.ring) return KIND[A.kind].lanes < 2 || outerA;
+  if (B.ring) return KIND[B.kind].lanes < 2 || KIND[A.kind].lanes < 2 || !outerA || outerB;
+  // Russian traffic rules at a crossing: a right turn from the right lane into the right lane, a left turn from the
+  // left lane into the left lane, straight on from any lane (keeping the lane when both roads have the same number).
+  const n = nodes.get(A.to);
+  if (n && n.door < 0 && n.edges.size >= 3) {
+    const t = laneTurn(A, B), nA = KIND[A.kind].lanes, nB = KIND[B.kind].lanes;
+    if (nA > 1) {
+      if (t === 'R' && la !== nA - 1) return false;
+      if (t === 'L' && la !== 0) return false;
+    }
+    if (nB > 1) {
+      if (t === 'R' && lb !== nB - 1) return false;
+      if (t === 'L' && lb !== 0) return false;
+      if (t === 'S' && nA === nB && lb !== la) return false;
+    }
+  }
+  return true;
+}
+function buildAllConns() {
+  for (const [id, c] of [...conns]) if (!lanes.get(c.inKey) || !lanes.get(c.outKey)) conns.delete(id);     // turns of lanes that no longer exist
+  for (const c of conns.values()) {
+    if (lanes.get(c.inKey) && lanes.get(c.outKey)) shapeConn(c);
+  }
+  for (const n of nodes.values()) {
+    if (n.door >= 0) continue;
+    for (const ik of n.ins) {
+      for (const ok of n.outs) {
+        if (ok === reverseKey(ik) && n.edges.size > 1) continue;
+        if (!turnAllowed(ik, ok)) continue;
+        connFor(ik, ok);
+      }
+    }
+  }
+  computeConflicts();
+  connsInto.clear();
+  for (const c of conns.values()) {
+    let arr = connsInto.get(c.outKey);
+    if (!arr) { arr = []; connsInto.set(c.outKey, arr); }
+    arr.push(c.key);
+  }
+}
+
+// Dijkstra over lane states. Doors are dead ends for through traffic; busy lanes cost more.
+function dijkstraFrom(startKey) {
+  const dist = new Map(), prev = new Map(), done = new Set();
+  const heap = [[0, startKey]];
+  dist.set(startKey, 0);
+  const push = item => {
+    heap.push(item);
+    let i = heap.length - 1;
+    while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; }
+  };
+  const pop = () => {
+    const top = heap[0], last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let m = i;
+        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (m === i) break;
+        [heap[m], heap[i]] = [heap[i], heap[m]]; i = m;
+      }
+    }
+    return top;
+  };
+  while (heap.length) {
+    const [d, u] = pop();
+    if (done.has(u) || d > dist.get(u)) continue;
+    done.add(u);
+    const lane = lanes.get(u), node = nodes.get(lane.to);
+    if (node.door >= 0) continue;
+    for (const ok of node.outs) {
+      if (done.has(ok)) continue;
+      const out = lanes.get(ok);
+      if (!out) continue;
+      if (ok === reverseKey(u) && node.edges.size > 1) continue;     // no U-turns at junctions
+      if (!turnAllowed(u, ok)) continue;
+      const cn = connFor(u, ok);
+      const change = lane.ring && out.ring && +ok.split('.')[2] !== +u.split('.')[2] ? 0.3 : 0;   // changing lanes on a ring costs a little
+      const nd = d + cn.len + out.len + change + (out.ring ? 1.2 : 0.5) * (laneCount.get(ok) || 0) / KIND[out.kind].lanes;
+      if (nd < (dist.has(ok) ? dist.get(ok) : Infinity)) {
+        dist.set(ok, nd);
+        prev.set(ok, { from: u, conn: cn.key });
+        push([nd, ok]);
+      }
+    }
+  }
+  return { dist, prev };
+}
+function pathTo(prev, goal) {
+  const out = [goal];
+  let k = goal;
+  while (prev.has(k)) { const p = prev.get(k); out.push(p.conn, p.from); k = p.from; }
+  return out.reverse();
+}
+// Route from a lane to the nearest entrance of district destDi.
+function pathFromLane(startKey, destDi) {
+  const { dist, prev } = dijkstraFrom(startKey);
+  let best = null, bd = Infinity;
+  for (const nid of S.districts[destDi].doors) {
+    for (const k of nodes.get(nid).ins) { const d = dist.get(k); if (d !== undefined && d < bd) { bd = d; best = k; } }
+  }
+  return best ? pathTo(prev, best) : null;
+}
+// A reachable district for a trip with the given purpose (nearer ones are likelier), with the route to it.
+// Dijkstra from one door lane is reused for a moment: many cars leave through the same lane.
+function pickDestination(startKey, originDi, purpose = 'any', force) {
+  let res = S.dcache && S.dcache.get(startKey);
+  if (!res || res.t < S.t - 2 || res.v !== (S.netVer | 0)) {
+    res = { ...dijkstraFrom(startKey), t: S.t, v: S.netVer | 0 };
+    if (!S.dcache || S.dcacheV !== S.netVer) { S.dcache = new Map(); S.dcacheV = S.netVer; }
+    S.dcache.set(startKey, res);
+  }
+  const { dist, prev } = res, types = PURPOSE_TYPES[purpose] || null, opts = [];
+  let wsum = 0;
+  S.districts.forEach((d, di) => {
+    if (force !== undefined ? di !== force : (di === originDi || (types && !types.includes(d.type)))) return;
+    let goal = null, bd = Infinity;
+    for (const nid of d.doors) {
+      for (const k of nodes.get(nid).ins) { const dd = dist.get(k); if (dd !== undefined && dd < bd) { bd = dd; goal = k; } }
+    }
+    if (!goal) return;
+    const w = (1 / (1 + bd / 40)) * (bd / 1.1 < tripLimit() * 0.9 ? 1 : 0.1);       // far goals that cannot be reached in time are rarely chosen
+    opts.push({ di, goal, w });
+    wsum += w;
+  });
+  if (!opts.length) return null;
+  let r = Math.random() * wsum, o = opts[opts.length - 1];
+  for (const q of opts) { r -= q.w; if (r <= 0) { o = q; break; } }
+  return { di: o.di, path: pathTo(prev, o.goal) };
+}
+
+// Point on a polyline nearest to (x, z): distance, arc position, tangent.
+function nearestOnCurve(C, x, z) {
+  let best = { d: Infinity, s: 0, tx: 1, tz: 0, x: 0, z: 0 };
+  const P = C.P;
+  for (let i = 0; i < P.length - 1; i++) {
+    const a = P[i], b = P[i + 1], dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz || 1e-12;
+    const t = clamp(((x - a.x) * dx + (z - a.z) * dz) / L2, 0, 1);
+    const px = a.x + dx * t, pz = a.z + dz * t;
+    const d = Math.hypot(x - px, z - pz);
+    if (d < best.d) {
+      const L = Math.sqrt(L2);
+      best = { d, s: C.cum[i] + t * L, tx: dx / L, tz: dz / L, x: px, z: pz };
+    }
+  }
+  return best;
+}
+function nearestEdge(x, z) {
+  let best = null;
+  for (const e of edges.values()) {
+    const h = nearestOnCurve(e.C, x, z);
+    if (!best || h.d < best.h.d) best = { e, h };
+  }
+  return best;
+}
+
+// Splits edge e at arc position s with a new node. Cars and connectors on its lanes are carried over.
+function splitEdge(e, s) {
+  if (s < 0.05) return nodes.get(e.a);
+  if (s > e.len - 0.05) return nodes.get(e.b);
+  const q = curveAt(e.C, s);
+  const X = addNode(q.x, q.z);
+  let i = 0;
+  while (i < e.C.P.length - 2 && e.C.cum[i + 1] <= s) i++;
+  const P = e.C.P;
+  const left = P.slice(0, i + 1).map(p => ({ x: p.x, z: p.z })).concat([{ x: X.x, z: X.z }]);
+  const right = [{ x: X.x, z: X.z }].concat(P.slice(i + 1).map(p => ({ x: p.x, z: p.z })));
+  const oldLen = e.len, a = e.a, b = e.b, kind = e.kind, oldPre = `L${e.id}.`;
+  removeEdgeRecord(e);
+  const e1 = makeEdge(a, X.id, kind, left), e2 = makeEdge(X.id, b, kind, right);
+  if (e.oneway && !e.ring) for (const ne of [e1, e2]) { ne.oneway = true; ne.owDir = e.owDir || 0; }
+  if (e.ring) {
+    // Splitting a ring road keeps it a one-way part of the same ring.
+    const ring = rings.get(e.ring);
+    for (const ne of [e1, e2]) { ne.oneway = true; ne.ring = e.ring; ne.ringSpeed = e.ringSpeed; }
+    if (ring) {
+      ring.edges = ring.edges.filter(id => id !== e.id).concat([e1.id, e2.id]);
+      ring.nodes.push(X.id);
+    }
+    X.ringId = e.ring;
+  }
+  // A road that was the main one at a junction stays so: its id is replaced by the piece that still touches the junction.
+  for (const nid of [a, b]) {
+    const nd = nodes.get(nid);
+    if (nd && nd.prio && nd.prio.main) {
+      const ne = e1.a === nid || e1.b === nid ? e1 : e2;
+      nd.prio.main = nd.prio.main.map(id => (id === e.id ? ne.id : id));
+    }
+  }
+  for (const car of S.cars) {
+    const cur = car.route[car.idx];
+    if (!cur.startsWith(oldPre)) continue;
+    const [, dirS, liS] = cur.split('.');
+    const dir = Number(dirS), li = Number(liS);
+    if (dir === 0) {
+      if (car.s <= s) { car.route[car.idx] = `L${e1.id}.0.${li}`; }
+      else { car.route[car.idx] = `L${e2.id}.0.${li}`; car.s -= s; }
+    } else if (car.s >= oldLen - s) {
+      car.route[car.idx] = `L${e1.id}.1.${li}`; car.s -= oldLen - s;
+    } else {
+      car.route[car.idx] = `L${e2.id}.1.${li}`;
+    }
+  }
+  // A connector keeps its geometry: its incoming lane still ends at the same node, and so does its outgoing lane.
+  for (const c of conns.values()) {
+    if (c.inKey.startsWith(oldPre)) c.inKey = remapLane(c.inKey, c.node, true, e1, e2);
+    if (c.outKey.startsWith(oldPre)) c.outKey = remapLane(c.outKey, c.node, false, e1, e2);
+  }
+  rebuildConnPairs();
+  return X;
+}
+// The lane of a split edge that still ends (into=true) or starts (into=false) at the given node.
+function remapLane(key, nodeId, into, e1, e2) {
+  const [, dirS, li] = key.split('.');
+  const dir = Number(dirS);
+  for (const ne of [e1, e2]) {
+    const to = dir === 0 ? ne.b : ne.a, from = dir === 0 ? ne.a : ne.b;
+    if ((into ? to : from) === nodeId) return `L${ne.id}.${dir}.${li}`;
+  }
+  return key;
+}
+function removeEdge(e) {
+  if (e.ring) { toast('Кольцо убирается в режиме «Правка»', 2600); return; }
+  S.money += Math.floor(nominalCost(e.kind, e.len, e.frac) * 0.5);
+  removeEdgeRecord(e);
+  const pre = `L${e.id}.`;
+  for (const [id, c] of [...conns]) {
+    if (c.inKey.startsWith(pre) || c.outKey.startsWith(pre)) conns.delete(id);
+  }
+  for (const nid of [e.a, e.b]) {
+    const n = nodes.get(nid);
+    if (n && n.door < 0 && n.edges.size === 0) nodes.delete(nid);
+  }
+  afterNetworkChange();
+}
+// Roads are edited in sections of about SECTION units: the road is cut only when a section is upgraded or removed.
+const SECTION = 2.4;
+function sectionRange(e, s) {
+  const n = Math.max(1, Math.round(e.len / SECTION));
+  if (n < 2 || e.ring) return [0, e.len];
+  const step = e.len / n, k = clamp(Math.floor(s / step), 0, n - 1);
+  return [k * step, (k + 1) * step];
+}
+const isWhole = (e, s0, s1) => s0 <= 0.05 && s1 >= e.len - 0.05;
+function sectionStats(e, s0 = 0, s1 = e.len) {
+  if (isWhole(e, s0, s1)) return { len: e.len, frac: e.frac };
+  const L = s1 - s0, n = Math.max(1, Math.ceil(L / 0.1));
+  let wet = 0;
+  for (let i = 0; i < n; i++) {
+    const q = curveAt(e.C, s0 + (i + 0.5) * L / n);
+    if (isWater(q.x, q.z)) wet += L / n;
+  }
+  return { len: L, frac: wet / L };
+}
+// Cuts the section [s0, s1] out of an edge with new nodes and returns the edge that is exactly that section.
+function carveSection(e, s0, s1) {
+  if (isWhole(e, s0, s1)) return e;
+  const other = (X, wantB) => [...X.edges].map(id => edges.get(id)).find(f => (wantB ? f.b : f.a) === X.id);
+  let cur = e;
+  if (s1 < e.len - 0.05) cur = other(splitEdge(cur, s1), true);
+  if (s0 > 0.05) cur = other(splitEdge(cur, s0), false);
+  return cur;
+}
+const upgradeCost = (e, s0 = 0, s1 = e.len) => {
+  const t = sectionStats(e, s0, s1);
+  return Math.round(nominalCost(2, t.len, t.frac) - nominalCost(1, t.len, t.frac));
+};
+function nodeNeed(n) { return !n || n.door >= 0 || n.edges.size < 2 ? 0 : junctionArms(n).need; }
+// Why a road cannot become an avenue without running into its neighbours; empty if it can.
+function upgradeProblem(e, s0 = 0, s1 = e.len) {
+  if (e.kind !== 1) return 'Это уже проспект';
+  e.kind = 2;
+  try { return upgradeConflict(e, s0, s1); } finally { e.kind = 1; }
+}
+function upgradeConflict(e, s0, s1) {
+  const hw = KIND[e.kind].half + 0.07;
+  const touchA = s0 <= 0.05, touchB = s1 >= e.len - 0.05, ends = [];
+  if (touchA) ends.push(nodes.get(e.a));
+  if (touchB) ends.push(nodes.get(e.b));
+  for (const n of ends) {
+    if (n.door >= 0 || n.edges.size < 2) continue;
+    if (nodeNeed(n) > MAX_TRIM) return 'Тесно: дороги на перекрёстке сольются';
+    for (const eid of n.edges) {
+      const f = edges.get(eid), far = nodes.get(f.a === n.id ? f.b : f.a);
+      if (nodeNeed(n) + nodeNeed(far) > f.len - 0.3) return 'Участок слишком короткий для проспекта';
+    }
+  }
+  if (s1 - s0 < 1) return 'Участок слишком короткий для проспекта';
+  const nearShared = (p, f) => ends.some(n => (f.a === n.id || f.b === n.id) && Math.hypot(p.x - n.x, p.z - n.z) < 1.7);
+  const P = isWhole(e, s0, s1) ? e.C.P : subCurve(e.C, s0, s1, 0);
+  for (const f of edges.values()) {
+    if (f === e) continue;
+    const need = hw + KIND[f.kind].half + 0.13;
+    for (const p of P) {
+      if (nearShared(p, f)) continue;
+      if (nearestOnCurve(f.C, p.x, p.z).d < need) return 'Рядом другая дорога: дороги сольются';
+    }
+  }
+  const doorNear = p => ends.some(n => n.door >= 0 && Math.hypot(p.x - n.x, p.z - n.z) < 2.4);
+  for (const p of P) {
+    if (p.x < 0.8 || p.z < 0.8 || p.x > FIELD - 0.8 || p.z > FIELD - 0.8) return 'Слишком близко к краю поля';
+    if (doorNear(p)) continue;
+    for (const d of S.districts) if (Math.abs(p.x - d.cx) < 1.42 && Math.abs(p.z - d.cz) < 1.42) return 'Рядом район: проспект не поместится';
+  }
+  return '';
+}
+// Upgrades one section (the whole edge by default); returns the upgraded edge, or false.
+function upgradeEdge(e, s0 = 0, s1 = e.len) {
+  if (e.kind !== 1) return false;
+  const bad = upgradeProblem(e, s0, s1);
+  if (bad) { toast(bad, 2600); return false; }
+  const extra = upgradeCost(e, s0, s1);
+  if (S.money < extra) { toast(`Нужно $${extra} на проспект`, 2200); return false; }
+  S.money -= extra;
+  const piece = carveSection(e, s0, s1);
+  piece.kind = 2;
+  afterNetworkChange();
+  return piece;
+}
+function removeSection(e, s0, s1) {
+  if (e.ring) { removeEdge(e); return; }
+  removeEdge(carveSection(e, s0, s1));
+}
+// ---------- Roundabouts and traffic lights ----------
+function setEdgeCurve(e, pts2) {
+  let wet = 0;
+  for (let i = 0; i < pts2.length - 1; i++) {
+    const L = Math.hypot(pts2[i + 1].x - pts2[i].x, pts2[i + 1].z - pts2[i].z);
+    if (isWater((pts2[i].x + pts2[i + 1].x) / 2, (pts2[i].z + pts2[i + 1].z) / 2)) wet += L;
+  }
+  e.C = makeCurve(pts2.map(p => ({ x: p.x, y: hAt(p.x, p.z), z: p.z })));
+  e.len = e.C.len;
+  e.frac = e.len > 0 ? wet / e.len : 0;
+}
+// Where an arm crosses the circle of radius r around its node: arc length from the node and the point.
+function armContact(n, e, r) {
+  const atA = e.a === n.id;
+  for (let s = 0.05; s <= e.len; s += 0.05) {
+    const q = curveAt(e.C, atA ? s : e.len - s);
+    if (Math.hypot(q.x - n.x, q.z - n.z) >= r) return { s, x: q.x, z: q.z };
+  }
+  return null;
+}
+function ringArms(n, r) {
+  const out = [];
+  for (const id of n.edges) {
+    const e = edges.get(id);
+    if (!e || e.a === e.b) continue;
+    const c = armContact(n, e, r);
+    out.push({ e, c, far: nodes.get(e.a === n.id ? e.b : e.a) });
+  }
+  return out;
+}
+// Why a junction cannot become a roundabout of this radius; empty if it can.
+function ringProblem(n, r) {
+  if (!n || n.door >= 0 || n.ringId) return 'Здесь кольцо не построить';
+  const arms = ringArms(n, r);
+  if (arms.length < 3) return 'Нужен перекрёсток минимум из трёх дорог';
+  for (const a of arms) {
+    if (!a.c || a.e.len - a.c.s < nodeNeed(a.far) + 0.9) return 'Дорога слишком короткая для кольца';
+    a.phi = Math.atan2(a.c.z - n.z, a.c.x - n.x);
+  }
+  arms.sort((p, q) => p.phi - q.phi);
+  for (let i = 0; i < arms.length; i++) {
+    let d = arms[(i + 1) % arms.length].phi - arms[i].phi;
+    if (d <= 0) d += Math.PI * 2;
+    if (r * d < 1.4) return 'Дороги расходятся слишком близко для такого кольца';
+  }
+  const mine = new Set(arms.map(a => a.e));
+  for (const f of edges.values()) {
+    if (mine.has(f)) continue;
+    if (nearestOnCurve(f.C, n.x, n.z).d < r + KIND[f.kind].half + 0.5) return 'Рядом другая дорога';
+  }
+  const farIds = new Set(arms.map(a => a.far.id));
+  for (const d of S.districts) {
+    if (d.doors.some(id => farIds.has(id))) continue;
+    if (Math.abs(n.x - d.cx) < 1.42 + r && Math.abs(n.z - d.cz) < 1.42 + r) return 'Рядом район';
+  }
+  if (n.x < r + 0.7 || n.z < r + 0.7 || n.x > FIELD - r - 0.7 || n.z > FIELD - r - 0.7) return 'Слишком близко к краю поля';
+  return '';
+}
+function dropConnsAt(ids) {
+  for (const [id, c] of [...conns]) if (ids.has(c.node)) conns.delete(id);
+}
+function makeRoundabout(n, size, free, lanes = 1) {
+  const R = RING_SIZES[size].r, cost = ringTotal(size, lanes);
+  const bad = ringProblem(n, R);
+  if (bad) { toast(bad, 2600); return null; }
+  if (!free && S.money < cost) { toast(`Нужно $${cost} на кольцо`, 2200); return null; }
+  const arms = ringArms(n, R);
+  for (const a of arms) a.phi = Math.atan2(a.c.z - n.z, a.c.x - n.x);
+  const ring = { id: ++seq, x: n.x, y: n.y, z: n.z, r: R, size, lanes, nodes: [], edges: [] };
+  for (const a of arms) {
+    const rn = addNode(n.x + Math.cos(a.phi) * R, n.z + Math.sin(a.phi) * R);
+    rn.ringId = ring.id;
+    ring.nodes.push(rn.id);
+    a.rn = rn;
+    const e = a.e, atA = e.a === n.id, P = e.C.P, cum = e.C.cum, pts = [];
+    if (atA) {
+      pts.push({ x: rn.x, z: rn.z });
+      for (let i = 0; i < P.length; i++) if (cum[i] > a.c.s + 0.03) pts.push({ x: P[i].x, z: P[i].z });
+      e.a = rn.id;
+    } else {
+      for (let i = 0; i < P.length; i++) if (cum[i] < e.len - a.c.s - 0.03) pts.push({ x: P[i].x, z: P[i].z });
+      pts.push({ x: rn.x, z: rn.z });
+      e.b = rn.id;
+    }
+    n.edges.delete(e.id);
+    rn.edges.add(e.id);
+    setEdgeCurve(e, pts);
+  }
+  // Traffic goes counter-clockwise as seen on screen (right-hand traffic): the angle decreases along the ring.
+  const order = arms.slice().sort((p, q) => q.phi - p.phi);
+  for (let i = 0; i < order.length; i++) {
+    const A = order[i], B = order[(i + 1) % order.length];
+    const p0 = A.phi;
+    let p1 = B.phi;
+    if (p1 >= p0) p1 -= Math.PI * 2;
+    const steps = Math.max(3, Math.ceil(R * (p0 - p1) / 0.22)), pts = [];
+    for (let k = 0; k <= steps; k++) {
+      const ph = p0 + (p1 - p0) * k / steps;
+      pts.push({ x: n.x + Math.cos(ph) * R, z: n.z + Math.sin(ph) * R });
+    }
+    const re = makeEdge(A.rn, B.rn, lanes === 2 ? 4 : 3, pts);
+    re.ringSpeed = RING_SIZES[size].v * (lanes === 2 ? 1.1 : 1);
+    re.oneway = true;
+    re.ring = ring.id;
+    ring.edges.push(re.id);
+  }
+  dropConnsAt(new Set([n.id]));
+  nodes.delete(n.id);
+  rings.set(ring.id, ring);
+  if (!free) S.money -= cost;
+  afterNetworkChange();
+  return ring;
+}
+function dissolveRing(ring) {
+  const X = addNode(ring.x, ring.z);
+  const own = new Set(ring.edges), nodeIds = new Set(ring.nodes);
+  for (const id of ring.nodes) {
+    const rn = nodes.get(id);
+    if (!rn) continue;
+    for (const eid of [...rn.edges]) {
+      if (own.has(eid)) continue;
+      const e = edges.get(eid), P = e.C.P.map(p => ({ x: p.x, z: p.z }));
+      if (e.a === rn.id) { P.unshift({ x: X.x, z: X.z }); e.a = X.id; } else { P.push({ x: X.x, z: X.z }); e.b = X.id; }
+      rn.edges.delete(eid);
+      X.edges.add(eid);
+      setEdgeCurve(e, P);
+    }
+  }
+  for (const eid of ring.edges) { const e = edges.get(eid); if (e) removeEdgeRecord(e); }
+  dropConnsAt(nodeIds);
+  for (const id of ring.nodes) nodes.delete(id);
+  rings.delete(ring.id);
+  afterNetworkChange();
+  return X;
+}
+function resizeRing(ring, size) {
+  if (ring.size === size) return ring;
+  const lanes = ring.lanes || 1;
+  const diff = ringTotal(size, lanes) - Math.floor(ringTotal(ring.size, lanes) * 0.5);
+  if (S.money < diff) { toast(`Нужно $${diff} на перестройку`, 2200); return ring; }
+  const oldSize = ring.size, X = dissolveRing(ring);
+  const made = makeRoundabout(X, size, true, lanes);
+  if (!made) return makeRoundabout(dropLight(X), oldSize, true, lanes);
+  S.money -= diff;
+  return made;
+}
+// Why the ring cannot get a second lane: its junctions would no longer fit between the ring nodes.
+function ringLanesProblem(ring) {
+  const saved = ring.edges.map(id => edges.get(id).kind);
+  for (const id of ring.edges) edges.get(id).kind = 4;
+  try {
+    for (const id of ring.nodes) {
+      const n = nodes.get(id);
+      if (nodeNeed(n) > MAX_TRIM) return 'Кольцу не хватает места для двух полос';
+      for (const eid of n.edges) {
+        const f = edges.get(eid), far = nodes.get(f.a === n.id ? f.b : f.a);
+        if (nodeNeed(n) + nodeNeed(far) > f.len - 0.3) return 'Кольцу не хватает места для двух полос';
+      }
+    }
+    for (const f of edges.values()) {
+      if (f.ring === ring.id) continue;
+      if (nearestOnCurve(f.C, ring.x, ring.z).d < ring.r + KIND[f.kind].half + 0.7 && !ring.nodes.some(id => nodes.get(id).edges.has(f.id))) return 'Рядом другая дорога';
+    }
+    return '';
+  } finally {
+    ring.edges.forEach((id, i) => { edges.get(id).kind = saved[i]; });
+  }
+}
+function setRingLanes(ring, lanes) {
+  if ((ring.lanes || 1) === lanes) return;
+  if (lanes === 2) {
+    const bad = ringLanesProblem(ring), cost = RING2_EXTRA[ring.size];
+    if (bad) { toast(bad, 2600); return; }
+    if (S.money < cost) { toast(`Нужно $${cost} на вторую полосу`, 2200); return; }
+    S.money -= cost;
+  } else {
+    S.money += Math.floor(RING2_EXTRA[ring.size] * 0.5);
+    // Cars in the second lane move to the first one; turns that used the second lane disappear.
+    const gone = id => ring.edges.includes(Number(id.slice(1).split('.')[0])) && id.endsWith('.1');
+    for (const [id, c] of [...conns]) if (gone(c.inKey) || gone(c.outKey)) conns.delete(id);
+    for (const car of S.cars) car.route = car.route.map(k => (k[0] === 'L' && gone(k) ? k.slice(0, -1) + '0' : k));
+  }
+  ring.lanes = lanes;
+  for (const id of ring.edges) { const e = edges.get(id); e.kind = lanes === 2 ? 4 : 3; e.ringSpeed = RING_SIZES[ring.size].v * (lanes === 2 ? 1.1 : 1); }
+  afterNetworkChange();
+}
+function dropLight(n) { n.light = false; return n; }
+// Phases of a signal: opposite arms go together, every other arm gets its own phase.
+function computeLights() {
+  for (const n of nodes.values()) {
+    if (!n.light) continue;
+    if (n.door >= 0 || n.ringId || n.edges.size < 3) { n.light = false; n.phaseOf = null; continue; }
+    // Only roads that can be driven into the junction take part in the signal.
+    const arms = junctionArms(n).filter(a => lanes.has(`L${a.e.id}.${a.e.b === n.id ? 0 : 1}.0`)), used = new Set(), phases = [];
+    if (!arms.length) { n.light = false; n.phaseOf = null; continue; }
+    for (let i = 0; i < arms.length; i++) {
+      if (used.has(i)) continue;
+      used.add(i);
+      const ph = [i];
+      // The arm that is closest to opposite goes in the same phase (within about 45 degrees).
+      let bj = -1, bd = 0.8;
+      for (let j = 0; j < arms.length; j++) {
+        if (used.has(j)) continue;
+        let d = Math.abs(arms[j].ang - arms[i].ang);
+        if (d > Math.PI) d = Math.PI * 2 - d;
+        if (Math.abs(d - Math.PI) < bd) { bd = Math.abs(d - Math.PI); bj = j; }
+      }
+      if (bj >= 0) { used.add(bj); ph.push(bj); }
+      phases.push(ph);
+    }
+    n.phaseOf = new Map();
+    phases.forEach((ph, k) => {
+      for (const i of ph) {
+        const e = arms[i].e, dir = e.b === n.id ? 0 : 1;
+        for (let li = 0; li < KIND[e.kind].lanes; li++) n.phaseOf.set(`L${e.id}.${dir}.${li}`, k);
+      }
+    });
+    n.nPhase = phases.length;
+    n.phaseKeys = phases.map(() => []);
+    for (const [key, k] of n.phaseOf) n.phaseKeys[k].push(key);
+    if (n.cur === undefined || n.cur >= n.nPhase) { n.cur = 0; n.mode = 'g'; n.mt = 0; }
+  }
+}
+// The signal is actuated: a phase stays green while cars are queueing for it, goes early when nobody waits and
+// another phase does, and the next phase is the one with the longest queue.
+function lightState(n, phase) {
+  return phase === n.cur ? n.mode : 'r';
+}
+function lightWaiting(n, phase) {
+  let c = 0;
+  for (const key of n.phaseKeys[phase]) {
+    const ln = lanes.get(key);
+    if (!ln) continue;
+    for (const o of bkOf(key)) if (ln.len - o.s < 4) c++;
+  }
+  return c;
+}
+function updateLight(n, dt) {
+  n.mt += dt;
+  if (n.mode === 'g') {
+    const here = lightWaiting(n, n.cur);
+    let other = 0;
+    for (let p = 0; p < n.nPhase; p++) if (p !== n.cur) other = Math.max(other, lightWaiting(n, p));
+    // The green ends at the maximum, or once the queue has broken for a moment and someone else is waiting.
+    n.gap = here === 0 ? (n.gap || 0) + dt : 0;
+    const done = n.mt >= LIGHT_MAX_GREEN || (n.mt >= LIGHT_MIN_GREEN && n.gap > 1.2 && other > 0);
+    if (done) { n.mode = 'y'; n.mt = 0; n.gap = 0; }
+  } else if (n.mode === 'y') {
+    if (n.mt >= LIGHT_YELLOW) { n.mode = 'r'; n.mt = 0; }
+  } else if (n.mt >= LIGHT_ALLRED) {
+    // Round robin over the phases that have cars waiting, so no phase can be starved by a busier one.
+    let best = (n.cur + 1) % n.nPhase;
+    for (let k = 1; k <= n.nPhase; k++) {
+      const p = (n.cur + k) % n.nPhase;
+      if (lightWaiting(n, p) > 0) { best = p; break; }
+    }
+    n.cur = best; n.mode = 'g'; n.mt = 0;
+  }
+}
+function toggleLight(n) {
+  if (!n || n.door >= 0 || n.ringId || n.edges.size < 3) return;
+  if (n.light) { n.light = false; n.phaseOf = null; }
+  else {
+    if (S.money < LIGHT_COST) { toast(`Нужно $${LIGHT_COST} на светофор`, 2200); return; }
+    S.money -= LIGHT_COST;
+    n.light = true;
+  }
+  computeLights();
+  S.lightKey = null;
+  S.selDirty = true;
+}
+const LAMP = { g: 0x3ddc84, y: 0xffd23f, r: 0xff4d4d };
+function lightsKey() {
+  let k = '';
+  for (const n of nodes.values()) {
+    if (!n.light || !n.phaseOf) continue;
+    k += n.id + ':';
+    for (let p = 0; p < n.nPhase; p++) k += lightState(n, p);
+    k += ';';
+  }
+  for (const n of nodes.values()) if (n.prio) k += n.id + (n.prio.equal ? 'e' : n.prio.main.join('-')) + ';';
+  return k + edges.size + '|' + (S.netVer | 0);
+}
+// Stop lines and signal posts at each arm of a signalised junction.
+// A traffic sign on a post, standing at the right of the approaching car and turned towards it. It leans back a
+// little, so it also reads from above. 'main' is the yellow diamond (main road), 'yield' the red-bordered
+// triangle with its point down. (fx, fz) is the direction the approaching car is heading.
+function signPost(g, x, y, z, fx, fz, type) {
+  g.box(x - 0.02, y, z - 0.02, x + 0.02, y + 0.52, z + 0.02, 0x2b2f36);
+  const rx = -fz, rz = fx, ph = 1.05, cph = Math.cos(ph), sph = Math.sin(ph), cy = y + 0.68;
+  const W = (u, v, d) => ({ x: x + rx * u + fx * sph * v - fx * cph * d, y: cy + cph * v + sph * d, z: z + rz * u + fz * sph * v - fz * cph * d });
+  const poly = (pts, d, hex) => { const c = rgb(hex); for (let i = 1; i < pts.length - 1; i++) g.tri(W(pts[0][0], pts[0][1], d), W(pts[i][0], pts[i][1], d), W(pts[i + 1][0], pts[i + 1][1], d), c, c, c); };
+  if (type === 'main') {
+    poly([[0, 0.2], [0.2, 0], [0, -0.2], [-0.2, 0]], 0, 0xffffff);
+    poly([[0, 0.16], [0.16, 0], [0, -0.16], [-0.16, 0]], 0.004, 0xf2c94c);
+  } else {
+    poly([[0, -0.19], [-0.22, 0.15], [0.22, 0.15]], 0, 0xd62d20);
+    poly([[0, -0.1], [-0.12, 0.1], [0.12, 0.1]], 0.004, 0xffffff);
+  }
+}
+function buildLights() {
+  const g = new Geo(), post = 0x2b2f36, line = rgb(COL.white);
+  for (const n of nodes.values()) {
+    if (n.prio && !n.prio.equal && !(n.light && n.phaseOf)) {
+      for (const a of junctionArms(n)) {
+        const e = a.e, dir = e.b === n.id ? 0 : 1;
+        if (!lanes.has(`L${e.id}.${dir}.0`)) continue;
+        const s = a.atA ? a.t + 0.85 : e.len - a.t - 0.85, q = curveAt(e.C, s);
+        const fx = a.atA ? -q.dx : q.dx, fz = a.atA ? -q.dz : q.dz;       // the way an approaching car is heading
+        const rx = -fz, rz = fx;                                          // its right-hand side: signs stand there
+        signPost(g, q.x + rx * (a.hw + 0.18), q.y, q.z + rz * (a.hw + 0.18), fx, fz, n.prio.main.includes(e.id) ? 'main' : 'yield');
+      }
+    }
+    if (!n.light || !n.phaseOf) continue;
+    for (const a of junctionArms(n)) {
+      const e = a.e, key = `L${e.id}.${e.b === n.id ? 0 : 1}.0`, ph = n.phaseOf.get(key);
+      if (ph === undefined) continue;
+      const s = a.atA ? a.t + 0.14 : e.len - a.t - 0.14, q = curveAt(e.C, s);
+      const dx = a.atA ? q.dx : -q.dx, dz = a.atA ? q.dz : -q.dz;
+      const nx = dz, nz = -dx, hw = a.hw, y = q.y + 0.03;
+      const P = (o, l) => ({ x: q.x + nx * o + dx * l, y, z: q.z + nz * o + dz * l });
+      g.quad(P(0.02, -0.035), P(hw, -0.035), P(hw, 0.035), P(0.02, 0.035), line);
+      const px = q.x + nx * (hw + 0.1), pz = q.z + nz * (hw + 0.1), by = q.y;
+      g.box(px - 0.025, by, pz - 0.025, px + 0.025, by + 0.42, pz + 0.025, post);
+      g.box(px - 0.06, by + 0.42, pz - 0.06, px + 0.06, by + 0.56, pz + 0.06, LAMP[lightState(n, ph)]);
+    }
+  }
+  return g.geometry();
+}
+function clearSel() { S.sel = S.selNode = S.selRing = S.selR = null; S.selDirty = true; }
+// The selected section of the selected edge: [s0, s1] along it.
+function selSection() {
+  const e = S.sel && edges.get(S.sel);
+  if (!e) return null;
+  const r = S.selR && Math.abs(S.selR.len - e.len) < 1e-6 ? S.selR : null;
+  return { e, s0: r ? r.s0 : 0, s1: r ? r.s1 : e.len };
+}
+
+// Where the player can carry on building: the end of a plan that is waiting to be built, or the free end of the last road.
+function contPoint() {
+  if (S.tool !== 'road' && S.tool !== 'avenue') return null;
+  const pl = S.plan;
+  if (pl && !pl.drawing && pl.pts.length > 1) {
+    if (pl.snapB) return null;
+    const p = pl.pts[pl.pts.length - 1], t = tangentAt(pl.pts, pl.pts.length - 1);
+    return { x: p.x, z: p.z, dx: t.x, dz: t.z, plan: true };
+  }
+  const n = S.contNode && nodes.get(S.contNode);
+  if (!n || n.edges.size !== 1 || n.door >= 0 || n.ringId) return null;
+  const o = outDir(n);
+  return { x: n.x, z: n.z, dx: o.x, dz: o.z, plan: false, node: n };
+}
+// A ring and an arrow in front of it, around the origin; the mesh is moved and pulsed every frame.
+function buildContGeo(cp) {
+  const g = new Geo(), col = cp.plan ? [0.49, 0.83, 0.42] : [1, 0.78, 0.24], N = 28;
+  const P = (r, a) => ({ x: Math.cos(a) * r, y: 0, z: Math.sin(a) * r });
+  for (let i = 0; i < N; i++) {
+    const a0 = i / N * Math.PI * 2, a1 = (i + 1) / N * Math.PI * 2;
+    g.quad(P(0.4, a0), P(0.4, a1), P(0.58, a1), P(0.58, a0), col);
+  }
+  const nx = -cp.dz, nz = cp.dx, B = (f, o) => ({ x: cp.dx * f + nx * o, y: 0, z: cp.dz * f + nz * o });
+  g.tri(B(1.25, 0), B(0.8, 0.2), B(0.8, -0.2), col, col, col);
+  return g.geometry();
+}
+// True when every district is joined to every other by roads (doors of one district count as joined).
+function districtsLinked() {
+  if (S.districts.length < 2) return true;
+  const par = new Map();
+  const find = x => { while (par.get(x) !== x) { par.set(x, par.get(par.get(x))); x = par.get(x); } return x; };
+  const add = x => { if (!par.has(x)) par.set(x, x); };
+  const join = (a, b) => { add(a); add(b); par.set(find(a), find(b)); };
+  for (const e of edges.values()) join(e.a, e.b);
+  for (const d of S.districts) for (const id of d.doors) { add(id); join(id, d.doors[0]); }
+  const root = find(S.districts[0].doors[0]);
+  return S.districts.every(d => find(d.doors[0]) === root);
+}
+// upgradeProblem is a full scan, so it is only repeated after the network or the districts change.
+function cachedProblem(e, s0 = 0, s1 = e.len) {
+  const k = `${S.netVer | 0}|${S.districts.length}|${e.id}|${s0.toFixed(2)}`;
+  if (S.pk !== k) { S.pk = k; S.pv = upgradeProblem(e, s0, s1); }
+  return S.pv;
+}
+function selectNear(x, z) {
+  clearSel();
+  for (const r of rings.values()) if (Math.hypot(x - r.x, z - r.z) < r.r + 0.5) { S.selRing = r.id; return; }
+  let best = null, bd = 0.8;
+  for (const n of nodes.values()) {
+    if (n.door >= 0 || n.ringId || n.edges.size < 3) continue;
+    const d = Math.hypot(x - n.x, z - n.z);
+    if (d < bd) { bd = d; best = n; }
+  }
+  if (best) { S.selNode = best.id; return; }
+  const near = nearestEdge(x, z);
+  if (near && !near.e.ring && near.h.d < 0.8) {
+    const [s0, s1] = sectionRange(near.e, near.h.s);
+    S.sel = near.e.id;
+    S.selR = { s0, s1, len: near.e.len };
+  }
+}
+// Cars keep their place: segments that still exist are kept, the rest of the route is planned again.
+function afterNetworkChange() {
+  // Junction trims change when roads are added or removed, so keep each car where it is in the world.
+  const was = new Map();
+  for (const car of S.cars) if (!car.dead && segOf(car.route[car.idx])) was.set(car, carPose(car));
+  rebuildLanes();
+  rebuildConnPairs();
+  buildAllConns();
+  for (const car of S.cars) {
+    if (car.dead) continue;
+    const cur = car.route[car.idx];
+    const seg = segOf(cur);
+    if (!seg) { loseCar(car); continue; }
+    const endKey = seg.conn ? seg.outKey : cur;
+    const rest = pathFromLane(endKey, car.dest);
+    if (!rest) { loseCar(car); continue; }
+    car.route = seg.conn ? [cur].concat(rest) : rest;
+    car.idx = 0;
+    const w = was.get(car);
+    if (w) {
+      const h = nearestOnCurve(seg.C, w.x, w.z);
+      if (h.d < 1.5) car.s = h.s;
+    }
+  }
+  S.cars = S.cars.filter(c => !c.dead);
+  // Cars that were squeezed together when their lane changed are pushed apart again where there is room.
+  const groups = new Map();
+  for (const car of S.cars) {
+    const k = car.route[car.idx];
+    let arr = groups.get(k);
+    if (!arr) { arr = []; groups.set(k, arr); }
+    arr.push(car);
+  }
+  const need = CAR_LEN + MIN_GAP;
+  for (const arr of groups.values()) {
+    if (arr.length < 2) continue;
+    arr.sort((p, q) => q.s - p.s);
+    for (let i = 1; i < arr.length; i++) {
+      const lim = arr[i - 1].s - need;
+      if (arr[i].s > lim) arr[i].s = Math.max(0, lim);
+    }
+  }
+  S.dirty = true;
+  S.selDirty = true;
+  S.netVer = (S.netVer | 0) + 1;
+  computePriorities();
+  computeLights();
+}
+
+// ---------- Planning: raw stroke -> smooth curve -> checks -> cost ----------
+function rdp(pts, eps) {
+  if (pts.length < 3) return pts.slice();
+  const keep = new Array(pts.length).fill(false);
+  keep[0] = keep[pts.length - 1] = true;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop();
+    let md = 0, mi = -1;
+    for (let i = a + 1; i < b; i++) {
+      const d = distSeg(pts[i].x, pts[i].z, pts[a].x, pts[a].z, pts[b].x, pts[b].z);
+      if (d > md) { md = d; mi = i; }
+    }
+    if (md > eps) { keep[mi] = true; stack.push([a, mi], [mi, b]); }
+  }
+  return pts.filter((_, i) => keep[i]);
+}
+function distSeg(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz;
+  const t = L2 ? clamp(((px - ax) * dx + (pz - az) * dz) / L2, 0, 1) : 0;
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
+}
+function chaikin(pts, iters) {
+  let P = pts;
+  for (let k = 0; k < iters && P.length >= 3; k++) {
+    const Q = [P[0]];
+    for (let i = 0; i < P.length - 1; i++) {
+      const a = P[i], b = P[i + 1];
+      Q.push({ x: 0.75 * a.x + 0.25 * b.x, z: 0.75 * a.z + 0.25 * b.z }, { x: 0.25 * a.x + 0.75 * b.x, z: 0.25 * a.z + 0.75 * b.z });
+    }
+    Q.push(P[P.length - 1]);
+    P = Q;
+  }
+  return P;
+}
+function resample(pts, step) {
+  const out = [{ x: pts[0].x, z: pts[0].z }];
+  let carry = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1], L = Math.hypot(b.x - a.x, b.z - a.z);
+    if (L < 1e-9) continue;
+    let d = step - carry;
+    while (d <= L) {
+      const t = d / L;
+      out.push({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
+      d += step;
+    }
+    carry = L - (d - step);
+  }
+  const last = pts[pts.length - 1];
+  const tail = out[out.length - 1];
+  if (Math.hypot(tail.x - last.x, tail.z - last.z) < step * 0.4) out[out.length - 1] = { x: last.x, z: last.z };
+  else out.push({ x: last.x, z: last.z });
+  return out;
+}
+// Snap target for a plan end: a junction or door node, an edge (to split it), or nothing.
+// A node in the middle of a road (the joint between two sections) is snapped like a point on the road,
+// so the new road still arrives at a right angle.
+function nodeSnap(n) {
+  if (n.door < 0 && !n.ringId && n.edges.size === 2) {
+    const e = edges.get([...n.edges][0]);
+    if (e && !e.ring && e.a !== e.b) return { type: 'edge', edge: e.id, s: e.a === n.id ? 0 : e.len, x: n.x, z: n.z };
+  }
+  return { type: 'node', id: n.id, x: n.x, z: n.z };
+}
+function snapTarget(p) {
+  let best = null, bd = SNAP_NODE;
+  for (const n of nodes.values()) {
+    const d = Math.hypot(p.x - n.x, p.z - n.z);
+    if (d < bd) { bd = d; best = nodeSnap(n); }
+  }
+  if (best) return best;
+  const near = nearestEdge(p.x, p.z);
+  if (!near || near.h.d >= SNAP_EDGE) return null;
+  const e = near.e, s = near.h.s, m = e.ring ? 0.9 : 0.4;
+  if (s < m) return nodeSnap(nodes.get(e.a));
+  if (s > e.len - m) return nodeSnap(nodes.get(e.b));
+  return { type: 'edge', edge: e.id, s, x: near.h.x, z: near.h.z };
+}
+// Direction a dead-end road continues in, pointing away from its end node.
+function outDir(n) {
+  const e = edges.get([...n.edges][0]);
+  if (e.b === n.id) { const q = curveAt(e.C, e.len); return { x: q.dx, z: q.dz }; }
+  const q = curveAt(e.C, 0);
+  return { x: -q.dx, z: -q.dz };
+}
+// Magnet: how a road must arrive at a snapped end. Doors take the road straight out of the driveway,
+// a road ending on another road meets it at a right angle.
+function endStub(snap) {
+  if (snap.type === 'node') {
+    const n = nodes.get(snap.id);
+    if (!n) return null;
+    if (n.door < 0) {
+      // A free dead end: the road continues smoothly in the direction the old one was heading.
+      if (n.edges.size !== 1 || n.ringId) return null;
+      const o = outDir(n);
+      return { dx: o.x, dz: o.z, reach: 3.0, either: false, soft: true };
+    }
+    const d = S.districts[n.door], dw = d && d.driveways[d.doors.indexOf(n.id)];
+    if (!dw) return null;
+    const L = Math.hypot(dw.x1 - dw.x0, dw.z1 - dw.z0) || 1;
+    return { dx: (dw.x1 - dw.x0) / L, dz: (dw.z1 - dw.z0) / L, reach: 2.4, either: false };
+  }
+  const e = edges.get(snap.edge);
+  if (!e) return null;
+  const q = curveAt(e.C, snap.s);
+  return { dx: -q.dz, dz: q.dx, reach: 2.0, either: true };
+}
+// Replaces the last stretch of the line by a curve that arrives along the stub direction.
+function alignEnd(pts, atStart, snap) {
+  const st = endStub(snap);
+  if (!st) return pts;
+  const P = atStart ? pts.slice().reverse() : pts.slice();
+  const T = { x: snap.x, z: snap.z };
+  const lc = Math.min(st.reach, polyLen(P) * 0.5);
+  let i = P.length - 1, acc = 0;
+  while (i > 0 && acc < lc) { acc += Math.hypot(P[i].x - P[i - 1].x, P[i].z - P[i - 1].z); i--; }
+  if (i >= P.length - 1) return pts;
+  const C = P[i];
+  let dx = st.dx, dz = st.dz;
+  if (st.either && (C.x - T.x) * dx + (C.z - T.z) * dz < 0) { dx = -dx; dz = -dz; }
+  const tc = tangentAt(P, i);
+  const k = Math.max(0.3, Math.hypot(C.x - T.x, C.z - T.z) * 0.45);
+  const P1 = { x: C.x + tc.x * k, z: C.z + tc.z * k }, P2 = { x: T.x + dx * k, z: T.z + dz * k };
+  const out = P.slice(0, i + 1);
+  for (let j = 1; j <= 10; j++) {
+    const t = j / 10, u = 1 - t;
+    out.push({
+      x: u * u * u * C.x + 3 * u * u * t * P1.x + 3 * u * t * t * P2.x + t * t * t * T.x,
+      z: u * u * u * C.z + 3 * u * u * t * P1.z + 3 * u * t * t * P2.z + t * t * t * T.z,
+    });
+  }
+  return atStart ? out.reverse() : out;
+}
+function planCost(pts, kind) {
+  let total = 0, wet = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const L = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z);
+    total += L;
+    if (isWater((pts[i].x + pts[i + 1].x) / 2, (pts[i].z + pts[i + 1].z) / 2)) wet += L;
+  }
+  return Math.round(nominalCost(kind, total, total ? wet / total : 0));
+}
+function tangentAt(pts, i) {
+  const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+  const L = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+  return { x: (b.x - a.x) / L, z: (b.z - a.z) / L };
+}
+// Empty string if the plan can be built, otherwise the reason.
+// Smallest turning radius along a line: the circle through points 0.6 apart on either side.
+function minRadius(pts) {
+  const k = 3;
+  let best = Infinity;
+  for (let i = k; i < pts.length - k; i++) {
+    const a = pts[i - k], b = pts[i], c = pts[i + k];
+    const ab = Math.hypot(b.x - a.x, b.z - a.z), bc = Math.hypot(c.x - b.x, c.z - b.z), ca = Math.hypot(a.x - c.x, a.z - c.z);
+    const area2 = Math.abs((b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x));
+    if (area2 < 1e-9) continue;
+    best = Math.min(best, ab * bc * ca / (2 * area2));
+  }
+  return best;
+}
+// Sharp corners are rounded off: the line is relaxed (ends fixed) until no turn is tighter than the wanted radius.
+function relaxPlan(pts, kind) {
+  const want = kind === 2 ? 1.5 : 1.1;
+  let P = pts;
+  for (let it = 0; it < 120 && P.length > 8 && minRadius(P) < want; it++) {
+    const Q = [P[0]];
+    for (let i = 1; i < P.length - 1; i++) Q.push({ x: (P[i - 1].x + P[i + 1].x + 2 * P[i].x) / 4, z: (P[i - 1].z + P[i + 1].z + 2 * P[i].z) / 4 });
+    Q.push(P[P.length - 1]);
+    P = Q;
+  }
+  return P;
+}
+function planProblem(pts, cum, kind) {
+  const n = pts.length, total = cum[n - 1];
+  if (minRadius(pts) < (kind === 2 ? 0.95 : 0.65)) return 'Слишком крутой поворот';
+  for (const e of edges.values()) {
+    if (!e.ring) continue;
+    const P = e.C.P;
+    for (let j = 0; j < P.length - 1; j++) for (let i = 0; i < pts.length - 1; i++) {
+      const hit = segHit(pts[i], pts[i + 1], P[j], P[j + 1]);
+      if (!hit) continue;
+      const hx = pts[i].x + hit[0] * (pts[i + 1].x - pts[i].x), hz = pts[i].z + hit[0] * (pts[i + 1].z - pts[i].z);
+      const ends = [pts[0], pts[n - 1]];
+      if (!ends.some(q => Math.hypot(q.x - hx, q.z - hz) < 0.5)) return 'Кольцо нельзя пересекать';
+    }
+  }
+  for (const p of pts) {
+    if (p.x < 0.4 || p.z < 0.4 || p.x > FIELD - 0.4 || p.z > FIELD - 0.4) return 'За пределами поля';
+    for (const d of S.districts) if (Math.abs(p.x - d.cx) < 1.12 && Math.abs(p.z - d.cz) < 1.12) return 'Через район нельзя';
+  }
+  for (let i = 0; i < n; i++) {
+    if (cum[i] < 1.2 || total - cum[i] < 1.2) continue;
+    const p = pts[i];
+    for (const node of nodes.values()) if (Math.hypot(p.x - node.x, p.z - node.z) < 0.45) return 'Слишком близко к перекрёстку';
+  }
+  for (let i = 1; i < n - 1; i++) {
+    if (cum[i] < 1.2 || total - cum[i] < 1.2) continue;
+    const p = pts[i], t = tangentAt(pts, i);
+    for (const e of edges.values()) {
+      const h = nearestOnCurve(e.C, p.x, p.z);
+      if (h.d < 0.35 && Math.abs(t.x * h.tz - t.z * h.tx) < 0.45) return 'Здесь уже есть дорога';
+    }
+  }
+  return '';
+}
+// Smooth curve for a stroke, snapped ends, validity and price.
+function computePlan(raw, kind) {
+  const pl = { raw, kind, pts: [], valid: false, msg: '', cost: 0, length: 0, snapA: null, snapB: null, drawing: true };
+  if (raw.length < 2) { pl.msg = 'Проведите линию по полю'; return pl; }
+  let pts = relaxPlan(resample(chaikin(rdp(raw, 0.12), 3), PLAN_STEP), kind);
+  pl.length = polyLen(pts);
+  pl.pts = pts;
+  if (pl.length < PLAN_MIN || pts.length < 2) { pl.msg = 'Слишком коротко'; return pl; }
+  pl.snapA = snapTarget(pts[0]);
+  pl.snapB = snapTarget(pts[pts.length - 1]);
+  if (pl.snapA) pts[0] = { x: pl.snapA.x, z: pl.snapA.z };
+  if (pl.snapB) pts[pts.length - 1] = { x: pl.snapB.x, z: pl.snapB.z };
+  if (pl.snapA || pl.snapB) {
+    let q = pts;
+    if (pl.snapA) q = alignEnd(q, true, pl.snapA);
+    if (pl.snapB) q = alignEnd(q, false, pl.snapB);
+    if (q !== pts) { pts = resample(q, PLAN_STEP); pl.pts = pts; pl.length = polyLen(pts); }
+  }
+  pl.msg = planProblem(pts, cumOf2(pts), kind);
+  pl.valid = pl.msg === '';
+  pl.cost = planCost(pts, kind);
+  return pl;
+}
+function refreshPlan() {
+  const cur = S.plan;
+  if (!cur) return;
+  const pl = computePlan(cur.raw, cur.kind);
+  pl.drawing = cur.drawing;
+  S.plan = pl;
+  S.planDirty = true;
+}
+function segHit(p0, p1, q0, q1) {
+  const rx = p1.x - p0.x, rz = p1.z - p0.z, sx = q1.x - q0.x, sz = q1.z - q0.z;
+  const den = rx * sz - rz * sx;
+  if (Math.abs(den) < 1e-12) return null;
+  const qx = q0.x - p0.x, qz = q0.z - p0.z;
+  const t = (qx * sz - qz * sx) / den, u = (qx * rz - qz * rx) / den;
+  return t < 0 || t > 1 || u < 0 || u > 1 ? null : [t, u];
+}
+// Where the planned line crosses existing roads, ordered along the plan.
+function findCrossings(pts, cum) {
+  const total = cum[cum.length - 1], out = [];
+  for (const e of edges.values()) {
+    const P = e.C.P;
+    for (let j = 0; j < P.length - 1; j++) {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const hit = segHit(pts[i], pts[i + 1], P[j], P[j + 1]);
+        if (!hit) continue;
+        const arc = cum[i] + hit[0] * (cum[i + 1] - cum[i]);
+        if (arc < 0.5 || total - arc < 0.5) continue;
+        out.push({ arc, x: pts[i].x + hit[0] * (pts[i + 1].x - pts[i].x), z: pts[i].z + hit[0] * (pts[i + 1].z - pts[i].z) });
+      }
+    }
+  }
+  out.sort((p, q) => p.arc - q.arc);
+  const merged = [];
+  for (const c of out) if (!merged.length || c.arc - merged[merged.length - 1].arc > 0.5) merged.push(c);
+  return merged;
+}
+function resolveEndpoint(p) {
+  const sn = snapTarget(p);
+  if (!sn) return addNode(p.x, p.z);
+  if (sn.type === 'node') return nodes.get(sn.id);
+  return splitEdge(edges.get(sn.edge), sn.s);
+}
+function resolveCrossing(c) {
+  let best = null, bd = 0.4;
+  for (const n of nodes.values()) {
+    const d = Math.hypot(c.x - n.x, c.z - n.z);
+    if (d < bd) { bd = d; best = n; }
+  }
+  if (best) return best;
+  const near = nearestEdge(c.x, c.z);
+  if (!near || near.h.d > 0.08) return null;
+  return splitEdge(near.e, near.h.s);
+}
+// Builds the planned road: endpoints, crossings and one edge per piece between stops.
+function applyPlan() {
+  const pl = S.plan;
+  if (!pl || pl.drawing || !pl.valid) return false;
+  if (pl.cost > S.money) { toast('Не хватает денег на эту дорогу', 2200); return false; }
+  const pts = pl.pts, cum = cumOf2(pts), total = cum[cum.length - 1];
+  const a = resolveEndpoint(pts[0]);
+  const b = resolveEndpoint(pts[pts.length - 1]);
+  if (a.id === b.id) { toast('Начало и конец совпали', 2200); S.plan = null; S.planDirty = true; return false; }
+  const stops = [{ arc: 0, node: a }];
+  for (const c of findCrossings(pts, cum)) {
+    const n = resolveCrossing(c);
+    if (!n || n.id === stops[stops.length - 1].node.id || n.id === b.id) continue;
+    stops.push({ arc: c.arc, node: n });
+  }
+  stops.push({ arc: total, node: b });
+  let spent = 0;
+  for (let k = 0; k < stops.length - 1; k++) {
+    const s0 = stops[k], s1 = stops[k + 1];
+    if (s0.node.id === s1.node.id) continue;
+    const piece = [{ x: s0.node.x, z: s0.node.z }];
+    for (let i = 0; i < pts.length; i++) if (cum[i] > s0.arc + 1e-6 && cum[i] < s1.arc - 1e-6) piece.push({ x: pts[i].x, z: pts[i].z });
+    piece.push({ x: s1.node.x, z: s1.node.z });
+    const e = makeEdge(s0.node.id, s1.node.id, pl.kind, piece);
+    spent += nominalCost(pl.kind, e.len, e.frac);
+  }
+  S.money = Math.max(0, S.money - Math.round(spent));
+  S.plan = null;
+  S.planDirty = true;
+  afterNetworkChange();
+  S.contNode = nodes.has(b.id) && b.edges.size === 1 && b.door < 0 && !b.ringId ? b.id : null;
+  const more = S.contNode && !S.contHinted ? ' · продолжить можно с подсвеченного конца' : '';
+  if (S.contNode) S.contHinted = true;
+  toast(`Дорога построена · −$${Math.round(spent)}${more}`, S.contNode ? 3200 : 2000);
+  return true;
+}
+
+// ---------- Districts ----------
+const matCache = new Map();
+// In the map views the scenery loses its colour so that the road colours stand out: one shared uniform, 0 = normal, 1 = greyed.
+const grayU = { value: 0 };
+function grayify(m) {
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uGray = grayU;
+    sh.fragmentShader = 'uniform float uGray;\n' + sh.fragmentShader.replace('#include <dithering_fragment>',
+      '#include <dithering_fragment>\n  float lum = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));\n  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(lum * 0.88 + 0.04), uGray * 0.6);');
+  };
+  return m;
+}
+function mat(hex) {
+  if (!matCache.has(hex)) matCache.set(hex, grayify(new THREE.MeshLambertMaterial({ color: hex })));
+  return matCache.get(hex);
+}
+const DIRS4 = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+function makeBoxes() {
+  const r = () => Math.random();
+  return [
+    { x0: -0.92, x1: 0.06, z0: -0.92, z1: 0.06, h: 1.4 + r() * 0.6 },
+    { x0: 0.2, x1: 0.92, z0: -0.92, z1: -0.2, h: 0.9 + r() * 0.5 },
+    { x0: -0.62, x1: 0.92, z0: 0.25, z1: 0.92, h: 0.6 + r() * 0.4 },
+  ];
+}
+function typeBoxes(type) {
+  const r = () => Math.random();
+  if (type === 'work') return [
+    { x0: -0.92, x1: -0.3, z0: -0.92, z1: -0.3, h: 2.2 + r() * 1.2 },
+    { x0: 0.1, x1: 0.82, z0: -0.82, z1: -0.1, h: 1.6 + r() * 1.0 },
+    { x0: -0.5, x1: 0.2, z0: 0.3, z1: 0.92, h: 1.2 + r() * 0.9 },
+  ];
+  if (type === 'industry') return [
+    { x0: -0.95, x1: 0.2, z0: -0.9, z1: -0.1, h: 0.8 },
+    { x0: 0.3, x1: 0.95, z0: 0.1, z1: 0.9, h: 0.6 },
+    { x0: -0.9, x1: -0.1, z0: 0.3, z1: 0.9, h: 0.5 },
+  ];
+  if (type === 'leisure') return [{ x0: -0.95, x1: 0.95, z0: -0.95, z1: 0.95, h: 0.05, flat: true }];
+  if (type === 'exit') return [
+    { x0: -0.2, x1: 0.0, z0: -0.9, z1: -0.55, h: 1.0 },
+    { x0: -0.2, x1: 0.0, z0: 0.55, z1: 0.9, h: 1.0 },
+    { x0: -0.22, x1: 0.02, z0: -0.9, z1: 0.9, h: 0.16, y: 1.0 },
+  ];
+  return makeBoxes();
+}
+// Extra shapes that make each kind of district recognisable.
+function decorate(d) {
+  const x = d.cx, z = d.cz, G = d.group, add = (geo, hex, px, py, pz, ry = 0) => {
+    const m = new THREE.Mesh(geo, mat(hex));
+    m.position.set(px, py, pz); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; G.add(m); return m;
+  };
+  if (d.type === 'industry') {
+    add(new THREE.CylinderGeometry(0.1, 0.13, 1.7, 10), 0x8c8f93, x + 0.55, 0.85, z - 0.55);
+    add(new THREE.CylinderGeometry(0.08, 0.11, 1.35, 10), 0x9a9da1, x + 0.2, 0.68, z - 0.62);
+    add(new THREE.CylinderGeometry(0.115, 0.115, 0.05, 10), d.roof, x + 0.55, 1.72, z - 0.55);
+  } else if (d.type === 'leisure') {
+    const ring = add(new THREE.TorusGeometry(0.55, 0.035, 8, 28), d.roof, x, 0.85, z);
+    add(new THREE.BoxGeometry(0.05, 0.85, 0.05), 0xdadada, x - 0.2, 0.42, z + 0.06, 0.25);
+    add(new THREE.BoxGeometry(0.05, 0.85, 0.05), 0xdadada, x + 0.2, 0.42, z + 0.06, -0.25);
+    for (const [px, pz, sc] of [[-0.75, 0.7, 1], [0.75, 0.7, 0.85], [0.7, -0.7, 1.1], [-0.7, -0.65, 0.8]]) {
+      add(new THREE.CylinderGeometry(0.03, 0.03, 0.2 * sc, 6), 0x6b4a2b, x + px, 0.1 * sc, z + pz);
+      add(new THREE.ConeGeometry(0.2 * sc, 0.5 * sc, 8), 0x3f9a4a, x + px, 0.38 * sc, z + pz);
+    }
+    add(new THREE.CylinderGeometry(0.28, 0.3, 0.1, 16), 0x6fb8e8, x + 0.55, 0.08, z - 0.05);
+  } else if (d.type === 'exit') {
+    // a sign on the arch and a strip of road leading off the map
+    const ew = d.facing === 1 || d.facing === 3;
+    add(new THREE.BoxGeometry(ew ? 0.8 : 0.05, 0.3, ew ? 0.05 : 0.8), d.roof, x - (ew ? 0 : 0.1), 1.3, z - (ew ? 0.1 : 0));
+  }
+}
+function createDistrict(x, z, type = 'home', opt = {}) {
+  const di = S.districts.length;
+  const sides = opt.sides || [0, 1, 2, 3].sort(() => Math.random() - 0.5).slice(0, type === 'exit' ? 1 : 1 + ((Math.random() * 3) | 0));
+  const T = DTYPE[type];
+  const wall = type === 'work' ? 0xa9cde0 : type === 'industry' ? 0xc2bfb6 : type === 'leisure' ? 0x86c26c : type === 'exit' ? 0xe9e9e4 : WALLS[di % WALLS.length];
+  const d = {
+    cx: x, cz: z, type, name: type === 'exit' ? 'Другой город' : S.names[di % S.names.length], wall, roof: ROOFS[di % ROOFS.length],
+    doors: [], driveways: [], boxes: typeBoxes(type), age: 0, acc: 0, queue: 0, retry: 0, noLink: false,
+    pop: type === 'home' ? (opt.pop || 25) : 0, away: 0, hereList: [], hereOut: 0, qp: [], pacc: {}, hacc: 0, oacc: 0, drop: 0,
+    group: new THREE.Group(), el: null, nameEl: null, stEl: null, lastKey: '',
+  };
+  for (const sd of sides) {
+    const [dx, dz] = DIRS4[sd];
+    const tx = -dz, tz = dx, off = type === 'exit' ? 0 : Math.random() * 0.7 - 0.35;
+    const px = x + dx * 1.3 + tx * off, pz = z + dz * 1.3 + tz * off;
+    const node = addNode(px, pz, di);
+    d.doors.push(node.id);
+    d.driveways.push({ x0: x + dx * 0.9, z0: z + dz * 0.9, x1: px, z1: pz });
+  }
+  d.facing = sides[0];
+  if (type === 'exit' && (sides[0] === 1 || sides[0] === 3)) for (const b of d.boxes) { [b.x0, b.z0] = [b.z0, b.x0]; [b.x1, b.z1] = [b.z1, b.x1]; }
+  for (const b of d.boxes) {
+    const w = b.x1 - b.x0, dd = b.z1 - b.z0, y0 = b.y || 0;
+    const wallM = new THREE.Mesh(new THREE.BoxGeometry(w, b.h, dd), mat(b.flat ? 0x86c26c : d.wall));
+    wallM.position.set(x + (b.x0 + b.x1) / 2, y0 + b.h / 2, z + (b.z0 + b.z1) / 2);
+    wallM.castShadow = wallM.receiveShadow = true;
+    d.group.add(wallM);
+    if (!b.flat && !b.y) {
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.06, 0.07, dd + 0.06), mat(d.roof));
+      roof.position.set(x + (b.x0 + b.x1) / 2, b.h + 0.035, z + (b.z0 + b.z1) / 2);
+      roof.castShadow = true;
+      d.group.add(roof);
+    }
+  }
+  decorate(d);
+  if (type === 'exit') {
+    // the road continues to the edge of the map
+    const [dx, dz] = DIRS4[sides[0]], len = 3.4;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(dx) * len + 0.5 * Math.abs(dz), 0.03, Math.abs(dz) * len + 0.5 * Math.abs(dx)), mat(0x4a4f57));
+    m.position.set(x - dx * (0.9 + len / 2 - 1.2), 0.03, z - dz * (0.9 + len / 2 - 1.2));
+    d.group.add(m);
+  }
+  scene.add(d.group);
+  d.el = document.createElement('div');
+  d.el.className = 'dlabel';
+  d.el.hidden = true;
+  d.nameEl = document.createElement('span');
+  d.stEl = document.createElement('span');
+  d.stEl.className = 'st';
+  d.stEl.hidden = true;
+  d.el.append(d.nameEl, d.stEl);
+  labelsEl.appendChild(d.el);
+  S.districts.push(d);
+  S.dirty = true;
+  return d;
+}
+function nearRoad(x, z, r) {
+  for (const e of edges.values()) for (const p of e.C.P) if (Math.hypot(p.x - x, p.z - z) < r) return true;
+  return false;
+}
+// The kind of district the city needs most: homes 40%, offices 24%, industry 14%, leisure 22%.
+function nextType() {
+  const n = { home: 0, work: 0, industry: 0, leisure: 0 }, tgt = { home: 0.4, work: 0.24, industry: 0.14, leisure: 0.22 };
+  let tot = 0;
+  for (const d of S.districts) if (n[d.type] !== undefined) { n[d.type]++; tot++; }
+  let best = 'home', bv = -Infinity;
+  for (const t of Object.keys(n)) { const v = tgt[t] * (tot + 1) - n[t] + Math.random() * 0.05; if (v > bv) { bv = v; best = t; } }
+  return best;
+}
+function addDistrict(side, minGap = MIN_DISTRICT_GAP, type) {
+  type = type || nextType();
+  for (let t = 0; t < 400; t++) {
+    const x = 5 + Math.random() * (FIELD - 10), z = 5 + Math.random() * (FIELD - 10);
+    if (waterDist(x, z) < 2.6) continue;
+    if (side !== undefined && (z < riverY(x) ? 0 : 1) !== side) continue;
+    if (S.districts.some(d => Math.hypot(d.cx - x, d.cz - z) < minGap)) continue;
+    if (nearRoad(x, z, 2.0)) continue;
+    return createDistrict(x, z, type);
+  }
+  return null;
+}
+// A gate to another city on the edge of the map.
+function addGate() {
+  for (let t = 0; t < 300; t++) {
+    const edge = (Math.random() * 4) | 0, u = 12 + Math.random() * (FIELD - 24), inset = 3.0;
+    // edge 0: left (door faces +x), 1: top (+z), 2: right (-x), 3: bottom (-z)
+    const x = edge === 0 ? inset : edge === 2 ? FIELD - inset : u, z = edge === 1 ? inset : edge === 3 ? FIELD - inset : u;
+    if (waterDist(x, z) < 3.5) continue;
+    if (S.districts.some(d => Math.hypot(d.cx - x, d.cz - z) < 15)) continue;
+    return createDistrict(x, z, 'exit', { sides: [edge] });
+  }
+  return null;
+}
+function districtHasRoad(d) { return d.doors.some(nid => nodes.get(nid).edges.size > 0); }
+
+// ---------- Scene ----------
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('world'), antialias: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xbfdcea);
+scene.fog = new THREE.Fog(0xbfdcea, FIELD * 2.6, FIELD * 5.4);
+// Near plane 3 keeps depth precision good on phone GPUs, so coplanar road layers do not flicker.
+const camera = new THREE.PerspectiveCamera(FOV, 1, 3, 480);
+
+const sun = new THREE.DirectionalLight(0xfff3dc, 0.75);
+sun.position.set(FIELD / 2 + 10, 28, FIELD / 2 + 15);
+sun.target.position.set(FIELD / 2, 0, FIELD / 2);
+sun.castShadow = true;
+const SMALL_SCREEN = Math.min(window.innerWidth, window.innerHeight) < 700 || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+sun.shadow.mapSize.set(SMALL_SCREEN ? 2048 : 3072, SMALL_SCREEN ? 2048 : 3072);     // a phone screen shows no difference, its GPU does
+Object.assign(sun.shadow.camera, { left: -FIELD * 0.75, right: FIELD * 0.75, top: FIELD * 0.75, bottom: -FIELD * 0.75, near: 1, far: 120 });
+sun.shadow.camera.updateProjectionMatrix();
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.04;          // removes shadow acne on flat road surfaces at low sun angles
+scene.add(sun, sun.target);
+const hemi = new THREE.HemisphereLight(0xeaf6ff, 0x4f5f36, 0.6);
+scene.add(hemi);
+const sky = new THREE.Color(0xbfdcea), SKY_NIGHT = new THREE.Color(0x1d2a45);
+
+const vcMat = () => grayify(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+const groundMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
+groundMesh.receiveShadow = true;
+const waterMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
+waterMesh.receiveShadow = true;
+// Road layers are coplanar on purpose (surface, markings, turns): polygon offset pulls the top layer forward.
+const roadMat = () => new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+const roadMesh = new THREE.Mesh(new THREE.BufferGeometry(), roadMat());
+roadMesh.receiveShadow = true;
+const treeMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
+treeMesh.castShadow = true;
+const planMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }));
+planMesh.renderOrder = 2;
+const selMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide }));
+selMesh.renderOrder = 2;
+const lightMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+const contMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+contMesh.renderOrder = 3;
+const heatMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.72, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 }));
+heatMesh.renderOrder = 1;
+scene.add(groundMesh, waterMesh, roadMesh, treeMesh, planMesh, selMesh, heatMesh, lightMesh, contMesh);
+
+const bodyGeo = new THREE.BoxGeometry(CAR_LEN, 0.09, CAR_W);
+bodyGeo.translate(0, 0.085, 0);
+const cabGeo = new THREE.BoxGeometry(CAR_LEN * 0.5, 0.075, CAR_W * 0.84);
+cabGeo.translate(-0.01, 0.17, 0);
+const carBody = new THREE.InstancedMesh(bodyGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), MAX_CARS);
+const carCab = new THREE.InstancedMesh(cabGeo, new THREE.MeshLambertMaterial({ color: 0xbcd3e3 }), MAX_CARS);
+carBody.castShadow = carCab.castShadow = true;
+// The per-car colour buffer is sized by count, and must exist before the first render or the shader ignores it.
+{
+  const white = new THREE.Color(1, 1, 1);
+  carBody.setColorAt(0, white);
+  carCab.setColorAt(0, white);
+}
+carBody.count = carCab.count = 0;
+scene.add(carBody, carCab);
+
+const dummy = new THREE.Object3D();
+const tmpColor = new THREE.Color();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const ray = new THREE.Raycaster();
+const hitPt = new THREE.Vector3();
+const ndc = new THREE.Vector2();
+const projV = new THREE.Vector3();
+
+// ---------- State ----------
+const S = {
+  running: false, over: false, t: 0,
+  money: START_MONEY, delivered: 0, meter: 0, speed: 1, tool: 'road', dirty: true, planDirty: true, sel: null, selNode: null, selRing: null, selDirty: true, contNode: null,
+  plan: null, districts: [], cars: [], popups: [], names: [], trees: [],
+  nextDistrictIn: 0, jamCool: 0, bestScore: 0, heat: new Map(), view: 0, heatT: 0, jams: [], turns: [],
+  tod: 22, day: 6, mood: 75, moodTarget: 75, moodT: 0,
+};
+const cam = { tx: FIELD / 2, tz: FIELD / 2, dist: 40, pitch: PITCH };
+let CW = 1, CH = 1, DPR = 1;
+// Adaptive quality: if the device cannot keep up, the render resolution (and later the shadow refresh rate) goes down a step.
+const QUAL = { maxDpr: 2, ema: 16.7, slow: 0, shadowEvery: 1, frameNo: 0 };
+
+// ---------- DOM ----------
+const $ = id => document.getElementById(id);
+const cv = $('world');
+const toastEl = $('toast'), hintEl = $('hint'), labelsEl = $('labels');
+const startEl = $('startOverlay'), planBar = $('planBar'), editBar = $('editBar');
+const hud = {};
+for (const id of ['money', 'score', 'clock', 'dayName', 'popVal', 'tripVal', 'moodFill', 'moodVal', 'speedFill', 'speedVal']) hud[id] = $(id);
+
+function setText(el, v) {
+  const s = String(v);
+  if (el.textContent !== s) el.textContent = s;
+}
+function updateHud() {
+  setText(hud.money, '$' + Math.floor(S.money).toLocaleString('en-US'));
+  setText(hud.score, S.delivered);
+  const hh = Math.floor(S.tod), mm = Math.floor((S.tod - hh) * 60 / 5) * 5, wd = S.day % 7;
+  setText(hud.clock, `${hh < 10 ? '0' : ''}${hh}:${mm < 10 ? '0' : ''}${mm} ${daylight(S.tod) > 0.4 ? '☀' : '🌙'}`);
+  setText(hud.dayName, DAYS[wd] + (wd >= 5 ? ' · выходной' : ''));
+  setText(hud.popVal, Math.round(totalPop()).toLocaleString('ru-RU'));
+  setText(hud.tripVal, S.avgTrip === null || S.avgTrip === undefined ? '—' : Math.round(S.avgTrip) + ' с');
+  const mood = clamp(S.mood, 0, 100), ml = mood > 60 ? 'ok' : mood > 35 ? 'warn' : 'bad';
+  if (hud.moodFill.className !== ml) hud.moodFill.className = ml;
+  hud.moodFill.style.transform = `scaleX(${(mood / 100).toFixed(3)})`;
+  setText(hud.moodVal, (mood > 60 ? '😊 ' : mood > 35 ? '😐 ' : '😠 ') + Math.round(mood) + '%');
+  const sp = S.avgV === undefined ? 100 : S.avgV, sl = sp > 60 ? 'ok' : sp > 35 ? 'warn' : 'bad';
+  if (hud.speedFill.className !== sl) hud.speedFill.className = sl;
+  hud.speedFill.style.transform = `scaleX(${(sp / 100).toFixed(3)})`;
+  setText(hud.speedVal, Math.round(sp) + '%');
+}
+let toastTimer = 0;
+function toast(msg, ms = 2600) {
+  return;     // pop-up notices are switched off
+  if (S.demo) return;
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms);
+}
+function setTool(t) {
+  S.tool = t;
+  if (t !== 'road' && t !== 'avenue' && S.plan && S.plan.drawing) S.plan = null;
+  if (t !== 'edit') clearSel();
+  document.querySelectorAll('.tool').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
+  setText(hintEl, HINTS[t]);
+  S.planDirty = true;
+}
+function setSpeed(v) {
+  S.speed = v;
+  document.querySelectorAll('.sp[data-speed]').forEach(b => b.classList.toggle('on', Number(b.dataset.speed) === v));
+}
+function loadBest() {
+  try { return +localStorage.getItem('traffic-architect-best') || 0; } catch (e) { return 0; }
+}
+function saveBest(v) {
+  try { localStorage.setItem('traffic-architect-best', String(v)); } catch (e) { /* storage may be blocked */ }
+}
+
+// ---------- Camera ----------
+function updateCamera() {
+  const yaw = cam.yaw || 0, flat = cam.dist * Math.cos(cam.pitch);
+  camera.position.set(cam.tx + flat * Math.sin(yaw), cam.dist * Math.sin(cam.pitch), cam.tz + flat * Math.cos(yaw));
+  camera.lookAt(cam.tx, 0, cam.tz);
+  camera.updateMatrixWorld();
+}
+function fitDistance() {
+  const tanV = Math.tan(FOV / 2 * Math.PI / 180), aspect = CW / CH;
+  const dW = (FIELD + 2) / (2 * tanV * aspect) * 0.92;
+  const dH = (FIELD + 2) * Math.sin(cam.pitch) / (2 * tanV) * 1.02;
+  cam.dist = clamp(Math.max(dW, dH) * 0.8, ZMIN, ZMAX);   // start closer than the whole field; the map is meant to be explored
+}
+function resize() {
+  DPR = Math.min(QUAL.maxDpr, window.devicePixelRatio || 1);
+  CW = window.innerWidth;
+  CH = window.innerHeight;
+  renderer.setPixelRatio(DPR);
+  renderer.setSize(CW, CH, false);
+  camera.aspect = CW / CH;
+  camera.updateProjectionMatrix();
+  fitDistance();
+  updateCamera();
+}
+function panPx(dx, dy) {
+  const wpp = 2 * cam.dist * Math.tan(FOV / 2 * Math.PI / 180) / CH;
+  cam.tx = clamp(cam.tx - dx * wpp, -5, FIELD + 5);
+  cam.tz = clamp(cam.tz - dy * wpp / Math.sin(cam.pitch), -5, FIELD + 5);
+  updateCamera();
+}
+function groundAt(x, y) {
+  ndc.set((x / CW) * 2 - 1, -(y / CH) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const h = ray.ray.intersectPlane(groundPlane, hitPt);
+  return h ? { x: h.x, z: h.z } : null;
+}
+
+// ---------- Static world ----------
+function buildGround() {
+  const g = new Geo();
+  g.quad({ x: -60, y: -0.05, z: -60 }, { x: 90, y: -0.05, z: -60 }, { x: 90, y: -0.05, z: 90 }, { x: -60, y: -0.05, z: 90 }, rgb(COL.outer));
+  const shade = (i, j) => { const f = 0.93 + 0.14 * hash2(i, j); return [rgb(GRASS)[0] * f, rgb(GRASS)[1] * f, rgb(GRASS)[2] * f]; };
+  for (let j = 0; j < FIELD; j++) for (let i = 0; i < FIELD; i++) {
+    const p = (x, z) => ({ x, y: 0, z });
+    g.quadV(p(i, j), p(i + 1, j), p(i + 1, j + 1), p(i, j + 1), shade(i, j), shade(i + 1, j), shade(i + 1, j + 1), shade(i, j + 1));
+  }
+  g.box(0, -1.0, 0, FIELD, -0.05, FIELD, COL.dirt);
+  swapGeometry(groundMesh, g.geometry());
+}
+function buildWater() {
+  const g = new Geo();
+  const xs = [];
+  for (let x = -1; x <= FIELD + 1 + 1e-6; x += 0.5) xs.push(x);
+  const wc = rgb(COL.water), bc = rgb(COL.bank);
+  for (let i = 0; i < xs.length - 1; i++) {
+    const a = xs[i], b = xs[i + 1];
+    const ya = riverY(a), yb = riverY(b);
+    const P = (x, z) => ({ x, y: WATER_Y, z });
+    g.quad(P(a, ya - RIVER_HALF), P(b, yb - RIVER_HALF), P(b, yb + RIVER_HALF), P(a, ya + RIVER_HALF), wc);
+    for (const sg of [-1, 1]) {
+      const o0 = RIVER_HALF, o1 = RIVER_HALF + 0.16;
+      const Q = (x, off) => ({ x, y: WATER_Y + 0.004, z: riverY(x) + sg * off });
+      g.quad(Q(a, o0), Q(b, o0), Q(b, o1), Q(a, o1), bc);
+    }
+  }
+  swapGeometry(waterMesh, g.geometry());
+}
+function placeTrees() {
+  S.trees = [];
+  for (let k = 0; k < Math.round(110 * (FIELD / 30) ** 2); k++) {
+    const x = Math.random() * FIELD, z = Math.random() * FIELD;
+    if (waterDist(x, z) < 1.6) continue;
+    S.trees.push({ x, z, tv: Math.random(), s: 0.85 + Math.random() * 0.4 });
+  }
+}
+function pyramid(g, x, y0, z, y1, r, hex) {
+  const col = rgb(hex);
+  const a = { x: x - r, y: y0, z: z - r }, b = { x: x + r, y: y0, z: z - r };
+  const c = { x: x + r, y: y0, z: z + r }, d = { x: x - r, y: y0, z: z + r }, t = { x, y: y1, z };
+  g.tri(a, b, t, col, col, col); g.tri(b, c, t, col, col, col); g.tri(c, d, t, col, col, col); g.tri(d, a, t, col, col, col);
+}
+function buildTrees() {
+  const g = new Geo();
+  for (const t of S.trees) {
+    if (t.x < 0.5 || t.z < 0.5 || t.x > FIELD - 0.5 || t.z > FIELD - 0.5) continue;
+    if (S.districts.some(d => Math.hypot(d.cx - t.x, d.cz - t.z) < 2.2)) continue;
+    let clear = true;
+    for (const e of edges.values()) {
+      for (const p of e.C.P) if (Math.hypot(p.x - t.x, p.z - t.z) < 0.9) { clear = false; break; }
+      if (!clear) break;
+    }
+    if (!clear) continue;
+    const dark = t.tv < 0.5, x = t.x, z = t.z, s = t.s;
+    g.box(x - 0.03, 0, z - 0.03, x + 0.03, 0.22 * s, z + 0.03, COL.trunk);
+    pyramid(g, x, 0.18 * s, z, 0.5 * s, 0.2 * s, dark ? 0x3f8a46 : 0x2f6b3d);
+    pyramid(g, x, 0.36 * s, z, 0.76 * s, 0.14 * s, dark ? 0x4f9b52 : 0x3d7f4a);
+  }
+  return g.geometry();
+}
+// How far the deck is raised at a point: 0 on the ground, 1 at full bridge height.
+function deckFrac(x, z) { return (hAt(x, z) - ROAD_H) / (BRIDGE_H - ROAD_H); }
+// Sections of an edge that cross the water band, including the ramps (walls there fade out with the deck).
+function bridgeRanges(C) {
+  const out = [];
+  let open = null;
+  for (let s = 0; s <= C.len + 1e-6; s += 0.1) {
+    const q = curveAt(C, Math.min(s, C.len));
+    const near = waterDist(q.x, q.z) < RAMP;
+    if (near && open === null) open = s;
+    if (!near && open !== null) { if (s - open > 0.3 || open === 0) out.push([open, s]); open = null; }
+  }
+  if (open !== null) out.push([open, C.len]);
+  return out;
+}
+// Vertical wall along a curve, offset sideways, from h0 to h1 above the curve.
+// Heights scale with the deck, so the wall sinks to nothing at the ends of the ramps instead of stopping in mid-air.
+function wall(g, C, off, s0, s1, h0, h1, hex) {
+  const q = subCurve(C, s0, s1, off), col = rgb(hex);
+  const f = q.map(p => deckFrac(p.x, p.z));
+  for (let i = 0; i < q.length - 1; i++) {
+    const a = q[i], b = q[i + 1], fa = f[i], fb = f[i + 1];
+    g.quadV({ x: a.x, y: a.y + h0 * fa, z: a.z }, { x: b.x, y: b.y + h0 * fb, z: b.z },
+      { x: b.x, y: b.y + h1 * fb, z: b.z }, { x: a.x, y: a.y + h1 * fa, z: a.z }, col, col, col, col);
+  }
+}
+// Concrete piers from the river bed up to the deck, with a cap under the deck.
+function piers(g, C, s0, s1) {
+  for (let s = s0 + 0.5; s < s1 - 0.2; s += 2.2) {
+    const q = curveAt(C, s);
+    if (!isWater(q.x, q.z)) continue;
+    g.box(q.x - 0.11, -0.7, q.z - 0.11, q.x + 0.11, q.y - 0.14, q.z + 0.11, COL.pier);
+    g.box(q.x - 0.17, q.y - 0.14, q.z - 0.17, q.x + 0.17, q.y - 0.02, q.z + 0.17, COL.pier);
+  }
+}
+// Asphalt colour blended into deck colour along the same ramp as the height, so there is no hard colour edge.
+function surfaceOf(asph, deck) {
+  return p => {
+    const m = ss(clamp((RAMP - waterDist(p.x, p.z)) / RAMP, 0, 1));
+    return [asph[0] + (deck[0] - asph[0]) * m, asph[1] + (deck[1] - asph[1]) * m, asph[2] + (deck[2] - asph[2]) * m];
+  };
+}
+// Edges stop short of junctions (ta, tb are the trims); the junction itself is one filled polygon, see junctionPoly.
+// A road-marking arrow lying on the surface at p, pointing along (fx, fz): 'S' straight, 'L' left, 'R' right.
+function arrowGlyph(g, p, fx, fz, type, sc = 1) {
+  const rx = -fz, rz = fx, col = rgb(COL.white), y = p.y + 0.022;
+  const W = (u, v) => ({ x: p.x + (fx * u + rx * v) * sc, y, z: p.z + (fz * u + rz * v) * sc });
+  const stroke = pts => {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1], du = b[0] - a[0], dv = b[1] - a[1], L = Math.hypot(du, dv) || 1;
+      const nu = -dv / L * 0.017, nv = du / L * 0.017;
+      g.quad(W(a[0] + nu, a[1] + nv), W(b[0] + nu, b[1] + nv), W(b[0] - nu, b[1] - nv), W(a[0] - nu, a[1] - nv), col);
+    }
+  };
+  const head = (u, v, du, dv) => {
+    const L = Math.hypot(du, dv) || 1, a = du / L, b = dv / L, pu = -b * 0.05, pv = a * 0.05;
+    g.tri(W(u + a * 0.085, v + b * 0.085), W(u - a * 0.01 + pu, v - b * 0.01 + pv), W(u - a * 0.01 - pu, v - b * 0.01 - pv), col, col, col);
+  };
+  // About 0.4 long and 0.2 wide at most, so every arrow fits in a lane.
+  if (type === 'S') { stroke([[-0.2, 0], [0.1, 0]]); head(0.1, 0, 1, 0); }
+  else { const sg = type === 'L' ? -1 : 1; stroke([[-0.2, 0], [-0.04, 0], [0.04, 0.065 * sg]]); head(0.04, 0.065 * sg, 0.08, 0.065 * sg); }
+}
+function drawEdge(g, e, ta, tb, pa, pb) {
+  const C = e.C, k = KIND[e.kind], s0 = ta, s1 = C.len - tb;
+  if (s1 - s0 < 0.05) return;
+  const surf = surfaceOf(rgb(COL.asphalt), rgb(COL.deck));
+  ribbon(g, C, 0, k.half + 0.07, () => rgb(COL.curb), -0.015, s0, s1);
+  ribbon(g, C, 0, k.half, surf, 0, s0, s1);
+  const m0 = s0 + (pa ? 0 : 0.12), m1 = s1 - (pb ? 0 : 0.12);
+  const dsh = (off, hw, d, gp) => ((pa || pb) ? dashesFit : dashes)(g, C, off, hw, d, gp, COL.white, 0.02, m0, m1);
+  if (m1 - m0 > 0.1) {
+    if (e.ring) {
+      for (const sg of [-1, 1]) ribbon(g, C, sg * (k.half - 0.03), 0.014, () => rgb(COL.white), 0.02, m0, m1);
+      if (e.kind === 4) dashes(g, C, 0, 0.03, 0.3, 0.25, COL.white, 0.02, m0, m1);
+    } else if (e.oneway) {
+      // One-way road: edge lines instead of a centre line, and arrows showing the direction.
+      for (const sg of [-1, 1]) ribbon(g, C, sg * (k.half - 0.04), 0.014, () => rgb(COL.white), 0.02, m0, m1);
+      if (e.kind === 2) dsh(0, 0.03, 0.32, 0.25);
+      const fwd = (e.owDir || 0) === 0;
+      for (let sa = m0 + 0.9; sa < m1 - 0.5; sa += 2.4) {
+        const q = curveAt(C, sa), fx = fwd ? q.dx : -q.dx, fz = fwd ? q.dz : -q.dz;
+        for (const off of ONEWAY_OFFS[e.kind]) arrowGlyph(g, { x: q.x + q.nx * off, y: q.y, z: q.z + q.nz * off }, fx, fz, 'S', 0.9);
+      }
+    } else if (e.kind === 1) {
+      dsh(0, 0.035, 0.32, 0.25);
+    } else {
+      for (const off of [0.03, -0.03]) ribbon(g, C, off, 0.022, () => rgb(COL.yellow), 0.02, m0, m1);
+      dsh(0.28, 0.03, 0.32, 0.25);
+      dsh(-0.28, 0.03, 0.32, 0.25);
+    }
+  }
+  // Railings and piers stay between the junction polygons, so bridges meeting at a junction never cut through each other.
+  for (const [r0, r1] of bridgeRanges(C)) {
+    // No railings where a road meets a ring: they would cut across the mouth of the road.
+    const ringA = nodes.get(e.a) && nodes.get(e.a).ringId ? 0.9 : pa ? 0 : 0.05, ringB = nodes.get(e.b) && nodes.get(e.b).ringId ? 0.9 : pb ? 0 : 0.05;
+    const w0 = Math.max(r0, s0 + ringA), w1 = Math.min(r1, s1 - ringB);
+    if (w1 - w0 < 0.01 || (w1 - w0 < 0.3 && !((pa && w0 <= s0 + 1e-6) || (pb && w1 >= s1 - 1e-6)))) continue;
+    for (const sg of [-1, 1]) {
+      wall(g, C, sg * (k.half + 0.04), w0, w1, -0.14, 0.0, COL.fascia);   // deck edge: visible thickness
+      wall(g, C, sg * (k.half + 0.03), w0, w1, 0.0, 0.16, COL.rail);      // railings
+    }
+    piers(g, C, w0, w1);
+  }
+}
+const MAX_TRIM = 1.3;
+// The arms of a junction node sorted by angle, with the trim that keeps neighbouring arms from overlapping.
+function junctionArms(n) {
+  const arms = [];
+  for (const eid of n.edges) {
+    const e = edges.get(eid);
+    if (!e || e.a === e.b) continue;
+    const atA = e.a === n.id, q = curveAt(e.C, atA ? Math.min(0.3, e.len / 2) : Math.max(e.len - 0.3, e.len / 2));
+    const dx = atA ? q.dx : -q.dx, dz = atA ? q.dz : -q.dz;
+    arms.push({ e, atA, hw: KIND[e.kind].half, dx, dz, ang: Math.atan2(dz, dx) });
+  }
+  arms.sort((p, q) => p.ang - q.ang);
+  if (n.ringId) {
+    // A ring is drawn as one continuous band: no junction polygon, arms simply end inside the band.
+    arms.need = 0;
+    for (const a of arms) { a.t = Math.min(a.e.ring ? 0.3 : 0.5, a.e.len * 0.4); a.td = a.e.ring ? 0 : -0.05; }
+    return arms;
+  }
+  let maxHw = 0;
+  for (const a of arms) maxHw = Math.max(maxHw, a.hw);
+  let t = arms.length >= 3 ? maxHw * 1.1 + 0.1 : 0.1;
+  for (let i = 0; i < arms.length && arms.length > 1; i++) {
+    const a = arms[i], b = arms[(i + 1) % arms.length];
+    let th = b.ang - a.ang; if (th <= 0) th += Math.PI * 2;
+    if (th < Math.PI - 0.05) t = Math.max(t, (a.hw + b.hw) / 2 / Math.tan(th / 2) + 0.1);
+  }
+  arms.need = arms.length >= 2 ? t : 0;     // the trim the junction would like, before it is capped
+  t = Math.min(t, MAX_TRIM);
+  for (const a of arms) a.t = Math.min(t, a.e.len * 0.4);
+  // Two equal roads continuing each other (the joint left by cutting a road into sections): no junction patch, no gap in the markings.
+  if (arms.length === 2 && n.door < 0) {
+    const [p, q] = arms, ow = p.e.oneway;
+    const flowIn = a => (a.atA ? (a.e.owDir || 0) === 1 : (a.e.owDir || 0) === 0);
+    if (p.e.kind === q.e.kind && !!ow === !!q.e.oneway && !p.e.ring && !q.e.ring && (!ow || flowIn(p) !== flowIn(q)) && p.dx * q.dx + p.dz * q.dz < -0.985) {
+      arms.pass = true;
+      for (const a of arms) a.td = 0;
+    }
+  }
+  return arms;
+}
+// Outline of a junction: each arm contributes its two edge corners at the trim distance, neighbouring corners
+// are joined by a rounded fillet, so the junction adapts to any number of roads at any angle.
+function junctionPoly(n, arms, extra) {
+  const pts = [], corners = [];
+  for (const a of arms) {
+    const s = a.atA ? a.t : a.e.len - a.t, q = curveAt(a.e.C, s);
+    const dx = a.atA ? q.dx : -q.dx, dz = a.atA ? q.dz : -q.dz, w = a.hw + extra;
+    corners.push({ lo: { x: q.x + dz * w, y: q.y, z: q.z - dx * w }, hi: { x: q.x - dz * w, y: q.y, z: q.z + dx * w }, dx, dz });
+  }
+  const N = corners.length, lim = 2.2 * Math.max(...arms.map(a => a.t)) + extra * 2;
+  for (let i = 0; i < N; i++) {
+    const a = corners[i], b = corners[(i + 1) % N];
+    const A = a.hi, B = b.lo;
+    pts.push(a.lo, A);
+    const det = -(a.dx * b.dz - a.dz * b.dx);
+    let X = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, z: (A.z + B.z) / 2 };
+    if (Math.abs(det) > 0.05) {
+      const bx = B.x - A.x, bz = B.z - A.z;
+      const lam = (-bx * b.dz + b.dx * bz) / det, mu = (a.dx * bz - a.dz * bx) / det;
+      if (lam < 0 && mu < 0) {
+        let cx = A.x + lam * a.dx, cz = A.z + lam * a.dz;
+        const d = Math.hypot(cx - n.x, cz - n.z);
+        if (d > lim) { cx = n.x + (cx - n.x) * lim / d; cz = n.z + (cz - n.z) * lim / d; }
+        X = { x: cx, y: X.y, z: cz };
+      }
+    }
+    for (let k = 1; k < 7; k++) {
+      const u = k / 7, v = 1 - u;
+      pts.push({ x: v * v * A.x + 2 * u * v * X.x + u * u * B.x, y: A.y + (B.y - A.y) * u, z: v * v * A.z + 2 * u * v * X.z + u * u * B.z });
+    }
+  }
+  return pts;
+}
+function fillPoly(g, c, pts, colOf) {
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    g.tri(c, a, b, colOf(c), colOf(a), colOf(b));
+  }
+}
+function buildRoads() {
+  const g = new Geo();
+  const curb = () => rgb(COL.curb);
+  const surf = surfaceOf(rgb(COL.asphalt), rgb(COL.deck));
+  const armsOf = new Map();
+  for (const n of nodes.values()) {
+    if (n.door >= 0 || n.edges.size < 2) continue;
+    armsOf.set(n.id, junctionArms(n));
+  }
+  const trimAt = (n, e) => {
+    const arms = armsOf.get(n.id), a = arms && arms.find(x => x.e === e);
+    return a ? (a.td !== undefined ? a.td : a.t) : 0;
+  };
+  const passAt = n => { const arms = armsOf.get(n.id); return !!(arms && arms.pass); };
+  for (const e of edges.values()) {
+    const A = nodes.get(e.a), B = nodes.get(e.b);
+    drawEdge(g, e, trimAt(A, e), trimAt(B, e), passAt(A), passAt(B));
+  }
+  // Give-way markings: white triangles across the approach of every road that gives way.
+  for (const n of nodes.values()) {
+    if (!n.prio || n.prio.equal || (n.light && n.phaseOf)) continue;
+    for (const a of junctionArms(n)) {
+      const e = a.e;
+      if (n.prio.main.includes(e.id) || !lanes.has(`L${e.id}.${e.b === n.id ? 0 : 1}.0`)) continue;
+      const s = a.atA ? a.t + 0.2 : e.len - a.t - 0.2, q = curveAt(e.C, s);
+      const fx = a.atA ? -q.dx : q.dx, fz = a.atA ? -q.dz : q.dz, rx = -fz, rz = fx;
+      const lo = e.oneway ? -a.hw + 0.03 : 0.03, hi = a.hw - 0.03, col = rgb(COL.white), y = q.y + 0.02;
+      const P = (u, v) => ({ x: q.x + fx * u + rx * v, y, z: q.z + fz * u + rz * v });
+      for (let v = lo; v + 0.13 <= hi + 1e-6; v += 0.15) g.tri(P(-0.15, v + 0.065), P(0.0, v), P(0.0, v + 0.13), col, col, col);   // points at the driver
+    }
+  }
+  // Lane arrows before a crossing: the turns each lane may take.
+  const turnsOf = new Map();
+  for (const c of conns.values()) {
+    if (c.uturn || c.turn === 'U') continue;
+    const nd = nodes.get(c.node);
+    if (!nd || !isCrossing(nd) || nd.ringId) continue;
+    let set = turnsOf.get(c.inKey);
+    if (!set) { set = new Set(); turnsOf.set(c.inKey, set); }
+    set.add(c.turn);
+  }
+  for (const [key, set] of turnsOf) {
+    const ln = lanes.get(key);
+    if (!ln || ln.len < 1.2 || (KIND[ln.kind].lanes < 2 && set.size >= 3)) continue;     // a single lane that allows everything needs none
+    const q = curveAt(ln.C, ln.len - 0.65);
+    for (const t of ['L', 'S', 'R']) if (set.has(t)) arrowGlyph(g, q, q.dx, q.dz, t);
+  }
+  for (const n of nodes.values()) {
+    if (n.door >= 0) continue;
+    const arms = armsOf.get(n.id);
+    if (n.ringId) continue;
+    if (arms && arms.length >= 2 && !arms.pass) {
+      const lo = { x: n.x, y: n.y - 0.015, z: n.z }, hi = { x: n.x, y: n.y, z: n.z };
+      fillPoly(g, lo, junctionPoly(n, arms, 0.07).map(p => ({ x: p.x, y: p.y - 0.015, z: p.z })), curb);
+      fillPoly(g, hi, junctionPoly(n, arms, 0), surf);
+    } else if (n.edges.size === 1) {
+      const r = KIND[edges.get([...n.edges][0]).kind].half;
+      g.disk(n.x, n.y - 0.015, n.z, r + 0.07, curb());
+      g.disk(n.x, n.y, n.z, r, surf);
+    }
+  }
+  // Driveways from the district buildings to the doors: flat strips in the same mesh as the road.
+  const pave = rgb(COL.pave);
+  for (const d of S.districts) {
+    for (const dw of d.driveways) {
+      const door = nodes.get(d.doors[d.driveways.indexOf(dw)]);
+      let hw = 0.23;
+      if (door) for (const eid of door.edges) hw = Math.max(hw, KIND[edges.get(eid).kind].half);
+      const L = Math.hypot(dw.x1 - dw.x0, dw.z1 - dw.z0) || 1, px = -(dw.z1 - dw.z0) / L * hw, pz = (dw.x1 - dw.x0) / L * hw;
+      const y = ROAD_H + 0.004, P = (x, z) => ({ x, y, z });
+      g.quad(P(dw.x0 + px, dw.z0 + pz), P(dw.x1 + px, dw.z1 + pz), P(dw.x1 - px, dw.z1 - pz), P(dw.x0 - px, dw.z0 - pz), pave);
+    }
+  }
+  swapGeometry(roadMesh, g.geometry(true));
+  swapGeometry(treeMesh, buildTrees());
+}
+function swapGeometry(mesh, geo) {
+  mesh.geometry.dispose();
+  mesh.geometry = geo;
+}
+function rebuildWorld() {
+  S.dirty = false;
+  buildRoads();
+}
+
+// ---------- Cars: spawning and movement ----------
+let carSeq = 0;
+// ---- Collision safety net -------------------------------------------------------------------------
+// Lanes and turns keep cars apart in the usual cases; this catches the rest. Every car checks whether the
+// car body would overlap another one a short way ahead. The car with the higher id gives way, and a car that
+// has been giving way for a while goes on anyway, so nobody can wait for ever.
+const carGrid = new Map();
+const cellOf = (x, z) => Math.floor(x / 1.2) * 4096 + Math.floor(z / 1.2);
+function buildCarGrid() {
+  carGrid.clear();
+  for (const car of S.cars) {
+    if (car.dead) continue;
+    const seg = segOf(car.route[car.idx]);
+    if (!seg) continue;
+    const p = curveAt(seg.C, car.s);
+    car.px = p.x; car.pz = p.z; car.pdx = p.dx; car.pdz = p.dz;
+    const k = cellOf(p.x, p.z);
+    let arr = carGrid.get(k);
+    if (!arr) { arr = []; carGrid.set(k, arr); }
+    arr.push(car);
+  }
+}
+function bodiesOverlap(ax, az, adx, adz, bx, bz, bdx, bdz) {
+  const hl = CAR_LEN / 2 + 0.02, hw = CAR_W / 2, dx = bx - ax, dz = bz - az;
+  if (dx * dx + dz * dz > 0.65) return false;
+  // separating axis test on the four axes: the two car directions and their normals
+  for (let i = 0; i < 4; i++) {
+    const ux = i === 0 ? adx : i === 1 ? -adz : i === 2 ? bdx : -bdz, uz = i === 0 ? adz : i === 1 ? adx : i === 2 ? bdz : bdx;
+    const ra = hl * Math.abs(ux * adx + uz * adz) + hw * Math.abs(-ux * adz + uz * adx);
+    const rb = hl * Math.abs(ux * bdx + uz * bdz) + hw * Math.abs(-ux * bdz + uz * bdx);
+    if (Math.abs(ux * dx + uz * dz) > ra + rb - 0.01) return false;     // side-by-side lanes may touch
+  }
+  return true;
+}
+// Pose of a car after it has driven `d` further along its route.
+function poseAhead(car, d) {
+  let i = car.idx, s = car.s + d;
+  for (;;) {
+    const seg = segOf(car.route[i]);
+    if (!seg) return null;
+    if (s <= seg.len || i >= car.route.length - 1 || i > car.idx + 2) return curveAt(seg.C, Math.min(s, seg.len));
+    s -= seg.len;
+    i++;
+  }
+}
+// Cars on a road with several lanes move to the lane with the shorter queue when it is clear beside them, and
+// plan their route again from there.
+function tryLaneChange(car) {
+  if (car.lc > S.t) return;
+  const key = car.route[car.idx];
+  if (key[0] !== 'L') return;
+  const ln = lanes.get(key);
+  if (!ln || ln.ring) return;
+  const nl = KIND[ln.kind].lanes;
+  if (nl < 2 || car.s < 0.8 || car.s > ln.len - 4.5) return;
+  const [e, d, li] = key.slice(1).split('.'), li0 = +li;
+  let ahead = 0;
+  for (const o of bkOf(key)) if (o.s > car.s) ahead++;
+  let best = null, bestAhead = ahead - 1;                 // worth it only if at least two cars fewer are in front
+  for (const lj of [li0 - 1, li0 + 1]) {
+    if (lj < 0 || lj >= nl) continue;
+    const k2 = `L${e}.${d}.${lj}`;
+    if (!lanes.get(k2)) continue;
+    let a2 = 0, clear = true;
+    for (const o of bkOf(k2)) {
+      if (o.s > car.s) a2++;
+      if (Math.abs(o.s - car.s) < CAR_LEN + MIN_GAP + 0.15) clear = false;
+    }
+    if (clear && a2 < bestAhead) { best = k2; bestAhead = a2; }
+  }
+  car.lc = S.t + 2.5;                                     // do not look again straight away
+  if (!best) return;
+  const rest = pathFromLane(best, car.dest);
+  if (!rest || rest[0] !== best) return;
+  car.lat = (ln.off - lanes.get(best).off) + (car.lat || 0);
+  car.route = rest;
+  car.idx = 0;
+}
+function mustGiveWay(car, dt) {
+  if (car.px === undefined) return false;
+  const look = car.v * car.v / (2 * DECEL) + 0.14 + car.v * 0.1;
+  let hit = false;
+  for (const f of [0.5, 1]) {
+    const p = poseAhead(car, look * f);
+    if (!p) continue;
+    const cx = Math.floor(p.x / 1.2), cz = Math.floor(p.z / 1.2);
+    for (let a = -1; a <= 1 && !hit; a++) {
+      for (let b = -1; b <= 1 && !hit; b++) {
+        const arr = carGrid.get((cx + a) * 4096 + cz + b);
+        if (!arr) continue;
+        for (const o of arr) {
+          if (o === car || o.dead || o.id > car.id) continue;
+          if (o.route[o.idx] === car.route[car.idx]) continue;     // the same lane is handled by the gap logic
+          if (bodiesOverlap(p.x, p.z, p.dx, p.dz, o.px, o.pz, o.pdx, o.pdz)) { hit = true; break; }
+        }
+      }
+    }
+    if (hit) break;
+  }
+  if (hit) {
+    car.yt = (car.yt || 0) + dt;
+    if (car.yt > 1.2) { hit = false; if (car.yt > 2.2) car.yt = 0; }   // do not wait for ever
+  } else if (car.yt) car.yt = Math.max(0, car.yt - dt);
+  return hit;
+}
+function bkOf(key) { return bk.get(key) || EMPTY; }
+const bumpPending = (k, from) => {
+  pendingNext.set(k, (pendingNext.get(k) || 0) + 1);
+  const fk = k + '|' + from;
+  pendingFrom.set(fk, (pendingFrom.get(fk) || 0) + 1);
+};
+function rebuildBuckets() {
+  bk.clear();
+  laneCount.clear();
+  pendingNext.clear();
+  pendingFrom.clear();
+  for (const car of S.cars) {
+    if (car.dead) continue;
+    const k = car.route[car.idx];
+    let arr = bk.get(k);
+    if (!arr) { arr = []; bk.set(k, arr); }
+    arr.push(car);
+    laneCount.set(k, (laneCount.get(k) || 0) + 1);
+    if (k[0] === 'C' && car.idx + 1 < car.route.length) bumpPending(car.route[car.idx + 1], k);
+  }
+  for (const arr of bk.values()) if (arr.length > 1) arr.sort((p, q) => q.s - p.s);
+}
+// A car that lost its road: its resident gets back home on foot.
+function loseCar(car) {
+  car.dead = true;
+  if (car.res && car.home !== undefined) { const h = S.districts[car.home]; if (h) h.away = Math.max(0, h.away - 1); }
+}
+function trySpawn(d, di) {
+  if (S.cars.length >= MAX_CARS) return;
+  let best = null, bestN = Infinity;
+  for (const nid of d.doors) {
+    for (const k of nodes.get(nid).outs) {
+      const arr = bkOf(k);
+      if (arr.length && arr[arr.length - 1].s < CAR_LEN + MIN_GAP) continue;
+      if (arr.length < bestN) { bestN = arr.length; best = k; }
+    }
+  }
+  if (!best) return;
+  const entry = d.qp.length ? d.qp[0] : null, purpose = entry ? entry.p : 'any';
+  const pick = pickDestination(best, di, purpose, entry ? entry.force : undefined);
+  if (!pick) {
+    // Nowhere to go for this purpose: the trip is dropped and the person stays. The district is cut off only if it reaches nothing at all.
+    if (purpose !== 'any' && pickDestination(best, di, 'any')) { d.noLink = false; d.qp.shift(); d.queue--; cancelTrip(d, di, entry); d.retry = 0.3; return; }
+    d.noLink = true; d.retry = 1; return;
+  }
+  d.noLink = false;
+  d.queue--;
+  if (d.qp.length) d.qp.shift();
+  let total = 0;
+  for (const k of pick.path) total += segOf(k).len;
+  const car = {
+    id: ++carSeq, route: pick.path, idx: 0, s: 0, v: 0, wait: 0, dead: false, warned: false,
+    dest: pick.di, dist: total, len: pick.path.length,
+    col: S.districts[pick.di].roof, purpose, res: !!(entry && entry.res), home: entry ? entry.home : undefined,
+    outsider: !!(entry && !entry.res && (purpose === 'in-work' || purpose === 'in-leisure')), t0: S.t, late: false,
+  };
+  let arr = bk.get(best);
+  if (!arr) { arr = []; bk.set(best, arr); }
+  arr.push(car);
+  laneCount.set(best, (laneCount.get(best) || 0) + 1);
+  S.cars.push(car);
+}
+function carPose(car) {
+  const seg = segOf(car.route[car.idx]);
+  if (!seg) return { x: 0, y: 0, z: 0, dx: 1, dz: 0 };
+  return curveAt(seg.C, car.s);
+}
+// A turn is busy while a short cool-down runs, or while a car is in a turn that crosses or merges with it.
+// How a junction treats traffic. An uncontrolled crossing makes everybody slow down and take turns; a signal lets
+// a platoon through at speed; a ring keeps cars moving.
+const isCrossing = n => n.door < 0 && n.edges.size >= 3;
+const isPlain = n => isCrossing(n) && !n.ringId && !(n.light && n.phaseOf);
+function connFactor(n) {
+  if (!isCrossing(n)) return 1;
+  if (n.ringId) return 1.25;
+  return n.light && n.phaseOf ? 1.4 : 1.0;
+}
+function headwayAt(n, seg) {
+  if (isPlain(n)) return 0.25;
+  if (n.light && n.phaseOf) return 0.15;
+  if (n.ringId) return 0.1;                 // the ring's own rules keep cars apart
+  return Math.min(seg.head, 0.3);
+}
+function connBusy(c, need, car) {
+  const node = nodes.get(c.node);
+  if (node.cool > 0) return 'cool';
+  if (node.light && node.phaseOf) {
+    const ph = node.phaseOf.get(c.inKey);
+    if (ph !== undefined && lightState(node, ph) !== 'g') return 'light';
+  }
+  if (c.ringEntry) {
+    // The ring as a whole keeps a few free places, so cars can always move on round it. Counted by length,
+    // not per lane: ring lanes are short, and a per-lane limit left the ring almost empty.
+    const L = lanes.get(c.outKey), rg = L && rings.get(L.ringId);
+    if (rg) {
+      let tot = 0, len = 0;
+      for (const eid of rg.edges) {
+        const e = edges.get(eid);
+        if (!e) continue;
+        for (let li = 0; li < KIND[e.kind].lanes; li++) {
+          const k = `L${eid}.0.${li}`, ln = lanes.get(k);
+          tot += (laneCount.get(k) || 0) + (pendingNext.get(k) || 0);
+          len += ln ? ln.len : 0;
+        }
+      }
+      if (tot >= Math.max(3, Math.floor(len / need) - 2)) return 'cap';
+    }
+    // Cars already on the ring have priority, but only the ones that would end up in the same lane as me: a car that
+    // leaves the ring here, or goes on in the other lane, is no reason to wait.
+    for (const k of node.ins) {
+      const ln = lanes.get(k);
+      if (!ln || !ln.ring) continue;
+      const zone = Math.min(1.2, ln.len * 0.45);
+      for (const o of bkOf(k)) {
+        if (o.s <= ln.len - zone) continue;
+        const ns = segOf(o.route[o.idx + 1]);
+        if (ns && ns.conn && ns.outKey === c.outKey) return 'prio';
+      }
+    }
+  }
+  for (const f of c.conf) {
+    if (c.ringThrough && f.entry) continue;     // cars joining the ring give way to the ones on it
+    const arr = bkOf(f.key);
+    if (!arr.length) continue;
+    if (!f.same) return 'conf';
+    for (const o of arr) if (o.s < need + 0.1) return 'same';
+  }
+  if (car && isCrossing(node) && !node.ringId) {
+    // Right of way: wait for a car that is about to take a turn crossing mine and has priority over me.
+    const lightOn = !!(node.light && node.phaseOf);
+    let passed = false;
+    for (const f of c.conf) {
+      if (car.go > S.t) break;                                  // already decided to go: do not change its mind
+      if (f.rel === 'same') continue;
+      const oc = conns.get(Number(f.key.slice(1))), ln = oc && lanes.get(oc.inKey);
+      if (!ln) continue;
+      let y;
+      if (lightOn) {
+        const ph = node.phaseOf.get(oc.inKey);
+        if (ph === undefined || lightState(node, ph) !== 'g') continue;
+        y = f.rel === 'opp' && c.turn === 'L' && f.tb !== 'L';
+      } else y = mustYield(node, c, oc, f);
+      if (!y) continue;
+      const o = bkOf(oc.inKey)[0];            // only the first car of a lane counts: the ones behind cannot go before it
+      if (o) {
+        if (o.s < ln.len - 1.8 || o.route[o.idx + 1] !== f.key) continue;
+        // A car with priority that is itself standing still gives way to the one that has been waiting longer
+        // (first come, first served), which breaks a circle of cars each waiting for the one on its right.
+        if (o.v < 0.1 && car.wait > o.wait) { passed = true; continue; }
+        if (car.wait > 3 + (car.id % 4)) { passed = true; continue; }       // and after a few seconds the car goes anyway
+        return 'yield';
+      }
+    }
+    if (passed) car.go = S.t + 1.5;                  // the decision to go holds for a moment, or the car would hesitate at the line
+  }
+  return false;
+}
+// Advance one car along its current segment. The car behind keeps the gap to the car ahead in the same lane.
+function moveCar(car, leader, dt) {
+  // A leader that already crossed into another segment no longer constrains us.
+  if (leader && (leader.dead || leader.route[leader.idx] !== car.route[car.idx])) leader = null;
+  const seg = segOf(car.route[car.idx]);
+  if (!seg) { loseCar(car); return; }
+  const len = seg.len, need = CAR_LEN + MIN_GAP;
+  const last = car.idx === car.route.length - 1;
+  let gap, nextSeg = null, q = EMPTY, blocked = false;
+  if (!last) {
+    const nk = car.route[car.idx + 1];
+    nextSeg = segOf(nk);
+    q = bkOf(nk);
+    if (nextSeg && nextSeg.conn) blocked = connBusy(nextSeg, need, car);
+    else if (nextSeg) {
+      // Cars still in a turn that leads into this lane have not reached the lane list yet; wait for them.
+      // Cars of other turns that lead into this lane; cars queued in my own turn are handled by the gap logic.
+      const others = (pendingNext.get(nk) || 0) - (seg.conn ? pendingFrom.get(nk + '|' + car.route[car.idx]) || 0 : 0);
+      if (others > 0) {
+        // Another turn leads into this lane too. Only the car that is less far along gives way, so two cars
+        // in merging turns can never wait for each other.
+        const myKey = car.route[car.idx], mine = seg.conn ? car.s / (seg.len || 1) : 0;
+        for (const ck of connsInto.get(nk) || []) {
+          if (ck === myKey) continue;
+          const cs = segOf(ck), arr = bkOf(ck);
+          for (const o of arr) {
+            const pg = o.s / ((cs && cs.len) || 1);
+            if (pg > mine + 1e-6 || (Math.abs(pg - mine) <= 1e-6 && ck < myKey)) blocked = true;
+          }
+        }
+      }
+    }
+  }
+  if (blocked && car.wait > 60) {
+    // Last resort against a lock-up: after a minute of waiting the right-of-way rules are dropped, except at a red light.
+    const jn = nextSeg && nextSeg.conn && nodes.get(nextSeg.node), ph = jn && jn.light && jn.phaseOf ? jn.phaseOf.get(nextSeg.inKey) : undefined;
+    if (ph === undefined || lightState(jn, ph) === 'g') blocked = false;
+  }
+  if (leader) gap = leader.s - car.s - need;
+  else if (last) gap = 9;
+  else {
+    const toLine = len - car.s;
+    if (blocked) gap = toLine - 0.02 - CAR_LEN * 0.5;                   // junction busy: the nose stops at the line, not the middle of the car
+    else if (q.length) gap = toLine + q[q.length - 1].s - need;          // room in the next segment
+    else gap = toLine + 0.6;
+  }
+  const vmax = seg.conn ? seg.speed * connFactor(nodes.get(seg.node)) : seg.speed;
+  let vT = clamp(gap / TIME_GAP, 0, vmax);
+  if (nextSeg && nextSeg.conn && isPlain(nodes.get(nextSeg.node))) vT = Math.min(vT, 0.6 + 1.0 * (len - car.s));   // slow down for an uncontrolled crossing
+  if (mustGiveWay(car, dt)) vT = 0;
+  car.v = clamp(car.v + clamp(vT - car.v, -DECEL * dt, ACCEL * dt), 0, vmax);
+  car.vr = vmax > 0 ? car.v / vmax : 1;
+  let ns = car.s + car.v * dt;
+  if (leader) ns = Math.min(ns, leader.s - need);
+  ns = Math.max(ns, car.s);
+  if (ns >= len) {
+    if (last) { deliver(car); return; }
+    const free = !blocked && nextSeg && (!q.length || q[q.length - 1].s >= need);
+    if (free) {
+      car.idx++;
+      car.s = ns - len;
+      if (nextSeg.conn) {
+        nodes.get(nextSeg.node).cool = headwayAt(nodes.get(nextSeg.node), nextSeg);
+        if (car.idx + 1 < car.route.length) bumpPending(car.route[car.idx + 1], car.route[car.idx]);
+      }
+    } else {
+      car.s = len;
+      car.v = 0;
+    }
+  } else {
+    car.s = ns;
+  }
+  car.wait = car.v < 0.05 && vT < 0.05 ? car.wait + dt : 0;
+}
+function deliver(car) {
+  car.dead = true;
+  const fare = Math.round(3 + car.dist * 0.6);
+  S.money += fare;
+  S.delivered++;
+  const dd = S.districts[car.dest];
+  if (car.res) (S.tripLog || (S.tripLog = [])).push({ t: S.t, d: S.t - car.t0 });
+  if (dd && car.res) {
+    // a resident arrives: home again, or a guest in the district he was heading for
+    if (dd.type === 'home' && dd === S.districts[car.home] && car.purpose === 'home') dd.away = Math.max(0, dd.away - 1);
+    else dd.hereList.push(car.home);
+  } else if (dd && car.outsider) dd.hereOut++;
+  const p = carPose(car);
+  spawnPopup(p.x, p.y + 0.5, p.z, '+$' + fare);
+}
+
+// ---------- Player actions ----------
+function removeNear(x, z, r) {
+  const near = nearestEdge(x, z);
+  if (near && near.h.d < r) { const [s0, s1] = sectionRange(near.e, near.h.s); removeSection(near.e, s0, s1); }
+}
+function upgradeNear(x, z) {
+  const near = nearestEdge(x, z);
+  if (near && near.h.d < 0.7) { const [s0, s1] = sectionRange(near.e, near.h.s); upgradeEdge(near.e, s0, s1); }
+}
+let lastNoMoney = 0;
+
+// ---------- Popups ----------
+function spawnPopup(x, y, z, text) {
+  const el = document.createElement('div');
+  el.className = 'popup';
+  el.textContent = text;
+  labelsEl.appendChild(el);
+  S.popups.push({ el, x, y, z, age: 0 });
+}
+
+// ---------- Simulation ----------
+// ---------- Jam markers ----------
+// Queues of standing cars get one badge each. Cars close to each other form one jam, jams close to each other one badge,
+// and a badge stays for a few seconds after its jam clears so that it does not flicker.
+function updateJams() {
+  const stuck = [];
+  for (const c of S.cars) if (!c.dead && c.wait > 4 && c.px !== undefined) stuck.push(c);
+  const par = stuck.map((_, i) => i), find = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; };
+  for (let i = 0; i < stuck.length; i++) for (let j = i + 1; j < stuck.length; j++) {
+    if (Math.hypot(stuck[i].px - stuck[j].px, stuck[i].pz - stuck[j].pz) < 1.7) par[find(i)] = find(j);
+  }
+  const groups = new Map();
+  for (let i = 0; i < stuck.length; i++) { const r = find(i); (groups.get(r) || groups.set(r, []).get(r)).push(stuck[i]); }
+  const found = [];
+  for (const g of groups.values()) {
+    if (g.length < 5) continue;
+    let cx = 0, cz = 0;
+    for (const c of g) { cx += c.px; cz += c.pz; }
+    cx /= g.length; cz /= g.length;
+    let mid = g[0], bd = Infinity;
+    for (const c of g) { const dd = Math.hypot(c.px - cx, c.pz - cz); if (dd < bd) { bd = dd; mid = c; } }
+    found.push({ x: mid.px, z: mid.pz, n: g.length });
+  }
+  found.sort((a, b) => b.n - a.n);
+  const keep = [];
+  for (const f of found) if (keep.length < 8 && keep.every(k => Math.hypot(k.x - f.x, k.z - f.z) > 9)) keep.push(f);
+  for (const f of keep) {
+    let m = S.jams.find(j => Math.hypot(j.x - f.x, j.z - f.z) < 8 && j.seen !== S.t);
+    if (!m) {
+      const el = document.createElement('div');
+      el.className = 'jam'; el.hidden = true;
+      labelsEl.appendChild(el);
+      m = { x: f.x, z: f.z, n: f.n, el, seen: S.t, txt: '' };
+      S.jams.push(m);
+    }
+    m.x += (f.x - m.x) * 0.4; m.z += (f.z - m.z) * 0.4; m.n = f.n; m.seen = S.t;
+  }
+  S.jams = S.jams.filter(m => { if (S.t - m.seen < 3) return true; m.el.remove(); return false; });
+}
+
+// ---------- City life ----------
+// Residents leave home for work in the morning on working days, come back in the evening, spend evenings and weekends
+// in leisure districts, run errands, and some travel to and from other cities. Every trip has a purpose and a goal.
+// The number of cars follows the number of residents; residents come and go with the mood of the city.
+const gauss = (h, c, w) => Math.exp(-0.5 * ((h - c) / w) ** 2);
+const window01 = (h, a, b, soft = 1) => ss(clamp((h - a) / soft, 0, 1)) * (1 - ss(clamp((h - b) / soft, 0, 1)));
+const SEC_PER_H = DAY_LEN / 24, TS = 300 / DAY_LEN;      // TS keeps per-second rates tuned for a 5-minute day right for a longer one
+function daylight(h) { return Math.min(ss(clamp((h - 5) / 3, 0, 1)), 1 - ss(clamp((h - 17.5) / 3.5, 0, 1))); }
+const residents = d => Math.floor(d.pop);
+function totalPop() { let t = 0; for (const d of S.districts) t += residents(d); return t; }
+// How many people are in a district right now (residents at home, visitors, and people from other cities).
+function peopleIn(d) {
+  if (d.type === 'home') return Math.max(0, residents(d) - d.away) + d.hereList.length;
+  return d.hereList.length + d.hereOut;
+}
+// A trip waits at its district as a queue entry: {p: purpose, home: the resident's home district, res: a resident drives,
+// force: the district it must end in}. A resident who left on a trip is counted as away from home until he is back.
+function pushTrip(d, di, e) {
+  if (d.queue >= QUEUE_CAP) { d.drop++; S.drops = (S.drops || 0) + 1; return false; }
+  d.qp.push(e); d.queue++;
+  return true;
+}
+// A resident at home goes out: only if somebody is at home, and the trip waits for a free road.
+function homeTrip(d, di, p) {
+  if (residents(d) - d.away < 1) return false;
+  if (!pushTrip(d, di, { p, home: di, res: true })) return false;
+  d.away++;
+  return true;
+}
+// A person present in this district leaves: purpose p, back home when p is 'home'.
+function leaveTrip(d, di, p) {
+  if (!d.hereList.length) return false;
+  const k = (Math.random() * d.hereList.length) | 0, home = d.hereList[k];
+  if (!pushTrip(d, di, { p, home, res: true, force: p === 'home' ? home : undefined })) return false;
+  d.hereList.splice(k, 1);
+  return true;
+}
+// A trip that cannot start (no road to the goal): the person stays where he is.
+function cancelTrip(d, di, e) {
+  if (!e || !e.res) return;
+  if (d.type === 'home' && e.home === di) d.away = Math.max(0, d.away - 1);
+  else d.hereList.push(e.home);
+}
+// Fractional trips pile up in pacc[key]; each whole one is tried as a resident's trip (the pile is capped at one).
+function accrue(d, di, key, rate, dt, purpose) {
+  const v = Math.min(1.5, (d.pacc[key] || 0) + rate * dt);
+  if (v >= 1) d.pacc[key] = homeTrip(d, di, purpose) ? v - 1 : 1; else d.pacc[key] = v;
+}
+// Trips of people from other cities and cargo trucks: not residents, counted separately.
+function accrueVisitor(d, key, rate, dt, purpose) {
+  const v = (d.pacc[key] || 0) + rate * dt;
+  if (v >= 1) { d.pacc[key] = v - 1; pushTrip(d, 0, { p: purpose, res: false }); } else d.pacc[key] = v;
+}
+// A trip longer than 2.5 times the average trip is too long: the resident gives up and turns for home.
+// The "average trip" it is measured against is a slow memory of the shown average: it follows an improving city
+// quickly, but a growing jam stretches it only slowly (about a day), so a jam cannot excuse itself.
+function tripLimit() {
+  return clamp(TRIP_FACTOR * (S.tripBase || 30), TRIP_MIN, 150);
+}
+function updateTripBase(dt) {
+  const avg = S.avgTrip, n = S.tripLog ? S.tripLog.length : 0;
+  if (S.tripBase === undefined) S.tripBase = 30;
+  if (avg === null || avg === undefined || n < 3) return;
+  S.tripBase += avg < S.tripBase ? (avg - S.tripBase) * Math.min(1, dt * 0.05) : (avg - S.tripBase) * Math.min(1, dt / DAY_LEN);
+}
+// Badges where residents turned back, merged when close, gone a few seconds after the last one.
+function markTurn(x, z) {
+  let m = S.turns.find(t => Math.hypot(t.x - x, t.z - z) < 9);
+  if (m) { m.n++; m.seen = S.t; m.x += (x - m.x) * 0.3; m.z += (z - m.z) * 0.3; return; }
+  if (S.turns.length >= 8) { const o = S.turns.shift(); o.el.remove(); }
+  const el = document.createElement('div');
+  el.className = 'jam turn'; el.hidden = true;
+  labelsEl.appendChild(el);
+  S.turns.push({ x, z, n: 1, el, seen: S.t, txt: '' });
+}
+// A resident whose trip is too long gives up and turns for home; the whole city remembers it for a while.
+function giveUp(car) {
+  car.late = true;
+  S.late = (S.late || 0) + 1;
+  if (car.purpose !== 'home' && car.res && car.px !== undefined) markTurn(car.px, car.pz);
+  if (car.purpose === 'home' || !car.res || car.home === undefined) return;
+  const cur = car.route[car.idx], seg = segOf(cur);
+  if (!seg) return;
+  const rest = pathFromLane(seg.conn ? seg.outKey : cur, car.home);
+  if (!rest) return;
+  car.route = seg.conn ? [cur].concat(rest) : rest;
+  car.idx = 0;
+  car.dest = car.home; car.purpose = 'home'; car.col = S.districts[car.home].roof;
+}
+// Average time residents spend on the road, over trips that ended in the last two minutes.
+function avgTripTime() {
+  const log = S.tripLog;
+  if (!log || !log.length) return null;
+  while (log.length && log[0].t < S.t - 120) log.shift();
+  if (!log.length) return null;
+  let sum = 0;
+  for (const e of log) sum += e.d;
+  return sum / log.length;
+}
+function lifeStep(dt) {
+  updateTripBase(dt);
+  { const lim = tripLimit(); for (const car of S.cars) if (car.res && !car.late && !car.dead && S.t - car.t0 > lim) giveUp(car); }
+  S.tod += dt * 24 / DAY_LEN;
+  if (S.tod >= 24) { S.tod -= 24; S.day++; S.money += Math.floor(totalPop() * 0.8 * DAY_LEN / 300); }
+  const h = S.tod, wk = S.day % 7 < 5, pop = totalPop();
+  const ind = S.districts.filter(d => d.type === 'industry').length || 1, gates = S.districts.filter(d => d.type === 'exit').length || 1;
+  const dayWin = window01(h, 7.5, 21, 1.5), work = window01(h, 7, 18, 1.5);
+  const hazard = (d, n, hz) => { d.hacc += n * hz * TS * dt; if (d.hacc >= 1) { d.hacc -= 1; return true; } return false; };
+  for (let di = 0; di < S.districts.length; di++) {
+    const d = S.districts[di];
+    if (!districtHasRoad(d)) continue;
+    if (d.type === 'home') {
+      const P = residents(d);
+      if (wk) accrue(d, di, 'work', P * 0.55 * gauss(h, 7.7, 1.8) / (1.8 * 2.507 * SEC_PER_H), dt, 'work');
+      const lei = wk ? P * 0.25 * gauss(h, 18.6, 1.8) / (1.8 * 2.507 * SEC_PER_H) : P * 0.6 * gauss(h, 13.5, 3.2) / (3.2 * 2.507 * SEC_PER_H);
+      accrue(d, di, 'leisure', lei, dt, 'leisure');
+      accrue(d, di, 'visit', P * 0.12 * dayWin / (13.5 * SEC_PER_H), dt, 'visit');
+      accrue(d, di, 'out', P * 0.04 * dayWin / (13.5 * SEC_PER_H), dt, 'out');
+      // guests of this home go back to their own
+      if (d.hereList.length && hazard(d, d.hereList.length, 0.02)) leaveTrip(d, di, 'home');
+    } else if (d.type === 'work' || d.type === 'industry') {
+      // Commuters leave in the evening (and everybody at the weekend or at night); lunch trips are rare.
+      let hz = !wk ? 0.05 : h >= 16 || h < 5 ? 0.035 : h >= 11.5 && h < 13.5 ? 0.004 : 0;
+      if (h >= 21 || h < 5) hz = 0.06;
+      if (d.hereList.length && hz > 0 && hazard(d, d.hereList.length, hz)) leaveTrip(d, di, wk && h >= 11.5 && h < 13.5 ? 'leisure' : 'home');
+      if (d.hereOut >= 1) { d.oacc += d.hereOut * 0.03 * TS * dt; if (d.oacc >= 1) { d.oacc -= 1; if (pushTrip(d, di, { p: 'out', res: false })) d.hereOut--; } }
+      if (d.type === 'industry') accrueVisitor(d, 'truck', pop * 0.0005 * TS * (wk ? work : 0.3 * work + 0.05) / ind, dt, 'out');
+    } else if (d.type === 'leisure') {
+      const hz = h >= 23 || h < 4 ? 0.1 : 0.022;
+      if (d.hereList.length && hazard(d, d.hereList.length, hz)) leaveTrip(d, di, 'home');
+      if (d.hereOut >= 1) { d.oacc += d.hereOut * 0.03 * TS * dt; if (d.oacc >= 1) { d.oacc -= 1; if (pushTrip(d, di, { p: 'out', res: false })) d.hereOut--; } }
+    } else if (d.type === 'exit') {
+      // residents who travelled to another city come back after a while; visitors and trucks come from there
+      if (d.hereList.length && hazard(d, d.hereList.length, 0.01)) leaveTrip(d, di, 'home');
+      accrueVisitor(d, 'inwork', pop * 0.0004 * TS * (wk ? work : 0.2 * work) / gates, dt, 'in-work');
+      accrueVisitor(d, 'inleis', pop * 0.0005 * TS * (wk ? 0.4 : 1.2) * gauss(h, 14, 3.2) / gates, dt, 'in-leisure');
+    }
+  }
+  // Mood follows how the traffic flows; residents move in or out slowly with it.
+  S.moodT = (S.moodT || 0) + dt;
+  if (S.moodT >= 0.5) {
+    S.moodT = 0;
+    const cars = S.cars.length, avg = S.avgV === undefined ? 100 : S.avgV;
+    let jam = 0;
+    for (const c of S.cars) if (c.wait > JAM_T) jam++;
+    let qf = 0, qn = 0;
+    for (const d of S.districts) if (d.type !== 'exit' && districtHasRoad(d)) { qf += d.queue / QUEUE_CAP; qn++; }
+    qf = qn ? qf / qn : 0;
+    const jamShare = cars ? jam / cars : 0;
+    const tt = avgTripTime();
+    S.avgTrip = tt;
+    S.moodTarget = 100 * (0.3 * avg / 100 + 0.15 * (1 - clamp(jamShare * 4, 0, 1)) + 0.1 * (1 - clamp(qf * 1.5, 0, 1)) + 0.1 * (1 - clamp((S.drops || 0) / 12, 0, 1))
+      + 0.1 * (1 - clamp((S.late || 0) / 6, 0, 1)) + 0.25 * (tt === null ? 1 : 1 - clamp((tt - 15) / 45, 0, 1)));
+  }
+  S.drops = (S.drops || 0) * Math.exp(-dt / 30);
+  S.late = (S.late || 0) * Math.exp(-dt / 60);       // trips that could not even start leave a bad memory for a while
+  S.mood += ((S.moodTarget === undefined ? S.mood : S.moodTarget) - S.mood) * Math.min(1, dt / 60);
+  const rate = (S.mood - 50) / 50 * 0.0014;
+  for (const d of S.districts) if (d.type === 'home' && districtHasRoad(d) && !d.noLink) d.pop = Math.max(d.away, clamp(d.pop * Math.exp(rate * dt), 8, 30000));    // residents who are away cannot disappear
+}
+
+function step(dt) {
+  S.t += dt;
+  if (S.demo) {
+    // Menu background: steady traffic, no jams, no new districts, a bright morning.
+    S.tod = 10; S.meter = 0;
+    S.nextDistrictIn = 1e9;
+    for (const d of S.districts) d.queue = Math.max(d.queue, 8);
+  }
+  for (const n of nodes.values()) if (n.cool > 0) n.cool = Math.max(0, n.cool - dt);
+  rebuildBuckets();
+  buildCarGrid();
+  for (const n of nodes.values()) if (n.light && n.phaseOf) updateLight(n, dt);
+  for (let t = 0; t < 3 && S.cars.length; t++) {
+    S.lcPtr = ((S.lcPtr || 0) + 1) % S.cars.length;
+    const c = S.cars[S.lcPtr];
+    if (c && !c.dead && c.v < 0.6) tryLaneChange(c);
+  }
+
+  if (!S.demo) lifeStep(dt);
+  S.turns = S.turns.filter(m => { if (S.t - m.seen < 8) return true; m.el.remove(); return false; });
+  S.jamT = (S.jamT || 0) + dt;
+  if (S.jamT >= 0.5) { S.jamT = 0; if (S.demo) { for (const m of S.jams) m.el.remove(); S.jams = []; } else updateJams(); }
+  S.nextDistrictIn -= dt;
+  if (S.nextDistrictIn <= 0) {
+    const linked = districtsLinked();
+    if (S.meter >= 100 || S.mood < 35 || !linked) {
+      S.nextDistrictIn = 3;                    // a jammed, unhappy or unconnected city does not grow
+    } else if (S.districts.length < MAX_DISTRICTS) {
+      const hasGate = S.districts.some(d => d.type === 'exit');
+      const d = !hasGate && S.districts.length >= 3 ? addGate() : addDistrict();
+      if (d) S.money += 60;
+      S.nextDistrictIn = Math.max(40, 75 - S.districts.length * 2);
+    } else S.nextDistrictIn = 3;
+  }
+
+  for (let di = 0; di < S.districts.length; di++) {
+    const d = S.districts[di];
+    d.age += dt;
+    if (S.demo) {
+      d.acc += Math.min(0.3, 0.1 + d.age * 0.003) * dt;
+      if (d.acc >= 1) { d.acc -= 1; if (d.queue < 12) d.queue++; }
+    }
+    d.retry = Math.max(0, d.retry - dt);
+    if (d.queue > 0 && d.retry === 0) trySpawn(d, di);
+  }
+
+  for (const arr of bk.values()) {
+    for (let i = 0; i < arr.length; i++) if (!arr[i].dead) moveCar(arr[i], i > 0 ? arr[i - 1] : null, dt);
+  }
+  S.cars = S.cars.filter(c => !c.dead);
+
+  let jams = 0;
+  for (const car of S.cars) {
+    if (car.wait > JAM_T) {
+      jams++;
+      if (!car.warned) {
+        car.warned = true;
+        if (S.jamCool <= 0) { toast('Пробка! Постройте проспект или объездную дорогу', 3200); S.jamCool = 12; }
+      }
+    }
+  }
+  let pressure = jams;
+  for (const d of S.districts) {
+    if (d.queue < 8) continue;
+    pressure += districtHasRoad(d) && !d.noLink ? 1 : 0.35;
+  }
+  S.meter = clamp(S.meter + (pressure * 2.5 - 1.5) * dt, 0, 100);
+  S.jamCool = Math.max(0, S.jamCool - dt);
+  collectHeat(dt);
+  if (S.cars.length > (S.peakCars || 0)) S.peakCars = S.cars.length;
+  // Capacity (share of cars that are not standing still) and speed (share of the speed they could drive), both
+  // averaged over the last 30 seconds of game time: one value per second, the newest second still filling up.
+  if (S.cars.length) {
+    let sum = 0;
+    for (const car of S.cars) sum += car.vr === undefined ? 1 : car.vr;
+    const a = S.acc || (S.acc = { t: 0, v: 0 });
+    a.t += dt; a.v += 100 * sum / S.cars.length * dt;
+    if (a.t >= 1) {
+      (S.samp || (S.samp = [])).push({ v: a.v / a.t });
+      if (S.samp.length > 30) S.samp.shift();
+      S.acc = null;
+    }
+  }
+  {
+    let v = 0, n = 0;
+    for (const m of S.samp || []) { v += m.v; n++; }
+    const a = S.acc;
+    if (a && a.t > 0) { v += a.v; n += a.t; }
+    S.avgV = n ? v / n : 100;
+  }
+  for (const p of S.popups) p.age += dt;
+  S.popups = S.popups.filter(p => {
+    if (p.age < 1.2) return true;
+    p.el.remove();
+    return false;
+  });
+  if (S.meter >= 100 && S.fullCool <= 0) {
+    // The city is jammed, but the game goes on: no new districts until the jam eases, and the player can fix it.
+    S.fullCool = 25;
+    toast('Город стоит в пробке — игра продолжается. Постройте кольцо, светофор или объезд', 4200);
+  }
+  S.fullCool = Math.max(0, (S.fullCool || 0) - dt);
+  // The best score is saved as it grows, since a game no longer ends.
+  if (S.delivered > S.bestScore) { S.bestScore = S.delivered; S.bestDirty = true; }
+  if (S.bestDirty && S.t - (S.bestSaved || 0) > 10) { S.bestSaved = S.t; S.bestDirty = false; saveBest(S.bestScore); }
+}
+
+// ---------- Map views: jams and speed along the roads ----------
+// Every road side is cut into short bins. Each bin remembers, with a memory of about 30 seconds, how long cars spent
+// there (cars), how fast they went (speed ratio) and how long they stood still (stopped).
+const HEAT_BIN = 0.5, HEAT_TAU = 30;
+function heatOf(e, dir) {
+  const k = e.id + '.' + dir;
+  let h = S.heat.get(k);
+  if (!h) {
+    const nb = Math.max(2, Math.ceil(e.len / HEAT_BIN));
+    h = { e: e.id, dir, len: e.len, nb, cars: new Float32Array(nb), spd: new Float32Array(nb), stop: new Float32Array(nb) };
+    S.heat.set(k, h);
+  }
+  return h;
+}
+const laneInfo = new Map();     // lane key -> its edge and direction, parsed once
+function collectHeat(dt) {
+  for (const car of S.cars) {
+    const key = car.route[car.idx];
+    if (!key || key[0] !== 'L') continue;
+    const ln = lanes.get(key);
+    if (!ln || ln.len <= 0) continue;
+    let li = laneInfo.get(key);
+    if (!li) { const [eid, dr] = key.slice(1).split('.'); li = { eid: Number(eid), dir: Number(dr) }; laneInfo.set(key, li); }
+    const e = edges.get(li.eid);
+    if (!e) continue;
+    const dir = li.dir, h = heatOf(e, dir), f = clamp(car.s / ln.len, 0, 1);
+    const arc = dir === 0 ? f * e.len : (1 - f) * e.len;
+    const b = clamp(Math.floor(arc / e.len * h.nb), 0, h.nb - 1);
+    h.cars[b] += dt;
+    h.spd[b] += dt * (car.vr === undefined ? 1 : car.vr);
+    if (car.v < 0.1) h.stop[b] += dt;
+  }
+  S.heatT += dt;
+  if (S.heatT >= 0.5) {
+    const k = Math.exp(-S.heatT / HEAT_TAU);
+    S.heatT = 0;
+    for (const [key, h] of S.heat) {
+      const e = edges.get(h.e);
+      if (!e || Math.abs(e.len - h.len) > 1e-6) { S.heat.delete(key); continue; }
+      let any = 0;
+      for (let i = 0; i < h.nb; i++) { h.cars[i] *= k; h.spd[i] *= k; h.stop[i] *= k; any += h.cars[i]; }
+      if (any < 0.01) S.heat.delete(key);
+    }
+  }
+}
+// Green to maroon, smooth: t = 0 is fine, t = 1 is the worst.
+const HEAT_STOPS = [[0, [0.18, 0.78, 0.32]], [0.3, [0.91, 0.85, 0.17]], [0.55, [0.94, 0.54, 0.14]], [0.8, [0.88, 0.19, 0.16]], [1, [0.43, 0.04, 0.10]]];
+function heatColor(t) {
+  t = clamp(t, 0, 1);
+  for (let i = 1; i < HEAT_STOPS.length; i++) {
+    const [t1, c1] = HEAT_STOPS[i], [t0, c0] = HEAT_STOPS[i - 1];
+    if (t <= t1) { const u = (t - t0) / (t1 - t0); return [c0[0] + (c1[0] - c0[0]) * u, c0[1] + (c1[1] - c0[1]) * u, c0[2] + (c1[2] - c0[2]) * u]; }
+  }
+  return HEAT_STOPS[HEAT_STOPS.length - 1][1];
+}
+// Value (0 fine .. 1 bad) and how much data there is (0..1) for each bin, blurred along the road so colours melt into each other.
+function heatBins(h, mode, lanesN) {
+  const nb = h.nb, val = new Float32Array(nb), wt = new Float32Array(nb);
+  const raw = new Float32Array(nb), rw = new Float32Array(nb);
+  const pack = HEAT_BIN / (CAR_LEN + MIN_GAP) * lanesN;
+  for (let i = 0; i < nb; i++) {
+    const c = h.cars[i];
+    rw[i] = c;
+    if (c < 0.05) continue;
+    if (mode === 2) raw[i] = 1 - clamp(h.spd[i] / c, 0, 1);
+    else raw[i] = clamp(h.stop[i] / c, 0, 1) * clamp(c / HEAT_TAU / (0.5 * pack), 0, 1);
+  }
+  const K = [1, 2, 3, 2, 1];
+  for (let i = 0; i < nb; i++) {
+    let sv = 0, sw = 0;
+    for (let d = -2; d <= 2; d++) {
+      const j = i + d;
+      if (j < 0 || j >= nb) continue;
+      const w = K[d + 2] * Math.min(1, rw[j] / 1.5);
+      sv += w * raw[j]; sw += w;
+    }
+    val[i] = sw > 0 ? sv / sw : 0;
+    wt[i] = clamp(sw / 6, 0, 1);
+  }
+  return { val, wt };
+}
+function buildHeatGeo() {
+  const g = new Geo(), mode = S.view, asph = rgb(COL.asphalt), trims = new Map();
+  if (!mode) return g.geometry();
+  for (const h of S.heat.values()) {
+    const e = edges.get(h.e);
+    if (!e) continue;
+    const A = nodes.get(e.a), B = nodes.get(e.b);
+    const trim = (n) => {
+      if (!n || n.door >= 0 || n.edges.size < 2) return 0;
+      let m = trims.get(n.id);
+      if (!m) { m = new Map(); for (const a of junctionArms(n)) m.set(a.e.id, a.t); trims.set(n.id, m); }
+      return m.get(e.id) || 0;
+    };
+    const t0 = trim(A) + 0.05, t1 = e.len - trim(B) - 0.05;
+    if (t1 - t0 < 0.1) continue;
+    const k = KIND[e.kind], nl = k.lanes;
+    const two = !e.oneway && !e.ring;
+    const half = two ? k.half / 2 : k.half, off = two ? (h.dir === 0 ? half : -half) : 0;
+    if ((e.oneway || e.ring) && h.dir !== (e.ring ? 0 : (e.owDir || 0))) continue;
+    const { val, wt } = heatBins(h, mode, e.oneway && !e.ring ? nl : 1);
+    const at = (arrV, s) => {                            // value at arc length s, interpolated between bin centres
+      let u = s / e.len * h.nb - 0.5;
+      u = clamp(u, 0, h.nb - 1);
+      const i = Math.floor(u), j = Math.min(h.nb - 1, i + 1), f = u - i;
+      return arrV[i] * (1 - f) + arrV[j] * f;
+    };
+    const steps = Math.max(2, Math.ceil((t1 - t0) / 0.25));
+    const prev = [];
+    for (let i = 0; i <= steps; i++) {
+      let s = t0 + (t1 - t0) * i / steps;
+      // dir 1 drives against the arc direction; bins were filled in arc order already, so no flipping is needed
+      const q = curveAt(e.C, s), a = at(wt, s), c = heatColor(at(val, s));
+      const al = ss(clamp(a * 1.4, 0, 1)) * 0.92;
+      const col = [asph[0] + (c[0] - asph[0]) * al, asph[1] + (c[1] - asph[1]) * al, asph[2] + (c[2] - asph[2]) * al];
+      const y = q.y + 0.034;
+      prev.push({
+        l: { x: q.x + q.nx * (off + half * 0.94), y, z: q.z + q.nz * (off + half * 0.94) },
+        r: { x: q.x + q.nx * (off - half * 0.94), y, z: q.z + q.nz * (off - half * 0.94) }, col, a: al,
+      });
+    }
+    for (let i = 0; i < steps; i++) {
+      const p = prev[i], n = prev[i + 1];
+      if (p.a < 0.03 && n.a < 0.03) continue;
+      g.quadV(p.l, n.l, n.r, p.r, p.col, n.col, n.col, p.col);
+    }
+  }
+  return g.geometry();
+}
+function setView(v) {
+  S.view = v;
+  S.heatKey = '';
+  document.querySelectorAll('.vw').forEach(b => b.classList.toggle('on', Number(b.dataset.view) === v));
+  const lg = $('legend');
+  lg.hidden = !v;
+  if (v) { setText($('legLo'), v === 1 ? 'свободно' : 'быстро'); setText($('legHi'), v === 1 ? 'пробка' : 'медленно'); }
+}
+
+// ---------- Menu background ----------
+// A ready-made city (four districts around a roundabout) that runs behind the menu. The seed fixes the map.
+function buildDemo(seed) {
+  const real = Math.random;
+  let a = seed >>> 0;
+  Math.random = () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  try {
+    clearWorld();
+    S.names = NAMES.slice().sort(() => Math.random() - 0.5);
+    buildGround(); buildWater(); placeTrees();
+    S.t = 0; S.money = 1e6; S.delivered = 0; S.meter = 0; S.over = false;
+    S.tod = 10;
+    addDistrict(0, MIN_DISTRICT_GAP, 'home');
+    if (!addDistrict(1, 28, 'work')) return false;
+    if (!addDistrict(undefined, MIN_DISTRICT_GAP, 'industry')) return false;
+    if (!addDistrict(undefined, MIN_DISTRICT_GAP, 'leisure')) return false;
+    const hub = { x: S.districts.reduce((q, d) => q + d.cx, 0) / S.districts.length, z: S.districts.reduce((q, d) => q + d.cz, 0) / S.districts.length };
+    for (const d of S.districts) {
+      const A = d.doors.map(id => nodes.get(id)).sort((p, q) => Math.hypot(p.x - hub.x, p.z - hub.z) - Math.hypot(q.x - hub.x, q.z - hub.z))[0];
+      const L = Math.hypot(hub.x - A.x, hub.z - A.z), n = Math.ceil(L / 0.5), raw = [];
+      for (let i = 0; i <= n; i++) raw.push({ x: A.x + (hub.x - A.x) * i / n, z: A.z + (hub.z - A.z) * i / n });
+      S.plan = computePlan(raw, 1);
+      S.plan.drawing = false;
+      if (!S.plan.valid || !applyPlan()) return false;
+    }
+    const j = [...nodes.values()].find(n => n.door < 0 && n.edges.size >= 3);
+    if (!j || waterDist(j.x, j.z) < 3.5) return false;     // keep the ring on land, it looks better
+    const ring = makeRoundabout(j, 2, true);
+    if (!ring) return false;
+    S.demoRing = ring;
+    return true;
+  } finally {
+    Math.random = real;
+    S.plan = null;
+  }
+}
+function startDemo() {
+  let ok = false;
+  for (let seed = 11; seed < 80 && !ok; seed++) ok = buildDemo(seed);
+  if (!ok) return;                                     // no demo: the menu simply shows the empty field
+  S.demo = true;
+  S.running = true;
+  document.body.classList.add('demo');
+  const r = S.demoRing;
+  cam.tx = r.x; cam.tz = r.z; cam.dist = 30; cam.yaw = 0;
+  S.demoDist = 30;
+  updateCamera();
+  S.dirty = true;
+}
+function endDemo() {
+  S.demo = false;
+  document.body.classList.remove('demo');
+  cam.yaw = 0;
+}
+function clearWorld() {
+  for (const d of S.districts) { scene.remove(d.group); d.el.remove(); }
+  for (const p of S.popups) p.el.remove();
+  for (const m of S.jams) m.el.remove();
+  for (const m of S.turns) m.el.remove();
+  S.jams = []; S.turns = [];
+  S.districts = [];
+  S.cars = [];
+  S.popups = [];
+  nodes.clear(); edges.clear(); lanes.clear(); conns.clear(); connByPair.clear(); rings.clear();
+  bk.clear(); laneCount.clear();
+  S.plan = null;
+  S.contNode = null;
+}
+function newGame() {
+  clearWorld();
+  S.names = NAMES.slice().sort(() => Math.random() - 0.5);
+  buildGround();
+  buildWater();
+  placeTrees();
+  S.t = 0; S.money = START_MONEY; S.delivered = 0; S.meter = 0; S.avgV = undefined; S.heat.clear(); S.view = 0; setView(0); S.samp = []; S.acc = null;
+  S.over = false; S.running = true;
+  S.nextDistrictIn = 12; S.jamCool = 0; S.linkHint = undefined;
+  S.tod = 22; S.day = 6; S.mood = S.moodTarget = 75; S.moodT = 0; S.dcache = null; S.tripLog = []; S.avgTrip = null; S.late = 0; S.tripBase = 30;     // Sunday evening: the first working morning is a few minutes away
+  addDistrict(0, MIN_DISTRICT_GAP, 'home');
+  if (!addDistrict(1, 28, 'work')) addDistrict(1, MIN_DISTRICT_GAP, 'work');
+  S.districts[0].pop = 40;
+  fitDistance();
+  if (S.districts.length > 1) {
+    cam.tx = (S.districts[0].cx + S.districts[1].cx) / 2;
+    cam.tz = (S.districts[0].cz + S.districts[1].cz) / 2;
+  }
+  updateCamera();
+  startEl.hidden = true;
+  toast('Соедините районы дорогой через реку — от выезда к выезду', 4200);
+  S.dirty = true;
+  S.planDirty = true;
+  updateHud();
+}
+
+// ---------- Per-frame view sync ----------
+function syncCars(dt = 0.016) {
+  let i = 0;
+  const k = 1 - Math.exp(-dt * 14);
+  for (const car of S.cars) {
+    if (i >= MAX_CARS) break;
+    const p = carPose(car), want = Math.atan2(-p.dz, p.dx);
+    // The body turns smoothly towards the road direction instead of snapping at the start of every turn.
+    if (car.hd === undefined) car.hd = want;
+    else {
+      let d = want - car.hd;
+      d -= Math.PI * 2 * Math.round(d / (Math.PI * 2));
+      car.hd += d * k;
+    }
+    if (car.lat) {
+      // after a lane change the body glides sideways instead of jumping
+      car.lat *= Math.exp(-dt * 4);
+      if (Math.abs(car.lat) < 0.004) car.lat = 0;
+      p.x += p.nx * car.lat; p.z += p.nz * car.lat;
+    }
+    dummy.position.set(p.x, p.y, p.z);
+    dummy.rotation.set(0, car.hd, 0);
+    dummy.updateMatrix();
+    carBody.setMatrixAt(i, dummy.matrix);
+    carCab.setMatrixAt(i, dummy.matrix);
+    tmpColor.setHex(car.wait > JAM_T ? JAM_COLOR : car.col);
+    carBody.setColorAt(i, tmpColor);
+    carCab.setColorAt(i, tmpColor);
+    i++;
+  }
+  carBody.count = carCab.count = i;
+  carBody.instanceMatrix.needsUpdate = true;
+  carCab.instanceMatrix.needsUpdate = true;
+  if (carBody.instanceColor) {
+    carBody.instanceColor.needsUpdate = true;
+    carCab.instanceColor.needsUpdate = true;
+  }
+}
+function buildPlanGeo() {
+  const pl = S.plan;
+  if (!pl || pl.pts.length < 2) return new THREE.BufferGeometry();
+  const P = pl.pts.map(p => ({ x: p.x, y: hAt(p.x, p.z) + 0.08, z: p.z }));
+  const C = makeCurve(P);
+  const g = new Geo();
+  const col = !pl.valid ? [0.84, 0.35, 0.35] : pl.cost <= S.money ? [0.49, 0.83, 0.42] : [0.95, 0.68, 0.2];
+  ribbon(g, C, 0, KIND[pl.kind].half, () => col, 0);
+  return g.geometry();
+}
+function updatePlanUi() {
+  const pl = S.plan;
+  const show = !!pl && !pl.drawing && pl.pts.length > 1;
+  planBar.hidden = !show;
+  if (!show) return;
+  const affordable = pl.cost <= S.money;
+  setText($('planCost'), '$' + pl.cost.toLocaleString('en-US'));
+  setText($('planMsg'), pl.valid ? (affordable ? `${KIND[pl.kind].name} · ${Math.round(pl.length)} ед.` : 'Не хватает денег') : pl.msg);
+  $('planApply').disabled = !(pl.valid && affordable);
+}
+// Highlight of the selected road: what it is now, or what the avenue would take up (red if it cannot be built).
+function buildSelGeo() {
+  const g = new Geo();
+  const rg = S.selRing && rings.get(S.selRing), nd = S.selNode && nodes.get(S.selNode);
+  if (rg) g.disk(rg.x, rg.y + 0.08, rg.z, rg.r + 0.4, [0.45, 0.7, 1], 32);
+  else if (nd) {
+    g.disk(nd.x, nd.y + 0.08, nd.z, 0.6, [0.45, 0.7, 1], 24);
+    if (nd.prio && !nd.light) {
+      // Which road is the main one: yellow; the roads that give way: red.
+      for (const a of junctionArms(nd)) {
+        const main = nd.prio.equal ? null : nd.prio.main.includes(a.e.id), L = a.e.len;
+        const s0 = a.atA ? a.t : Math.max(0, L - a.t - 3.5), s1 = a.atA ? Math.min(L, a.t + 3.5) : L - a.t;
+        const col = main === null ? [0.45, 0.7, 1] : main ? [1, 0.82, 0.15] : [0.92, 0.3, 0.3];
+        ribbon(g, a.e.C, 0, a.hw, () => col, 0.09, s0, s1);
+      }
+    }
+  }
+  const sec = selSection();
+  if (!sec) return g.geometry();
+  const { e, s0, s1 } = sec;
+  let col = [0.45, 0.7, 1], hw = KIND[e.kind].half;
+  if (e.kind === 1) {
+    hw = KIND[2].half;
+    col = cachedProblem(e, s0, s1) ? [0.84, 0.35, 0.35] : upgradeCost(e, s0, s1) <= S.money ? [0.49, 0.83, 0.42] : [0.95, 0.68, 0.2];
+  }
+  ribbon(g, e.C, 0, hw, () => col, 0.07, s0, s1);
+  return g.geometry();
+}
+const nodeBar = $('nodeBar');
+let ringProbs = null, ringProbKey = '';
+function updateNodeUi() {
+  if (S.selRing && !rings.has(S.selRing)) { S.selRing = null; S.selDirty = true; }
+  if (S.selNode && !nodes.has(S.selNode)) { S.selNode = null; S.selDirty = true; }
+  const ring = S.tool === 'edit' && S.selRing ? rings.get(S.selRing) : null;
+  const n = S.tool === 'edit' && S.selNode ? nodes.get(S.selNode) : null;
+  nodeBar.hidden = !ring && !n;
+  if (!ring && !n) return;
+  $('nodeLight').hidden = !!ring;
+  $('ringOff').hidden = !ring;
+  $('nodePrio').hidden = !!ring || !n || !n.prio || !!n.light;
+  $('ringLanes').hidden = !ring;
+  let msg = '';
+  if (ring) {
+    setText($('nodeTitle'), `Кольцо · ${RING_SIZES[ring.size].name}`);
+    for (const k of [1, 2, 3]) {
+      const ln = ring.lanes || 1, b = $('ring' + k), diff = ringTotal(k, ln) - Math.floor(ringTotal(ring.size, ln) * 0.5);
+      setText(b, k === ring.size ? `${RING_SIZES[k].name} ✓` : `${RING_SIZES[k].name} · $${diff}`);
+      b.disabled = k === ring.size || S.money < diff;
+    }
+    const two = (ring.lanes || 1) === 2;
+    const lkey = `${ring.id}|${S.netVer | 0}|${two}`;
+    if (lkey !== S.lpKey) { S.lpKey = lkey; S.lpVal = two ? '' : ringLanesProblem(ring); }
+    const lp = S.lpVal, cost = RING2_EXTRA[ring.size];
+    setText($('ringLanes'), two ? '1 полоса' : `2 полосы $${cost}`);
+    $('ringLanes').disabled = !two && (!!lp || S.money < cost);
+    msg = lp || (two ? 'Две полосы: максимум пропускной способности' : 'Вторая полоса почти удваивает поток кольца');
+  } else {
+    const key = `${n.id}|${S.netVer | 0}|${S.districts.length}`;
+    if (key !== ringProbKey) { ringProbKey = key; ringProbs = [1, 2, 3].map(k => ringProblem(n, RING_SIZES[k].r)); }
+    setText($('nodeTitle'), `Перекрёсток · ${n.edges.size} дороги`);
+    setText($('nodeLight'), n.light ? 'Убрать светофор' : `Светофор $${LIGHT_COST}`);
+    $('nodeLight').disabled = !n.light && S.money < LIGHT_COST;
+    for (const k of [1, 2, 3]) {
+      const b = $('ring' + k);
+      setText(b, `Кольцо ${RING_SIZES[k].name} · $${RING_SIZES[k].cost}`);
+      b.disabled = !!ringProbs[k - 1] || S.money < RING_SIZES[k].cost;
+      if (ringProbs[k - 1]) msg = msg || `${RING_SIZES[k].name}: ${ringProbs[k - 1]}`;
+    }
+    if (n.prio && !n.light) setText($('nodePrio'), n.prio.equal ? 'Равнозначный перекрёсток' : 'Главная дорога: сменить');
+    msg = msg || (n.light ? 'Светофор подстраивается под очередь' : n.prio && n.prio.equal ? 'Равнозначный перекрёсток: помеха справа. Кнопка выбирает главную дорогу' : 'Жёлтым подсвечена главная дорога (ромб), красным — те, кто уступает (треугольник и зубья на асфальте)');
+  }
+  setText($('nodeMsg'), msg);
+}
+function cycleOneway(e) {
+  if (e.ring) return;
+  if (!e.oneway) { e.oneway = true; e.owDir = 0; }
+  else if ((e.owDir || 0) === 0) e.owDir = 1;
+  else { e.oneway = false; e.owDir = 0; }
+  afterNetworkChange();
+}
+function updateEditUi() {
+  updateNodeUi();
+  if (S.sel && !edges.has(S.sel)) { S.sel = null; S.selDirty = true; }
+  const sec = S.tool === 'edit' ? selSection() : null;
+  editBar.hidden = !sec;
+  if (!sec) return;
+  const { e, s0, s1 } = sec, st = sectionStats(e, s0, s1), part = !isWhole(e, s0, s1);
+  const refund = Math.floor(nominalCost(e.kind, st.len, st.frac) * 0.5);
+  setText($('editTitle'), `${part ? 'Участок · ' : ''}${KIND[e.kind].name} · ${st.len < 10 ? st.len.toFixed(1) : Math.round(st.len)} ед.`);
+  setText($('editRemove'), `Снести +$${refund}`);
+  setText($('editOneway'), !e.oneway ? 'Двустороннее' : (e.owDir || 0) === 0 ? 'Односторонняя →' : 'Односторонняя ←');
+  const up = $('editUpgrade');
+  up.hidden = e.kind !== 1;
+  if (e.kind !== 1) { setText($('editMsg'), e.oneway ? 'Одностороннее движение — стрелки на дороге показывают направление' : 'Максимальный уровень'); return; }
+  const bad = cachedProblem(e, s0, s1), cost = upgradeCost(e, s0, s1);
+  setText($('editMsg'), bad || (S.money < cost ? 'Не хватает денег' : 'Проспект: больше полос и скорость'));
+  setText(up, `Улучшить $${cost}`);
+  up.disabled = !!bad || S.money < cost;
+}
+function updateHint() {
+  const pl = S.plan;
+  if (pl && pl.drawing) {
+    const txt = pl.msg || 'Отпустите палец';
+    setText(hintEl, `${txt} · $${pl.cost}`);
+  } else {
+    setText(hintEl, HINTS[S.tool]);
+  }
+}
+function updateLabels() {
+  for (const d of S.districts) {
+    const g = d.type === 'home' ? 0.85 + 0.5 * Math.min(1, d.pop / 400) : d.type === 'exit' ? 1 : 1 + 0.2 * Math.min(1, d.age / 300);
+    d.group.scale.y = g;
+    projV.set(d.cx, 2.9 * g, d.cz).project(camera);
+    const sx = (projV.x + 1) / 2 * CW, sy = (1 - projV.y) / 2 * CH;
+    const onScreen = projV.z < 1 && sx > 60 && sx < CW - 60 && sy > 60 && sy < CH - 120;
+    d.el.hidden = !onScreen;
+    if (!onScreen) continue;
+    d.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, -100%)`;
+    const hasRoad = districtHasRoad(d);
+    const status = !hasRoad ? 'нет дороги' : d.noLink ? 'нет связи' : '';
+    const hot = d.queue >= 8;
+    const inside = peopleIn(d), popTxt = ' · 👥 ' + inside + (d.type === 'home' ? '/' + residents(d) : '');
+    const key = `${d.name}|${status}|${d.queue}|${hot}|${popTxt}`;
+    if (key !== d.lastKey) {
+      d.lastKey = key;
+      d.nameEl.textContent = DTYPE[d.type].icon + ' ' + d.name + popTxt;
+      if (status) { d.stEl.hidden = false; d.stEl.className = 'st bad'; d.stEl.textContent = status; }
+      else if (d.queue > 0) { d.stEl.hidden = false; d.stEl.className = hot ? 'st bad' : 'st'; d.stEl.textContent = 'в очереди ' + d.queue; }
+      else d.stEl.hidden = true;
+    }
+  }
+  for (const m of S.jams.concat(S.turns)) {
+    projV.set(m.x, 0.6, m.z).project(camera);
+    const sx = (projV.x + 1) / 2 * CW, sy = (1 - projV.y) / 2 * CH;
+    const on = projV.z < 1 && sx > 20 && sx < CW - 20 && sy > 20 && sy < CH - 100;
+    m.el.hidden = !on;
+    if (!on) continue;
+    const txt = (S.turns.includes(m) ? '↩ ' : '🚗 ') + m.n;
+    if (txt !== m.txt) { m.txt = txt; m.el.textContent = txt; }
+    m.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, -120%)`;
+  }
+  for (const p of S.popups) {
+    projV.set(p.x, p.y + p.age * 0.5, p.z).project(camera);
+    const sx = (projV.x + 1) / 2 * CW, sy = (1 - projV.y) / 2 * CH;
+    p.el.style.opacity = String(Math.max(0, 1 - p.age / 1.2));
+    p.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, -100%)`;
+  }
+}
+
+// ---------- Input ----------
+const ptrs = new Map();
+let drag = null;
+cv.addEventListener('pointerdown', e => {
+  if (!S.running || S.over) return;
+  cv.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 1) {
+    if (S.tool === 'pan') { drag = { mode: 'pan', x: e.clientX, y: e.clientY }; return; }
+    if (S.tool === 'edit') {
+      drag = { mode: 'editpan', x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, w: groundAt(e.clientX, e.clientY) };
+      return;
+    }
+    const w = groundAt(e.clientX, e.clientY);
+    if (!w) { drag = null; return; }
+    if (S.tool === 'bulldoze') {
+      drag = { mode: 'bulldoze' };
+      removeNear(w.x, w.z, 0.6);
+      return;
+    }
+    const cp = contPoint();
+    if (cp && Math.hypot(w.x - cp.x, w.z - cp.z) < 1.6) {
+      if (cp.plan) {
+        // Carry on drawing the plan that is waiting to be built.
+        S.plan.drawing = true;
+        S.plan.raw.push(w);
+      } else {
+        S.plan = { raw: [{ x: cp.x, z: cp.z }, w], kind: S.tool === 'avenue' ? 2 : 1, drawing: true, pts: [], valid: false, msg: '', cost: 0 };
+      }
+      S.planDirty = true;
+      drag = { mode: 'plan', down: w };
+      refreshPlan();
+      return;
+    }
+    if (S.plan && !S.plan.drawing) {
+      // A finished plan is waiting: a finger put anywhere else moves the camera and the plan stays.
+      // The road is continued only from its highlighted end; "Отмена" drops it.
+      drag = { mode: 'pan', x: e.clientX, y: e.clientY };
+      return;
+    }
+    S.plan = { raw: [w], kind: S.tool === 'avenue' ? 2 : 1, drawing: true, pts: [], valid: false, msg: '', cost: 0 };
+    S.planDirty = true;
+    drag = { mode: 'plan', down: w };
+  } else {
+    if (S.plan && S.plan.drawing) S.plan = null;
+    S.planDirty = true;
+    const [a, b] = [...ptrs.values()];
+    drag = { mode: 'pinch', d: dist2(a, b), m: mid(a, b) };
+  }
+});
+cv.addEventListener('pointermove', e => {
+  const p = ptrs.get(e.pointerId);
+  if (p) { p.x = e.clientX; p.y = e.clientY; }
+  if (!drag) return;
+  if ((drag.mode === 'pan' || drag.mode === 'editpan') && ptrs.size === 1) {
+    if (drag.mode === 'editpan' && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 8) drag.moved = true;
+    if (drag.mode === 'editpan' && !drag.moved) return;
+    panPx(e.clientX - drag.x, e.clientY - drag.y);
+    drag.x = e.clientX; drag.y = e.clientY;
+  } else if (drag.mode === 'bulldoze' && ptrs.size === 1) {
+    const w = groundAt(e.clientX, e.clientY);
+    if (w) removeNear(w.x, w.z, 0.5);
+  } else if (drag.mode === 'plan' && ptrs.size === 1 && S.plan && S.plan.drawing) {
+    const w = groundAt(e.clientX, e.clientY);
+    if (!w) return;
+    const last = S.plan.raw[S.plan.raw.length - 1];
+    if (Math.hypot(w.x - last.x, w.z - last.z) >= 0.2) {
+      S.plan.raw.push(w);
+      refreshPlan();
+    }
+  } else if (drag.mode === 'pinch' && ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()];
+    const d = dist2(a, b), m = mid(a, b);
+    zoomAt(drag.m.x, drag.m.y, drag.d / d);
+    panPx(m.x - drag.m.x, m.y - drag.m.y);
+    drag.d = d; drag.m = m;
+  }
+});
+function endPtr(e) {
+  const wasPlan = drag && drag.mode === 'plan';
+  ptrs.delete(e.pointerId);
+  if (drag && drag.mode === 'editpan' && ptrs.size === 0 && !drag.moved && drag.w) selectNear(drag.w.x, drag.w.z);
+  if (wasPlan && ptrs.size === 0 && S.plan && S.plan.drawing) {
+    const len = polyLen(S.plan.raw);
+    if (len < 0.5) {
+      S.plan = null;                                             // a tap, not a line
+      if (S.tool === 'avenue') upgradeNear(drag.down.x, drag.down.z);
+    } else {
+      S.plan.drawing = false;
+      refreshPlan();
+      S.plan.drawing = false;
+    }
+    S.planDirty = true;
+  }
+  if (ptrs.size === 0) drag = null;
+  else if (drag && drag.mode === 'pinch') {
+    const q = ptrs.values().next().value;
+    drag = { mode: 'pan', x: q.x, y: q.y };
+  }
+}
+cv.addEventListener('pointerup', endPtr);
+cv.addEventListener('pointercancel', endPtr);
+cv.addEventListener('contextmenu', ev => ev.preventDefault());
+// Zoom keeps the ground point under the pointer (or between the fingers) in place.
+function zoomAt(x, y, factor) {
+  const before = groundAt(x, y);
+  cam.dist = clamp(cam.dist * factor, ZMIN, ZMAX);
+  updateCamera();
+  const after = groundAt(x, y);
+  if (before && after) {
+    cam.tx = clamp(cam.tx + before.x - after.x, -5, FIELD + 5);
+    cam.tz = clamp(cam.tz + before.z - after.z, -5, FIELD + 5);
+    updateCamera();
+  }
+}
+cv.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  zoomAt(ev.clientX, ev.clientY, Math.exp(ev.deltaY * 0.0015));
+}, { passive: false });
+
+document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+document.querySelectorAll('.sp[data-speed]').forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.speed))));
+document.querySelectorAll('.vw').forEach(b => b.addEventListener('click', () => setView(Number(b.dataset.view))));
+$('planApply').addEventListener('click', () => { applyPlan(); });
+$('editClose').addEventListener('click', clearSel);
+$('editOneway').addEventListener('click', () => { const e = edges.get(S.sel); if (e) cycleOneway(e); });
+$('nodePrio').addEventListener('click', () => { const n = nodes.get(S.selNode); if (n) cyclePriority(n); });
+$('nodeClose').addEventListener('click', clearSel);
+$('nodeLight').addEventListener('click', () => toggleLight(nodes.get(S.selNode)));
+for (const k of [1, 2, 3]) $('ring' + k).addEventListener('click', () => {
+  if (S.selRing) { const r = resizeRing(rings.get(S.selRing), k); if (r) S.selRing = r.id; }
+  else { const n = nodes.get(S.selNode), r = n && makeRoundabout(n, k, false); if (r) { S.selNode = null; S.selRing = r.id; } }
+  S.selDirty = true;
+});
+$('ringLanes').addEventListener('click', () => { const r = rings.get(S.selRing); if (r) setRingLanes(r, (r.lanes || 1) === 2 ? 1 : 2); });
+$('ringOff').addEventListener('click', () => {
+  const r = rings.get(S.selRing);
+  if (r) { const X = dissolveRing(r); S.selRing = null; S.selNode = X.id; S.selDirty = true; }
+});
+$('editUpgrade').addEventListener('click', () => {
+  const sec = selSection();
+  if (!sec) return;
+  const piece = upgradeEdge(sec.e, sec.s0, sec.s1);
+  if (piece) { S.sel = piece.id; S.selR = null; S.selDirty = true; }
+});
+$('editRemove').addEventListener('click', () => {
+  const sec = selSection();
+  if (sec) { removeSection(sec.e, sec.s0, sec.s1); S.sel = S.selR = null; S.selDirty = true; }
+});
+$('planCancel').addEventListener('click', () => { S.plan = null; S.planDirty = true; });
+$('startBtn').addEventListener('click', () => { if (ONLINE && !Net.ready) return; endDemo(); newGame(); startPlay(); });
+window.addEventListener('resize', resize);
+
+// ---------- Loop ----------
+let last = performance.now();
+function adaptQuality(raw) {
+  if (raw > 250) return;                                           // the tab was in the background
+  QUAL.ema += (raw - QUAL.ema) * 0.05;
+  QUAL.slow = QUAL.ema > 26 ? QUAL.slow + 1 : Math.max(0, QUAL.slow - 2);
+  if (QUAL.slow > 90 && QUAL.maxDpr > 1) {
+    QUAL.maxDpr = Math.max(1, QUAL.maxDpr - 0.25);
+    QUAL.slow = 0; QUAL.ema = 16.7;
+    if (QUAL.maxDpr <= 1.5) QUAL.shadowEvery = 2;
+    DPR = Math.min(QUAL.maxDpr, window.devicePixelRatio || 1);
+    renderer.setPixelRatio(DPR);
+    renderer.setSize(CW, CH, false);
+  }
+}
+function frame(now) {
+  adaptQuality(now - last);
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (S.running && !S.over) for (let s = 0; s < S.speed && !S.over; s++) step(dt);
+  if (S.demo && S.demoRing) {
+    // Slow orbit around the roundabout.
+    cam.yaw += dt * 0.07;
+    cam.dist = S.demoDist + 3 * Math.sin(now / 4000);
+    cam.tx = S.demoRing.x; cam.tz = S.demoRing.z;
+    updateCamera();
+  }
+  if (S.dirty) rebuildWorld();
+  if (S.selDirty || S.sel || S.selNode || S.selRing) {
+    // The preview depends on money, so it is refreshed while something is selected.
+    S.selDirty = false;
+    const key = S.sel + '|' + (S.selR ? S.selR.s0.toFixed(2) : '') + '|' + S.selNode + '|' + S.selRing + '|' + Math.floor(S.money) + '|' + (S.netVer | 0) + '|' + S.districts.length;
+    if (key !== S.selKey) { S.selKey = key; swapGeometry(selMesh, buildSelGeo()); }
+  }
+  const cp = contPoint(), ck = cp ? `${cp.plan ? 1 : 0}|${cp.dx.toFixed(2)}|${cp.dz.toFixed(2)}` : '';
+  if (ck !== S.contKey) { S.contKey = ck; swapGeometry(contMesh, cp ? buildContGeo(cp) : new THREE.BufferGeometry()); }
+  contMesh.visible = !!cp;
+  if (cp) {
+    const pulse = 1 + 0.16 * Math.sin(performance.now() / 180);
+    contMesh.position.set(cp.x, hAt(cp.x, cp.z) + 0.13, cp.z);
+    contMesh.scale.set(pulse, 1, pulse);
+  }
+  {
+    // Fade the scenery to grey and the cars to glass while a map view is on.
+    const target = S.view ? 1 : 0, g0 = grayU.value;
+    grayU.value += clamp(target - g0, -dt * 4, dt * 4);
+    if (grayU.value !== g0) {
+      const op = 1 - 0.68 * grayU.value, glass = grayU.value > 0.01;
+      for (const m of [carBody, carCab]) {
+        if (m.material.transparent !== glass) { m.material.transparent = glass; m.material.depthWrite = !glass; m.material.needsUpdate = true; }
+        m.material.opacity = op;
+      }
+    }
+  }
+  if (S.demo || S.todLit !== Math.round(S.tod * 20)) {
+    // Light follows the time of day: warm and strong at noon, dim and blue at night.
+    S.todLit = Math.round(S.tod * 20);
+    const f = daylight(S.demo ? 10 : S.tod);
+    sun.intensity = 0.75 * (0.22 + 0.78 * f);
+    hemi.intensity = 0.6 * (0.58 + 0.42 * f);
+    sky.setHex(0xbfdcea).lerp(SKY_NIGHT, 1 - f);
+    scene.background.copy(sky); scene.fog.color.copy(sky);
+  }
+  if (S.view) {
+    const hk = `${S.view}|${Math.floor(S.t * 2)}|${S.netVer | 0}`;
+    if (hk !== S.heatKey) { S.heatKey = hk; swapGeometry(heatMesh, buildHeatGeo()); }
+  } else if (S.heatKey !== 'off') { S.heatKey = 'off'; swapGeometry(heatMesh, new THREE.BufferGeometry()); }
+  const lk = lightsKey();
+  if (lk !== S.lightKey) { S.lightKey = lk; swapGeometry(lightMesh, buildLights()); }
+  if (S.planDirty) {
+    S.planDirty = false;
+    swapGeometry(planMesh, buildPlanGeo());
+  }
+  syncCars(dt);
+  updateLabels();
+  updatePlanUi();
+  updateEditUi();
+  updateHint();
+  updateHud();
+  renderer.shadowMap.autoUpdate = QUAL.shadowEvery === 1;
+  if (QUAL.shadowEvery > 1 && ++QUAL.frameNo % QUAL.shadowEvery === 0) renderer.shadowMap.needsUpdate = true;
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+S.bestScore = loadBest();
+resize();
+buildGround();
+buildWater();
+placeTrees();
+startDemo();
+setTool('road');
+setSpeed(1);
+updateHud();
+requestAnimationFrame(frame);
+
+// ---------- Online: login check and session reports ----------
+// On roadflow.ru the game needs a login made on the main site (the same cookie covers /play/). Anywhere else it runs offline.
+const ONLINE = /(^|\.)roadflow\.ru$/.test(location.hostname) || ((location.hostname === 'localhost' || location.hostname === '127.0.0.1') && new URLSearchParams(location.search).has('online'));
+const Net = { user: null, playId: null, ready: !ONLINE, timer: 0 };
+function netPost(path, body, beacon) {
+  const json = JSON.stringify(body);
+  if (beacon && navigator.sendBeacon) { try { return navigator.sendBeacon(path, new Blob([json], { type: 'text/plain' })); } catch (e) { /* fall through */ } }
+  return fetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: json, keepalive: !!beacon }).then(r => r.status === 401 ? Promise.reject(new Error('401')) : r.json());
+}
+function playStats() {
+  const days = Math.max(0, S.day - 6);
+  return { id: Net.playId, seconds: Math.round(S.t), days, population: totalPop(), mood: Math.round(S.mood), delivered: S.delivered,
+    money: Math.floor(S.money), districts: S.districts.length, avg_trip: S.avgTrip == null ? null : Math.round(S.avgTrip * 10) / 10, peak_cars: S.peakCars || 0 };
+}
+function endPlay(beacon) {
+  if (!ONLINE || !Net.playId) return;
+  Promise.resolve(netPost('/api/play/end', playStats(), beacon)).catch(() => {});
+  Net.playId = null;
+  clearInterval(Net.timer);
+}
+function startPlay() {
+  if (!ONLINE) return;
+  endPlay(false);
+  netPost('/api/play/start', {}).then(r => {
+    Net.playId = r.id;
+    S.peakCars = 0;
+    clearInterval(Net.timer);
+    Net.timer = setInterval(() => {
+      if (!Net.playId || S.demo || !S.running) return;
+      netPost('/api/play/ping', playStats()).catch(e => { if (String(e.message) === '401') { clearInterval(Net.timer); location.href = '/#login'; } });
+    }, 15000);
+  }).catch(e => { if (String(e.message) === '401') location.href = '/#login'; });
+}
+if (ONLINE) {
+  startEl.querySelector('#startBtn').disabled = true;
+  const who = document.getElementById('whoami');
+  who.hidden = false;
+  who.textContent = 'Проверяем вход…';
+  fetch('/api/me', { credentials: 'same-origin' }).then(r => {
+    if (r.status === 401) { location.href = '/#login'; return null; }
+    return r.json();
+  }).then(j => {
+    if (!j) return;
+    Net.user = j.user; Net.ready = true;
+    who.innerHTML = '';
+    who.append('Вы вошли как ' + j.user.name + ' · ');
+    const a = document.createElement('a'); a.href = '/'; a.textContent = 'на главную'; who.append(a);
+    startEl.querySelector('#startBtn').disabled = false;
+  }).catch(() => { who.textContent = 'Нет связи с сервером. Обновите страницу.'; });
+  window.addEventListener('pagehide', () => endPlay(true));
+}
+
+// Debug handle for automated checks.
+window.trafficArchitect = {
+  S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD }, addDistrict, addGate, contPoint, districtsLinked, startDemo, buildDemo, cycleOneway, cyclePriority,
+  newGame, step, setTool, setSpeed, carPose, applyPlan, removeNear, upgradeNear, selectNear, upgradeProblem, upgradeEdge, rings, setRingLanes, ringLanesProblem, makeRoundabout, dissolveRing, resizeRing, ringProblem, toggleLight, lightState,
+  planAt(points, kind) {
+    S.plan = computePlan(points.map(p => ({ x: p.x, z: p.z })), kind === 'avenue' ? 2 : 1);
+    S.plan.drawing = false;
+    S.planDirty = true;
+    return { valid: S.plan.valid, msg: S.plan.msg, cost: S.plan.cost, length: S.plan.length, snapA: !!S.plan.snapA, snapB: !!S.plan.snapB };
+  },
+  doors: () => S.districts.map(d => d.doors.map(id => ({ id, x: nodes.get(id).x, z: nodes.get(id).z }))),
+  project: (x, z) => {
+    projV.set(x, hAt(x, z), z).project(camera);
+    return { x: (projV.x + 1) / 2 * CW, y: (1 - projV.y) / 2 * CH };
+  },
+  rebuildWorld,
+  roadVerts: () => roadMesh.geometry.attributes.position.count,
+  connCount: () => conns.size,
+};
+})();
+</script>
+</body>
+</html>
