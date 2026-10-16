@@ -235,6 +235,11 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   <div class="block">
     <div id="money" class="money">$600</div>
     <div class="meter">
+      <span class="k">Настроение</span>
+      <div class="track"><i id="moodFill"></i></div>
+      <b id="moodVal">75%</b>
+    </div>
+    <div class="meter">
       <span class="k">Скорость</span>
       <div class="track"><i id="speedFill"></i></div>
       <b id="speedVal">100%</b>
@@ -251,8 +256,9 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   </div>
   <div class="block right">
     <div class="stats-row">
+      <div class="stat"><span class="k" id="dayName">Вс</span><b id="clock">17:00</b></div>
+      <div class="stat"><span class="k">Жители</span><b id="popVal">0</b></div>
       <div class="stat"><span class="k">Доехали</span><b id="score">0</b></div>
-      <div class="stat"><span class="k">Районы</span><b id="districts">0</b></div>
     </div>
     <div class="speed" role="group" aria-label="Скорость">
       <button class="sp on" data-speed="1" type="button">1×</button>
@@ -337,10 +343,12 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     <p class="tag">Строй дороги. Пусти поток.</p>
   </div>
   <section class="card menu-card" aria-labelledby="startTitle">
-    <p>Соедините районы дорогами, и машины поедут. Не дайте городу встать в пробках.</p>
+    <p>Город живёт по часам: утром едут на работу, вечером домой и на отдых. Стройте дороги, чтобы всем хватало потока.</p>
     <details>
       <summary>Как играть</summary>
       <ul>
+        <li>Районы бывают жилые 🏠, офисные 🏢, промышленные 🏭 и зоны отдыха 🎡, плюс выезд 🚪 в другой город. Сутки идут 5 минут, в выходные на работу не ездят.</li>
+        <li>Число машин зависит от числа жителей, а жители приходят и уходят вслед за настроением: пробки его портят, свободные дороги поднимают.</li>
         <li>Проведите линию — игра сгладит её в кривую. Проверьте цену и нажмите «Построить».</li>
         <li>Дорога соединяется с районом у его выезда. Пересечение с другой дорогой становится перекрёстком.</li>
         <li>В режиме «Правка» перекрёсток можно превратить в кольцо или поставить светофор.</li>
@@ -362,11 +370,11 @@ if (!window.THREE) {
 }
 
 // ---------- Config ----------
-const FIELD = 46;                      // field size in world units (one unit ≈ a lane width ×10)
+const FIELD = 72;                      // field size in world units (one unit ≈ a lane width ×10)
 const JAM_T = 6;                       // seconds stuck before a car counts as jammed
 const ROAD_H = 0.04, BRIDGE_H = 0.3, WATER_Y = 0.01;
 const RAMP = 1.4;                       // length of the bridge ramp on each bank
-const RIVER_HALF = 1.3, RIVER_AMP = 4.8, RIVER_FREQ = 0.15, RIVER_BASE = 23, RIVER_PHASE = 0.8;
+const RIVER_HALF = 1.3, RIVER_AMP = 7.5, RIVER_FREQ = 0.1, RIVER_BASE = 36, RIVER_PHASE = 0.8;
 const riverY = x => RIVER_BASE + RIVER_AMP * Math.sin(x * RIVER_FREQ + RIVER_PHASE);
 const waterDist = (x, z) => Math.abs(z - riverY(x)) - RIVER_HALF;   // negative inside the water
 const isWater = (x, z) => waterDist(x, z) < 0;
@@ -388,7 +396,22 @@ const FOV = 40, ZMIN = 12, ZMAX = 200, PITCH = 0.95;
 const SNAP_NODE = 1.0, SNAP_EDGE = 0.6;  // how close an end of a plan must be to snap
 const PLAN_STEP = 0.2, PLAN_MIN = 1.0;
 const START_MONEY = 900;
-const MAX_DISTRICTS = 18, MIN_DISTRICT_GAP = 15;
+const MAX_DISTRICTS = 26, MIN_DISTRICT_GAP = 17;
+// City life: a day lasts 5 minutes of game time, a week 7 days (days 0-4 are working days).
+const DAY_LEN = 300, DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const DTYPE = {
+  home: { icon: '🏠', name: 'Жилой район' },
+  work: { icon: '🏢', name: 'Офисы' },
+  industry: { icon: '🏭', name: 'Промзона' },
+  leisure: { icon: '🎡', name: 'Отдых' },
+  exit: { icon: '🚪', name: 'Выезд из города' },
+};
+// Where a trip with a given purpose may end.
+const PURPOSE_TYPES = {
+  work: ['work', 'industry'], home: ['home'], leisure: ['leisure'], visit: ['home', 'work', 'leisure'],
+  out: ['exit'], 'in-work': ['work', 'industry'], 'in-leisure': ['leisure'],
+};
+const QUEUE_CAP = 24;
 const SPEEDS = [1, 2, 4];
 const NAMES = ['Сосновый', 'Речной', 'Центральный', 'Зелёный', 'Солнечный', 'Западный', 'Восточный', 'Яблоневый', 'Ясный', 'Тихий', 'Озёрный', 'Парковый', 'Заречный', 'Липовый', 'Северный', 'Новый', 'Лесной', 'Вишнёвый', 'Дубовый', 'Степной'];
 const WALLS = [0xf1e7cf, 0xcfe3f2, 0xf4d35e, 0xe8c7b5, 0xd9e4dd, 0xf6f1e4];
@@ -904,20 +927,31 @@ function pathFromLane(startKey, destDi) {
   }
   return best ? pathTo(prev, best) : null;
 }
-// Random reachable district other than the origin, with the route to it.
-function pickDestination(startKey, originDi) {
-  const { dist, prev } = dijkstraFrom(startKey);
-  const opts = [];
+// A reachable district for a trip with the given purpose (nearer ones are likelier), with the route to it.
+// Dijkstra from one door lane is reused for a moment: many cars leave through the same lane.
+function pickDestination(startKey, originDi, purpose = 'any') {
+  let res = S.dcache && S.dcache.get(startKey);
+  if (!res || res.t < S.t - 2 || res.v !== (S.netVer | 0)) {
+    res = { ...dijkstraFrom(startKey), t: S.t, v: S.netVer | 0 };
+    if (!S.dcache || S.dcacheV !== S.netVer) { S.dcache = new Map(); S.dcacheV = S.netVer; }
+    S.dcache.set(startKey, res);
+  }
+  const { dist, prev } = res, types = PURPOSE_TYPES[purpose] || null, opts = [];
+  let wsum = 0;
   S.districts.forEach((d, di) => {
-    if (di === originDi) return;
+    if (di === originDi || (types && !types.includes(d.type))) return;
     let goal = null, bd = Infinity;
     for (const nid of d.doors) {
       for (const k of nodes.get(nid).ins) { const dd = dist.get(k); if (dd !== undefined && dd < bd) { bd = dd; goal = k; } }
     }
-    if (goal) opts.push({ di, goal });
+    if (!goal) return;
+    const w = (purpose === 'home' ? Math.max(1, d.pop) : 1) / (1 + bd / 40);
+    opts.push({ di, goal, w });
+    wsum += w;
   });
   if (!opts.length) return null;
-  const o = opts[(Math.random() * opts.length) | 0];
+  let r = Math.random() * wsum, o = opts[opts.length - 1];
+  for (const q of opts) { r -= q.w; if (r <= 0) { o = q; break; } }
   return { di: o.di, path: pathTo(prev, o.goal) };
 }
 
@@ -1906,31 +1940,92 @@ function makeBoxes() {
     { x0: -0.62, x1: 0.92, z0: 0.25, z1: 0.92, h: 0.6 + r() * 0.4 },
   ];
 }
-function createDistrict(x, z) {
+function typeBoxes(type) {
+  const r = () => Math.random();
+  if (type === 'work') return [
+    { x0: -0.92, x1: -0.3, z0: -0.92, z1: -0.3, h: 2.2 + r() * 1.2 },
+    { x0: 0.1, x1: 0.82, z0: -0.82, z1: -0.1, h: 1.6 + r() * 1.0 },
+    { x0: -0.5, x1: 0.2, z0: 0.3, z1: 0.92, h: 1.2 + r() * 0.9 },
+  ];
+  if (type === 'industry') return [
+    { x0: -0.95, x1: 0.2, z0: -0.9, z1: -0.1, h: 0.8 },
+    { x0: 0.3, x1: 0.95, z0: 0.1, z1: 0.9, h: 0.6 },
+    { x0: -0.9, x1: -0.1, z0: 0.3, z1: 0.9, h: 0.5 },
+  ];
+  if (type === 'leisure') return [{ x0: -0.95, x1: 0.95, z0: -0.95, z1: 0.95, h: 0.05, flat: true }];
+  if (type === 'exit') return [
+    { x0: -0.2, x1: 0.0, z0: -0.9, z1: -0.55, h: 1.0 },
+    { x0: -0.2, x1: 0.0, z0: 0.55, z1: 0.9, h: 1.0 },
+    { x0: -0.22, x1: 0.02, z0: -0.9, z1: 0.9, h: 0.16, y: 1.0 },
+  ];
+  return makeBoxes();
+}
+// Extra shapes that make each kind of district recognisable.
+function decorate(d) {
+  const x = d.cx, z = d.cz, G = d.group, add = (geo, hex, px, py, pz, ry = 0) => {
+    const m = new THREE.Mesh(geo, mat(hex));
+    m.position.set(px, py, pz); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; G.add(m); return m;
+  };
+  if (d.type === 'industry') {
+    add(new THREE.CylinderGeometry(0.1, 0.13, 1.7, 10), 0x8c8f93, x + 0.55, 0.85, z - 0.55);
+    add(new THREE.CylinderGeometry(0.08, 0.11, 1.35, 10), 0x9a9da1, x + 0.2, 0.68, z - 0.62);
+    add(new THREE.CylinderGeometry(0.115, 0.115, 0.05, 10), d.roof, x + 0.55, 1.72, z - 0.55);
+  } else if (d.type === 'leisure') {
+    const ring = add(new THREE.TorusGeometry(0.55, 0.035, 8, 28), d.roof, x, 0.85, z);
+    add(new THREE.BoxGeometry(0.05, 0.85, 0.05), 0xdadada, x - 0.2, 0.42, z + 0.06, 0.25);
+    add(new THREE.BoxGeometry(0.05, 0.85, 0.05), 0xdadada, x + 0.2, 0.42, z + 0.06, -0.25);
+    for (const [px, pz, sc] of [[-0.75, 0.7, 1], [0.75, 0.7, 0.85], [0.7, -0.7, 1.1], [-0.7, -0.65, 0.8]]) {
+      add(new THREE.CylinderGeometry(0.03, 0.03, 0.2 * sc, 6), 0x6b4a2b, x + px, 0.1 * sc, z + pz);
+      add(new THREE.ConeGeometry(0.2 * sc, 0.5 * sc, 8), 0x3f9a4a, x + px, 0.38 * sc, z + pz);
+    }
+    add(new THREE.CylinderGeometry(0.28, 0.3, 0.1, 16), 0x6fb8e8, x + 0.55, 0.08, z - 0.05);
+  } else if (d.type === 'exit') {
+    // a sign on the arch and a strip of road leading off the map
+    const ew = d.facing === 1 || d.facing === 3;
+    add(new THREE.BoxGeometry(ew ? 0.8 : 0.05, 0.3, ew ? 0.05 : 0.8), d.roof, x - (ew ? 0 : 0.1), 1.3, z - (ew ? 0.1 : 0));
+  }
+}
+function createDistrict(x, z, type = 'home', opt = {}) {
   const di = S.districts.length;
-  const count = 1 + ((Math.random() * 3) | 0);
-  const sides = [0, 1, 2, 3].sort(() => Math.random() - 0.5).slice(0, count);
+  const sides = opt.sides || [0, 1, 2, 3].sort(() => Math.random() - 0.5).slice(0, type === 'exit' ? 1 : 1 + ((Math.random() * 3) | 0));
+  const T = DTYPE[type];
+  const wall = type === 'work' ? 0xa9cde0 : type === 'industry' ? 0xc2bfb6 : type === 'leisure' ? 0x86c26c : type === 'exit' ? 0xe9e9e4 : WALLS[di % WALLS.length];
   const d = {
-    cx: x, cz: z, name: S.names[di % S.names.length], wall: WALLS[di % WALLS.length], roof: ROOFS[di % ROOFS.length],
-    doors: [], driveways: [], boxes: makeBoxes(), age: 0, acc: 0, queue: 0, retry: 0, noLink: false,
+    cx: x, cz: z, type, name: type === 'exit' ? 'Другой город' : S.names[di % S.names.length], wall, roof: ROOFS[di % ROOFS.length],
+    doors: [], driveways: [], boxes: typeBoxes(type), age: 0, acc: 0, queue: 0, retry: 0, noLink: false,
+    pop: type === 'home' ? (opt.pop || 600) : 0, here: 0, hereOut: 0, qp: [], pacc: {}, hacc: 0, oacc: 0, drop: 0,
     group: new THREE.Group(), el: null, nameEl: null, stEl: null, lastKey: '',
   };
   for (const sd of sides) {
     const [dx, dz] = DIRS4[sd];
-    const tx = -dz, tz = dx, off = Math.random() * 0.7 - 0.35;
+    const tx = -dz, tz = dx, off = type === 'exit' ? 0 : Math.random() * 0.7 - 0.35;
     const px = x + dx * 1.3 + tx * off, pz = z + dz * 1.3 + tz * off;
     const node = addNode(px, pz, di);
     d.doors.push(node.id);
     d.driveways.push({ x0: x + dx * 0.9, z0: z + dz * 0.9, x1: px, z1: pz });
   }
+  d.facing = sides[0];
+  if (type === 'exit' && (sides[0] === 1 || sides[0] === 3)) for (const b of d.boxes) { [b.x0, b.z0] = [b.z0, b.x0]; [b.x1, b.z1] = [b.z1, b.x1]; }
   for (const b of d.boxes) {
-    const w = b.x1 - b.x0, dd = b.z1 - b.z0;
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, b.h, dd), mat(d.wall));
-    wall.position.set(x + (b.x0 + b.x1) / 2, b.h / 2, z + (b.z0 + b.z1) / 2);
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.06, 0.07, dd + 0.06), mat(d.roof));
-    roof.position.set(x + (b.x0 + b.x1) / 2, b.h + 0.035, z + (b.z0 + b.z1) / 2);
-    wall.castShadow = wall.receiveShadow = roof.castShadow = true;
-    d.group.add(wall, roof);
+    const w = b.x1 - b.x0, dd = b.z1 - b.z0, y0 = b.y || 0;
+    const wallM = new THREE.Mesh(new THREE.BoxGeometry(w, b.h, dd), mat(b.flat ? 0x86c26c : d.wall));
+    wallM.position.set(x + (b.x0 + b.x1) / 2, y0 + b.h / 2, z + (b.z0 + b.z1) / 2);
+    wallM.castShadow = wallM.receiveShadow = true;
+    d.group.add(wallM);
+    if (!b.flat && !b.y) {
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(w + 0.06, 0.07, dd + 0.06), mat(d.roof));
+      roof.position.set(x + (b.x0 + b.x1) / 2, b.h + 0.035, z + (b.z0 + b.z1) / 2);
+      roof.castShadow = true;
+      d.group.add(roof);
+    }
+  }
+  decorate(d);
+  if (type === 'exit') {
+    // the road continues to the edge of the map
+    const [dx, dz] = DIRS4[sides[0]], len = 3.4;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(Math.abs(dx) * len + 0.5 * Math.abs(dz), 0.03, Math.abs(dz) * len + 0.5 * Math.abs(dx)), mat(0x4a4f57));
+    m.position.set(x - dx * (0.9 + len / 2 - 1.2), 0.03, z - dz * (0.9 + len / 2 - 1.2));
+    d.group.add(m);
   }
   scene.add(d.group);
   d.el = document.createElement('div');
@@ -1950,14 +2045,36 @@ function nearRoad(x, z, r) {
   for (const e of edges.values()) for (const p of e.C.P) if (Math.hypot(p.x - x, p.z - z) < r) return true;
   return false;
 }
-function addDistrict(side, minGap = MIN_DISTRICT_GAP) {
+// The kind of district the city needs most: homes 40%, offices 24%, industry 14%, leisure 22%.
+function nextType() {
+  const n = { home: 0, work: 0, industry: 0, leisure: 0 }, tgt = { home: 0.4, work: 0.24, industry: 0.14, leisure: 0.22 };
+  let tot = 0;
+  for (const d of S.districts) if (n[d.type] !== undefined) { n[d.type]++; tot++; }
+  let best = 'home', bv = -Infinity;
+  for (const t of Object.keys(n)) { const v = tgt[t] * (tot + 1) - n[t] + Math.random() * 0.05; if (v > bv) { bv = v; best = t; } }
+  return best;
+}
+function addDistrict(side, minGap = MIN_DISTRICT_GAP, type) {
+  type = type || nextType();
   for (let t = 0; t < 400; t++) {
     const x = 5 + Math.random() * (FIELD - 10), z = 5 + Math.random() * (FIELD - 10);
     if (waterDist(x, z) < 2.6) continue;
     if (side !== undefined && (z < riverY(x) ? 0 : 1) !== side) continue;
     if (S.districts.some(d => Math.hypot(d.cx - x, d.cz - z) < minGap)) continue;
     if (nearRoad(x, z, 2.0)) continue;
-    return createDistrict(x, z);
+    return createDistrict(x, z, type);
+  }
+  return null;
+}
+// A gate to another city on the edge of the map.
+function addGate() {
+  for (let t = 0; t < 300; t++) {
+    const edge = (Math.random() * 4) | 0, u = 12 + Math.random() * (FIELD - 24), inset = 3.0;
+    // edge 0: left (door faces +x), 1: top (+z), 2: right (-x), 3: bottom (-z)
+    const x = edge === 0 ? inset : edge === 2 ? FIELD - inset : u, z = edge === 1 ? inset : edge === 3 ? FIELD - inset : u;
+    if (waterDist(x, z) < 3.5) continue;
+    if (S.districts.some(d => Math.hypot(d.cx - x, d.cz - z) < 15)) continue;
+    return createDistrict(x, z, 'exit', { sides: [edge] });
   }
   return null;
 }
@@ -1970,7 +2087,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xbfdcea);
-scene.fog = new THREE.Fog(0xbfdcea, 90, 240);
+scene.fog = new THREE.Fog(0xbfdcea, FIELD * 2.6, FIELD * 5.4);
 // Near plane 3 keeps depth precision good on phone GPUs, so coplanar road layers do not flicker.
 const camera = new THREE.PerspectiveCamera(FOV, 1, 3, 480);
 
@@ -1985,7 +2102,9 @@ sun.shadow.camera.updateProjectionMatrix();
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.04;          // removes shadow acne on flat road surfaces at low sun angles
 scene.add(sun, sun.target);
-scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x4f5f36, 0.6));
+const hemi = new THREE.HemisphereLight(0xeaf6ff, 0x4f5f36, 0.6);
+scene.add(hemi);
+const sky = new THREE.Color(0xbfdcea), SKY_NIGHT = new THREE.Color(0x1d2a45);
 
 const vcMat = () => grayify(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
 const groundMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
@@ -2039,6 +2158,7 @@ const S = {
   money: START_MONEY, delivered: 0, meter: 0, speed: 1, tool: 'road', dirty: true, planDirty: true, sel: null, selNode: null, selRing: null, selDirty: true, contNode: null,
   plan: null, districts: [], cars: [], popups: [], names: [], trees: [],
   nextDistrictIn: 0, jamCool: 0, bestScore: 0, heat: new Map(), view: 0, heatT: 0,
+  tod: 17, day: 6, mood: 75, moodTarget: 75, moodT: 0,
 };
 const cam = { tx: FIELD / 2, tz: FIELD / 2, dist: 40, pitch: PITCH };
 let CW = 1, CH = 1, DPR = 1;
@@ -2051,7 +2171,7 @@ const cv = $('world');
 const toastEl = $('toast'), hintEl = $('hint'), labelsEl = $('labels');
 const startEl = $('startOverlay'), planBar = $('planBar'), editBar = $('editBar');
 const hud = {};
-for (const id of ['money', 'score', 'districts', 'speedFill', 'speedVal']) hud[id] = $(id);
+for (const id of ['money', 'score', 'clock', 'dayName', 'popVal', 'moodFill', 'moodVal', 'speedFill', 'speedVal']) hud[id] = $(id);
 
 function setText(el, v) {
   const s = String(v);
@@ -2060,7 +2180,14 @@ function setText(el, v) {
 function updateHud() {
   setText(hud.money, '$' + Math.floor(S.money).toLocaleString('en-US'));
   setText(hud.score, S.delivered);
-  setText(hud.districts, S.districts.length);
+  const hh = Math.floor(S.tod), mm = Math.floor((S.tod - hh) * 60 / 5) * 5, wd = S.day % 7;
+  setText(hud.clock, `${hh < 10 ? '0' : ''}${hh}:${mm < 10 ? '0' : ''}${mm} ${daylight(S.tod) > 0.4 ? '☀' : '🌙'}`);
+  setText(hud.dayName, DAYS[wd] + (wd >= 5 ? ' · выходной' : ''));
+  setText(hud.popVal, Math.round(totalPop()).toLocaleString('ru-RU'));
+  const mood = clamp(S.mood, 0, 100), ml = mood > 60 ? 'ok' : mood > 35 ? 'warn' : 'bad';
+  if (hud.moodFill.className !== ml) hud.moodFill.className = ml;
+  hud.moodFill.style.transform = `scaleX(${(mood / 100).toFixed(3)})`;
+  setText(hud.moodVal, (mood > 60 ? '😊 ' : mood > 35 ? '😐 ' : '😠 ') + Math.round(mood) + '%');
   const sp = S.avgV === undefined ? 100 : S.avgV, sl = sp > 60 ? 'ok' : sp > 35 ? 'warn' : 'bad';
   if (hud.speedFill.className !== sl) hud.speedFill.className = sl;
   hud.speedFill.style.transform = `scaleX(${(sp / 100).toFixed(3)})`;
@@ -2599,16 +2726,22 @@ function trySpawn(d, di) {
     }
   }
   if (!best) return;
-  const pick = pickDestination(best, di);
-  if (!pick) { d.noLink = true; d.retry = 1; return; }
+  const purpose = d.qp.length ? d.qp[0] : 'any';
+  const pick = pickDestination(best, di, purpose);
+  if (!pick) {
+    // Nowhere to go for this purpose: the trip is dropped. The district is cut off only if it reaches nothing at all.
+    if (purpose !== 'any' && pickDestination(best, di, 'any')) { d.noLink = false; d.qp.shift(); d.queue--; d.retry = 0.3; return; }
+    d.noLink = true; d.retry = 1; return;
+  }
   d.noLink = false;
   d.queue--;
+  if (d.qp.length) d.qp.shift();
   let total = 0;
   for (const k of pick.path) total += segOf(k).len;
   const car = {
     id: ++carSeq, route: pick.path, idx: 0, s: 0, v: 0, wait: 0, dead: false, warned: false,
     dest: pick.di, dist: total, len: pick.path.length,
-    col: S.districts[pick.di].roof,
+    col: S.districts[pick.di].roof, purpose, outsider: purpose === 'in-work' || purpose === 'in-leisure',
   };
   let arr = bk.get(best);
   if (!arr) { arr = []; bk.set(best, arr); }
@@ -2790,6 +2923,8 @@ function deliver(car) {
   const fare = Math.round(3 + car.dist * 0.6);
   S.money += fare;
   S.delivered++;
+  const dd = S.districts[car.dest];
+  if (dd && (dd.type === 'work' || dd.type === 'industry' || dd.type === 'leisure')) { if (car.outsider) dd.hereOut++; else dd.here++; }
   const p = carPose(car);
   spawnPopup(p.x, p.y + 0.5, p.z, '+$' + fare);
 }
@@ -2815,11 +2950,80 @@ function spawnPopup(x, y, z, text) {
 }
 
 // ---------- Simulation ----------
+// ---------- City life ----------
+// Residents leave home for work in the morning on working days, come back in the evening, spend evenings and weekends
+// in leisure districts, run errands, and some travel to and from other cities. Every trip has a purpose and a goal.
+// The number of cars follows the number of residents; residents come and go with the mood of the city.
+const gauss = (h, c, w) => Math.exp(-0.5 * ((h - c) / w) ** 2);
+const window01 = (h, a, b, soft = 1) => ss(clamp((h - a) / soft, 0, 1)) * (1 - ss(clamp((h - b) / soft, 0, 1)));
+const SEC_PER_H = DAY_LEN / 24;
+function daylight(h) { return Math.min(ss(clamp((h - 5) / 3, 0, 1)), 1 - ss(clamp((h - 17.5) / 3.5, 0, 1))); }
+function totalPop() { let t = 0; for (const d of S.districts) t += d.pop; return t; }
+function pushTrip(d, p) {
+  if (d.queue >= QUEUE_CAP) { d.drop++; S.drops = (S.drops || 0) + 1; return false; }
+  d.qp.push(p); d.queue++;
+  return true;
+}
+// Fractional trips pile up in acc[key]; each whole one becomes a car waiting at the district.
+function accrue(d, key, rate, dt, purpose) {
+  const v = (d.pacc[key] || 0) + rate * dt;
+  if (v >= 1) { d.pacc[key] = v - 1; pushTrip(d, purpose); } else d.pacc[key] = v;
+}
+function lifeStep(dt) {
+  S.tod += dt * 24 / DAY_LEN;
+  if (S.tod >= 24) { S.tod -= 24; S.day++; S.money += Math.floor(totalPop() * 0.08); }
+  const h = S.tod, wk = S.day % 7 < 5, pop = totalPop();
+  const ind = S.districts.filter(d => d.type === 'industry').length || 1, gates = S.districts.filter(d => d.type === 'exit').length || 1;
+  const dayWin = window01(h, 7.5, 21, 1.5), work = window01(h, 7, 18, 1.5);
+  for (const d of S.districts) {
+    if (!districtHasRoad(d) && d.type !== 'exit') continue;
+    if (d.type === 'home') {
+      const P = d.pop;
+      if (wk) accrue(d, 'work', P * 0.04 * gauss(h, 7.7, 1.8) / (1.8 * 2.507 * SEC_PER_H), dt, 'work');
+      const lei = wk ? P * 0.02 * gauss(h, 18.6, 1.6) / (1.6 * 2.507 * SEC_PER_H) : P * 0.05 * gauss(h, 13.5, 3.2) / (3.2 * 2.507 * SEC_PER_H);
+      accrue(d, 'leisure', lei, dt, 'leisure');
+      accrue(d, 'visit', P * 0.004 * dayWin / (13.5 * SEC_PER_H), dt, 'visit');
+      accrue(d, 'out', P * 0.003 * dayWin / (13.5 * SEC_PER_H), dt, 'out');
+    } else if (d.type === 'work' || d.type === 'industry') {
+      // Commuters leave in the evening (and everybody at the weekend or at night); lunch trips are rare.
+      let hz = !wk ? 0.05 : h >= 16 || h < 5 ? 0.035 : h >= 11.5 && h < 13.5 ? 0.004 : 0;
+      if (h >= 21 || h < 5) hz = 0.06;
+      if (d.here >= 1 && hz > 0) { d.hacc += d.here * hz * dt; if (d.hacc >= 1) { d.hacc -= 1; if (pushTrip(d, h >= 11.5 && h < 13.5 && wk ? 'leisure' : 'home')) d.here--; } }
+      if (d.hereOut >= 1) { d.oacc += d.hereOut * 0.03 * dt; if (d.oacc >= 1) { d.oacc -= 1; if (pushTrip(d, 'out')) d.hereOut--; } }
+      if (d.type === 'industry') accrue(d, 'truck', pop * 0.00005 * (wk ? work : 0.3 * work + 0.05) / ind, dt, 'out');
+    } else if (d.type === 'leisure') {
+      const hz = h >= 23 || h < 4 ? 0.1 : 0.022;
+      if (d.here >= 1) { d.hacc += d.here * hz * dt; if (d.hacc >= 1) { d.hacc -= 1; if (pushTrip(d, 'home')) d.here--; } }
+      if (d.hereOut >= 1) { d.oacc += d.hereOut * 0.03 * dt; if (d.oacc >= 1) { d.oacc -= 1; if (pushTrip(d, 'out')) d.hereOut--; } }
+    } else if (d.type === 'exit') {
+      accrue(d, 'inwork', pop * 0.00004 * (wk ? work : 0.2 * work) / gates, dt, 'in-work');
+      accrue(d, 'inleis', pop * 0.00005 * (wk ? 0.4 : 1.2) * gauss(h, 14, 3.2) / gates, dt, 'in-leisure');
+    }
+  }
+  // Mood follows how the traffic flows; residents move in or out slowly with it.
+  S.moodT = (S.moodT || 0) + dt;
+  if (S.moodT >= 0.5) {
+    S.moodT = 0;
+    const cars = S.cars.length, avg = S.avgV === undefined ? 100 : S.avgV;
+    let jam = 0;
+    for (const c of S.cars) if (c.wait > JAM_T) jam++;
+    let qf = 0, qn = 0;
+    for (const d of S.districts) if (d.type !== 'exit' && districtHasRoad(d)) { qf += d.queue / QUEUE_CAP; qn++; }
+    qf = qn ? qf / qn : 0;
+    const jamShare = cars ? jam / cars : 0;
+    S.moodTarget = 100 * (0.45 * avg / 100 + 0.25 * (1 - clamp(jamShare * 4, 0, 1)) + 0.15 * (1 - clamp(qf * 1.5, 0, 1)) + 0.15 * (1 - clamp((S.drops || 0) / 12, 0, 1)));
+  }
+  S.drops = (S.drops || 0) * Math.exp(-dt / 30);       // trips that could not even start leave a bad memory for a while
+  S.mood += ((S.moodTarget === undefined ? S.mood : S.moodTarget) - S.mood) * Math.min(1, dt / 60);
+  const rate = (S.mood - 50) / 50 * 0.0004;
+  for (const d of S.districts) if (d.type === 'home' && districtHasRoad(d) && !d.noLink) d.pop = clamp(d.pop * Math.exp(rate * dt), 100, 30000);
+}
+
 function step(dt) {
   S.t += dt;
   if (S.demo) {
-    // Menu background: steady traffic, no jams, no new districts.
-    S.meter = 0;
+    // Menu background: steady traffic, no jams, no new districts, a bright morning.
+    S.tod = 10; S.meter = 0;
     S.nextDistrictIn = 1e9;
     for (const d of S.districts) d.queue = Math.max(d.queue, 8);
   }
@@ -2833,30 +3037,27 @@ function step(dt) {
     if (c && !c.dead && c.v < 0.6) tryLaneChange(c);
   }
 
+  if (!S.demo) lifeStep(dt);
   S.nextDistrictIn -= dt;
   if (S.nextDistrictIn <= 0) {
     const linked = districtsLinked();
-    if (S.meter >= 100) {
-      S.nextDistrictIn = 3;                    // a jammed city does not grow
-    } else if (S.districts.length < MAX_DISTRICTS && !linked) {
-      // A new district only appears once every district so far is connected.
-      if (S.t - (S.linkHint === undefined ? -99 : S.linkHint) > 30) { S.linkHint = S.t; toast('Новый район появится, когда все районы соединены дорогами', 3400); }
-      S.nextDistrictIn = 3;
-    } else if (S.districts.length < MAX_DISTRICTS && addDistrict()) {
-      const d = S.districts[S.districts.length - 1];
-      S.money += 40;
-      toast(`Новый район «${d.name}» · +$40`, 3000);
-      S.nextDistrictIn = Math.max(14, 24 - S.districts.length * 0.8);
-    } else {
-      S.nextDistrictIn = 3;
-    }
+    if (S.meter >= 100 || S.mood < 35 || !linked) {
+      S.nextDistrictIn = 3;                    // a jammed, unhappy or unconnected city does not grow
+    } else if (S.districts.length < MAX_DISTRICTS) {
+      const hasGate = S.districts.some(d => d.type === 'exit');
+      const d = !hasGate && S.districts.length >= 3 ? addGate() : addDistrict();
+      if (d) S.money += 60;
+      S.nextDistrictIn = Math.max(40, 75 - S.districts.length * 2);
+    } else S.nextDistrictIn = 3;
   }
 
   for (let di = 0; di < S.districts.length; di++) {
     const d = S.districts[di];
     d.age += dt;
-    d.acc += Math.min(0.3, 0.1 + d.age * 0.003) * dt;
-    if (d.acc >= 1) { d.acc -= 1; if (d.queue < 12) d.queue++; }
+    if (S.demo) {
+      d.acc += Math.min(0.3, 0.1 + d.age * 0.003) * dt;
+      if (d.acc >= 1) { d.acc -= 1; if (d.queue < 12) d.queue++; }
+    }
     d.retry = Math.max(0, d.retry - dt);
     if (d.queue > 0 && d.retry === 0) trySpawn(d, di);
   }
@@ -3075,9 +3276,11 @@ function buildDemo(seed) {
     S.names = NAMES.slice().sort(() => Math.random() - 0.5);
     buildGround(); buildWater(); placeTrees();
     S.t = 0; S.money = 1e6; S.delivered = 0; S.meter = 0; S.over = false;
-    addDistrict(0);
-    if (!addDistrict(1, 24)) return false;
-    for (let k = 0; k < 2; k++) if (!addDistrict()) return false;
+    S.tod = 10;
+    addDistrict(0, MIN_DISTRICT_GAP, 'home');
+    if (!addDistrict(1, 28, 'work')) return false;
+    if (!addDistrict(undefined, MIN_DISTRICT_GAP, 'industry')) return false;
+    if (!addDistrict(undefined, MIN_DISTRICT_GAP, 'leisure')) return false;
     const hub = { x: S.districts.reduce((q, d) => q + d.cx, 0) / S.districts.length, z: S.districts.reduce((q, d) => q + d.cz, 0) / S.districts.length };
     for (const d of S.districts) {
       const A = d.doors.map(id => nodes.get(id)).sort((p, q) => Math.hypot(p.x - hub.x, p.z - hub.z) - Math.hypot(q.x - hub.x, q.z - hub.z))[0];
@@ -3136,8 +3339,10 @@ function newGame() {
   S.t = 0; S.money = START_MONEY; S.delivered = 0; S.meter = 0; S.avgV = undefined; S.heat.clear(); S.view = 0; setView(0); S.samp = []; S.acc = null;
   S.over = false; S.running = true;
   S.nextDistrictIn = 12; S.jamCool = 0; S.linkHint = undefined;
-  addDistrict(0);
-  if (!addDistrict(1, 24)) addDistrict(1);
+  S.tod = 17; S.day = 6; S.mood = S.moodTarget = 75; S.moodT = 0; S.dcache = null;     // Sunday evening: the first working morning is a few minutes away
+  addDistrict(0, MIN_DISTRICT_GAP, 'home');
+  if (!addDistrict(1, 28, 'work')) addDistrict(1, MIN_DISTRICT_GAP, 'work');
+  S.districts[0].pop = 1000;
   fitDistance();
   if (S.districts.length > 1) {
     cam.tx = (S.districts[0].cx + S.districts[1].cx) / 2;
@@ -3319,7 +3524,7 @@ function updateHint() {
 }
 function updateLabels() {
   for (const d of S.districts) {
-    const g = 1 + 0.25 * Math.min(1, d.age / 150);
+    const g = d.type === 'home' ? 0.85 + 0.5 * Math.min(1, d.pop / 4000) : d.type === 'exit' ? 1 : 1 + 0.2 * Math.min(1, d.age / 300);
     d.group.scale.y = g;
     projV.set(d.cx, 2.9 * g, d.cz).project(camera);
     const sx = (projV.x + 1) / 2 * CW, sy = (1 - projV.y) / 2 * CH;
@@ -3330,10 +3535,11 @@ function updateLabels() {
     const hasRoad = districtHasRoad(d);
     const status = !hasRoad ? 'нет дороги' : d.noLink ? 'нет связи' : '';
     const hot = d.queue >= 8;
-    const key = `${d.name}|${status}|${d.queue}|${hot}`;
+    const popTxt = d.type === 'home' ? ' · ' + Math.round(d.pop).toLocaleString('ru-RU') : '';
+    const key = `${d.name}|${status}|${d.queue}|${hot}|${popTxt}`;
     if (key !== d.lastKey) {
       d.lastKey = key;
-      d.nameEl.textContent = d.name;
+      d.nameEl.textContent = DTYPE[d.type].icon + ' ' + d.name + popTxt;
       if (status) { d.stEl.hidden = false; d.stEl.className = 'st bad'; d.stEl.textContent = status; }
       else if (d.queue > 0) { d.stEl.hidden = false; d.stEl.className = hot ? 'st bad' : 'st'; d.stEl.textContent = 'в очереди ' + d.queue; }
       else d.stEl.hidden = true;
@@ -3554,6 +3760,15 @@ function frame(now) {
       }
     }
   }
+  if (S.demo || S.todLit !== Math.round(S.tod * 20)) {
+    // Light follows the time of day: warm and strong at noon, dim and blue at night.
+    S.todLit = Math.round(S.tod * 20);
+    const f = daylight(S.demo ? 10 : S.tod);
+    sun.intensity = 0.75 * (0.22 + 0.78 * f);
+    hemi.intensity = 0.6 * (0.58 + 0.42 * f);
+    sky.setHex(0xbfdcea).lerp(SKY_NIGHT, 1 - f);
+    scene.background.copy(sky); scene.fog.color.copy(sky);
+  }
   if (S.view) {
     const hk = `${S.view}|${Math.floor(S.t * 2)}|${S.netVer | 0}`;
     if (hk !== S.heatKey) { S.heatKey = hk; swapGeometry(heatMesh, buildHeatGeo()); }
@@ -3589,7 +3804,7 @@ requestAnimationFrame(frame);
 
 // Debug handle for automated checks.
 window.trafficArchitect = {
-  S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD }, addDistrict, contPoint, districtsLinked, startDemo, buildDemo, cycleOneway, cyclePriority,
+  S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD }, addDistrict, addGate, contPoint, districtsLinked, startDemo, buildDemo, cycleOneway, cyclePriority,
   newGame, step, setTool, setSpeed, carPose, applyPlan, removeNear, upgradeNear, selectNear, upgradeProblem, upgradeEdge, rings, setRingLanes, ringLanesProblem, makeRoundabout, dissolveRing, resizeRing, ringProblem, toggleLight, lightState,
   planAt(points, kind) {
     S.plan = computePlan(points.map(p => ({ x: p.x, z: p.z })), kind === 'avenue' ? 2 : 1);
