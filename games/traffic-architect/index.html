@@ -77,6 +77,7 @@ body {
   background: #d93a2f; color: #fff; font-size: 11px; font-weight: 700; border: 1px solid rgba(255, 255, 255, 0.7);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
+.jam.turn { background: #e08a1c; }
 .popup {
   position: absolute; left: 0; top: 0; padding: 2px 7px; border-radius: 7px;
   background: #f2c14e; color: #3b2a00; font-size: 12px; font-weight: 700; white-space: nowrap;
@@ -353,7 +354,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     <details>
       <summary>Как играть</summary>
       <ul>
-        <li>Районы бывают жилые 🏠, офисные 🏢, промышленные 🏭 и зоны отдыха 🎡, плюс выезд 🚪 в другой город. Сутки идут 10 минут, в выходные на работу не ездят. Если житель не доехал за минуту, он едет домой, и настроение падает.</li>
+        <li>Районы бывают жилые 🏠, офисные 🏢, промышленные 🏭 и зоны отдыха 🎡, плюс выезд 🚪 в другой город. Сутки идут 10 минут, в выходные на работу не ездят. Если поездка жителя длится дольше, чем в 2,5 раза средняя, он разворачивается домой, и настроение падает. Оранжевый значок ↩ показывает, где развернулись.</li>
         <li>Жители — настоящие люди: машин горожан не больше, чем жителей, а приезжие из других городов считаются отдельно. Над каждым районом видно, сколько людей в нём сейчас. Красный значок 🚗 отмечает пробку. Жители приходят и уходят вслед за настроением.</li>
         <li>Проведите линию — игра сгладит её в кривую. Проверьте цену и нажмите «Построить».</li>
         <li>Дорога соединяется с районом у его выезда. Пересечение с другой дорогой становится перекрёстком.</li>
@@ -404,7 +405,7 @@ const PLAN_STEP = 0.2, PLAN_MIN = 1.0;
 const START_MONEY = 900;
 const MAX_DISTRICTS = 26, MIN_DISTRICT_GAP = 17;
 // City life: a day lasts 5 minutes of game time, a week 7 days (days 0-4 are working days).
-const DAY_LEN = 600, TRIP_LIMIT = 60, DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const DAY_LEN = 600, TRIP_FACTOR = 2.5, TRIP_MIN = 25, DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const DTYPE = {
   home: { icon: '🏠', name: 'Жилой район' },
   work: { icon: '🏢', name: 'Офисы' },
@@ -951,7 +952,7 @@ function pickDestination(startKey, originDi, purpose = 'any', force) {
       for (const k of nodes.get(nid).ins) { const dd = dist.get(k); if (dd !== undefined && dd < bd) { bd = dd; goal = k; } }
     }
     if (!goal) return;
-    const w = (1 / (1 + bd / 40)) * (bd / 1.1 < TRIP_LIMIT * 0.9 ? 1 : 0.1);       // far goals that cannot be reached in time are rarely chosen
+    const w = (1 / (1 + bd / 40)) * (bd / 1.1 < tripLimit() * 0.9 ? 1 : 0.1);       // far goals that cannot be reached in time are rarely chosen
     opts.push({ di, goal, w });
     wsum += w;
   });
@@ -2163,7 +2164,7 @@ const S = {
   running: false, over: false, t: 0,
   money: START_MONEY, delivered: 0, meter: 0, speed: 1, tool: 'road', dirty: true, planDirty: true, sel: null, selNode: null, selRing: null, selDirty: true, contNode: null,
   plan: null, districts: [], cars: [], popups: [], names: [], trees: [],
-  nextDistrictIn: 0, jamCool: 0, bestScore: 0, heat: new Map(), view: 0, heatT: 0, jams: [],
+  nextDistrictIn: 0, jamCool: 0, bestScore: 0, heat: new Map(), view: 0, heatT: 0, jams: [], turns: [],
   tod: 22, day: 6, mood: 75, moodTarget: 75, moodT: 0,
 };
 const cam = { tx: FIELD / 2, tz: FIELD / 2, dist: 40, pitch: PITCH };
@@ -3060,10 +3061,33 @@ function accrueVisitor(d, key, rate, dt, purpose) {
   const v = (d.pacc[key] || 0) + rate * dt;
   if (v >= 1) { d.pacc[key] = v - 1; pushTrip(d, 0, { p: purpose, res: false }); } else d.pacc[key] = v;
 }
-// A resident whose trip takes more than a minute gives up and turns for home; the whole city remembers it for a while.
+// A trip longer than 2.5 times the average trip is too long: the resident gives up and turns for home.
+// The "average trip" it is measured against is a slow memory of the shown average: it follows an improving city
+// quickly, but a growing jam stretches it only slowly (about a day), so a jam cannot excuse itself.
+function tripLimit() {
+  return clamp(TRIP_FACTOR * (S.tripBase || 30), TRIP_MIN, 150);
+}
+function updateTripBase(dt) {
+  const avg = S.avgTrip, n = S.tripLog ? S.tripLog.length : 0;
+  if (S.tripBase === undefined) S.tripBase = 30;
+  if (avg === null || avg === undefined || n < 3) return;
+  S.tripBase += avg < S.tripBase ? (avg - S.tripBase) * Math.min(1, dt * 0.05) : (avg - S.tripBase) * Math.min(1, dt / DAY_LEN);
+}
+// Badges where residents turned back, merged when close, gone a few seconds after the last one.
+function markTurn(x, z) {
+  let m = S.turns.find(t => Math.hypot(t.x - x, t.z - z) < 9);
+  if (m) { m.n++; m.seen = S.t; m.x += (x - m.x) * 0.3; m.z += (z - m.z) * 0.3; return; }
+  if (S.turns.length >= 8) { const o = S.turns.shift(); o.el.remove(); }
+  const el = document.createElement('div');
+  el.className = 'jam turn'; el.hidden = true;
+  labelsEl.appendChild(el);
+  S.turns.push({ x, z, n: 1, el, seen: S.t, txt: '' });
+}
+// A resident whose trip is too long gives up and turns for home; the whole city remembers it for a while.
 function giveUp(car) {
   car.late = true;
   S.late = (S.late || 0) + 1;
+  if (car.purpose !== 'home' && car.res && car.px !== undefined) markTurn(car.px, car.pz);
   if (car.purpose === 'home' || !car.res || car.home === undefined) return;
   const cur = car.route[car.idx], seg = segOf(cur);
   if (!seg) return;
@@ -3084,7 +3108,8 @@ function avgTripTime() {
   return sum / log.length;
 }
 function lifeStep(dt) {
-  for (const car of S.cars) if (car.res && !car.late && !car.dead && S.t - car.t0 > TRIP_LIMIT) giveUp(car);
+  updateTripBase(dt);
+  { const lim = tripLimit(); for (const car of S.cars) if (car.res && !car.late && !car.dead && S.t - car.t0 > lim) giveUp(car); }
   S.tod += dt * 24 / DAY_LEN;
   if (S.tod >= 24) { S.tod -= 24; S.day++; S.money += Math.floor(totalPop() * 0.8 * DAY_LEN / 300); }
   const h = S.tod, wk = S.day % 7 < 5, pop = totalPop();
@@ -3141,7 +3166,7 @@ function lifeStep(dt) {
   S.late = (S.late || 0) * Math.exp(-dt / 60);       // trips that could not even start leave a bad memory for a while
   S.mood += ((S.moodTarget === undefined ? S.mood : S.moodTarget) - S.mood) * Math.min(1, dt / 60);
   const rate = (S.mood - 50) / 50 * 0.0014;
-  for (const d of S.districts) if (d.type === 'home' && districtHasRoad(d) && !d.noLink) d.pop = clamp(d.pop * Math.exp(rate * dt), 8, 30000);
+  for (const d of S.districts) if (d.type === 'home' && districtHasRoad(d) && !d.noLink) d.pop = Math.max(d.away, clamp(d.pop * Math.exp(rate * dt), 8, 30000));    // residents who are away cannot disappear
 }
 
 function step(dt) {
@@ -3163,6 +3188,7 @@ function step(dt) {
   }
 
   if (!S.demo) lifeStep(dt);
+  S.turns = S.turns.filter(m => { if (S.t - m.seen < 8) return true; m.el.remove(); return false; });
   S.jamT = (S.jamT || 0) + dt;
   if (S.jamT >= 0.5) { S.jamT = 0; if (S.demo) { for (const m of S.jams) m.el.remove(); S.jams = []; } else updateJams(); }
   S.nextDistrictIn -= dt;
@@ -3450,7 +3476,8 @@ function clearWorld() {
   for (const d of S.districts) { scene.remove(d.group); d.el.remove(); }
   for (const p of S.popups) p.el.remove();
   for (const m of S.jams) m.el.remove();
-  S.jams = [];
+  for (const m of S.turns) m.el.remove();
+  S.jams = []; S.turns = [];
   S.districts = [];
   S.cars = [];
   S.popups = [];
@@ -3468,7 +3495,7 @@ function newGame() {
   S.t = 0; S.money = START_MONEY; S.delivered = 0; S.meter = 0; S.avgV = undefined; S.heat.clear(); S.view = 0; setView(0); S.samp = []; S.acc = null;
   S.over = false; S.running = true;
   S.nextDistrictIn = 12; S.jamCool = 0; S.linkHint = undefined;
-  S.tod = 22; S.day = 6; S.mood = S.moodTarget = 75; S.moodT = 0; S.dcache = null; S.tripLog = []; S.avgTrip = null; S.late = 0;     // Sunday evening: the first working morning is a few minutes away
+  S.tod = 22; S.day = 6; S.mood = S.moodTarget = 75; S.moodT = 0; S.dcache = null; S.tripLog = []; S.avgTrip = null; S.late = 0; S.tripBase = 30;     // Sunday evening: the first working morning is a few minutes away
   addDistrict(0, MIN_DISTRICT_GAP, 'home');
   if (!addDistrict(1, 28, 'work')) addDistrict(1, MIN_DISTRICT_GAP, 'work');
   S.districts[0].pop = 40;
@@ -3674,13 +3701,13 @@ function updateLabels() {
       else d.stEl.hidden = true;
     }
   }
-  for (const m of S.jams) {
+  for (const m of S.jams.concat(S.turns)) {
     projV.set(m.x, 0.6, m.z).project(camera);
     const sx = (projV.x + 1) / 2 * CW, sy = (1 - projV.y) / 2 * CH;
     const on = projV.z < 1 && sx > 20 && sx < CW - 20 && sy > 20 && sy < CH - 100;
     m.el.hidden = !on;
     if (!on) continue;
-    const txt = '🚗 ' + m.n;
+    const txt = (S.turns.includes(m) ? '↩ ' : '🚗 ') + m.n;
     if (txt !== m.txt) { m.txt = txt; m.el.textContent = txt; }
     m.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, -120%)`;
   }
