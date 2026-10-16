@@ -382,11 +382,23 @@ class Geo {
       this.tri(c0, p0, p1, colOf(c0), colOf(p0), colOf(p1));
     }
   }
-  geometry() {
+  // flat: pull the normals of near-horizontal faces towards straight up, so sloped road surfaces are lit evenly
+  // instead of showing every triangle of a fan.
+  geometry(flat = false) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
     g.computeVertexNormals();
+    if (flat) {
+      const nr = g.attributes.normal;
+      for (let i = 0; i < nr.count; i++) {
+        const y = nr.getY(i);
+        if (Math.abs(y) < 0.6) continue;
+        const sg = y < 0 ? -1 : 1, x = nr.getX(i) * 0.25, z = nr.getZ(i) * 0.25, yy = sg * 0.9;
+        const L = Math.hypot(x, yy, z);
+        nr.setXYZ(i, x / L, yy / L, z / L);
+      }
+    }
     return g;
   }
 }
@@ -444,10 +456,10 @@ function ribbon(g, C, off, hw, colOf, dy, s0 = 0, s1 = C.len) {
     g.quadV(la, lb, rb, ra, colOf(a), colOf(b), colOf(b), colOf(a));
   }
 }
-function dashes(g, C, off, hw, dash, gap, hex, dy) {
+function dashes(g, C, off, hw, dash, gap, hex, dy, s0 = 0, s1 = C.len) {
   const col = rgb(hex), colOf = () => col;
-  for (let s = 0; s < C.len; s += dash + gap) {
-    const e = Math.min(C.len, s + dash);
+  for (let s = s0; s < s1; s += dash + gap) {
+    const e = Math.min(s1, s + dash);
     if (e - s > 0.1) ribbon(g, C, off, hw, colOf, dy, s, e);
   }
 }
@@ -1025,14 +1037,6 @@ function createDistrict(x, z) {
     wall.castShadow = wall.receiveShadow = roof.castShadow = true;
     d.group.add(wall, roof);
   }
-  for (const dw of d.driveways) {
-    const L = Math.hypot(dw.x1 - dw.x0, dw.z1 - dw.z0);
-    const m = new THREE.Mesh(new THREE.BoxGeometry(L, 0.03, 0.46), mat(COL.pave));
-    m.position.set((dw.x0 + dw.x1) / 2, 0.03, (dw.z0 + dw.z1) / 2);
-    m.rotation.y = -Math.atan2(dw.z1 - dw.z0, dw.x1 - dw.x0);
-    m.receiveShadow = true;
-    d.group.add(m);
-  }
   scene.add(d.group);
   d.el = document.createElement('div');
   d.el.className = 'dlabel';
@@ -1316,50 +1320,133 @@ function surfaceOf(asph, deck) {
     return [asph[0] + (deck[0] - asph[0]) * m, asph[1] + (deck[1] - asph[1]) * m, asph[2] + (deck[2] - asph[2]) * m];
   };
 }
-function drawEdge(g, e) {
-  const C = e.C, k = KIND[e.kind];
+// Edges stop short of junctions (ta, tb are the trims); the junction itself is one filled polygon, see junctionPoly.
+function drawEdge(g, e, ta, tb) {
+  const C = e.C, k = KIND[e.kind], s0 = ta, s1 = C.len - tb;
+  if (s1 - s0 < 0.05) return;
   const surf = surfaceOf(rgb(COL.asphalt), rgb(COL.deck));
-  ribbon(g, C, 0, k.half + 0.07, () => rgb(COL.curb), -0.015);
-  ribbon(g, C, 0, k.half, surf, 0);
-  if (e.kind === 1) {
-    dashes(g, C, 0, 0.035, 0.32, 0.25, COL.white, 0.02);
-  } else {
-    for (const off of [0.03, -0.03]) ribbon(g, C, off, 0.022, () => rgb(COL.yellow), 0.02);
-    dashes(g, C, 0.28, 0.03, 0.32, 0.25, COL.white, 0.02);
-    dashes(g, C, -0.28, 0.03, 0.32, 0.25, COL.white, 0.02);
-  }
-  // Railings and piers stop short of the ends, so two bridges meeting at a junction do not cut through each other.
-  for (const [r0, r1] of bridgeRanges(C)) {
-    const s0 = Math.max(r0, 0.9), s1 = Math.min(r1, C.len - 0.9);
-    if (s1 - s0 < 0.3) continue;
-    for (const sg of [-1, 1]) {
-      wall(g, C, sg * (k.half + 0.04), s0, s1, -0.14, 0.0, COL.fascia);   // deck edge: visible thickness
-      wall(g, C, sg * (k.half + 0.03), s0, s1, 0.0, 0.16, COL.rail);      // railings
+  ribbon(g, C, 0, k.half + 0.07, () => rgb(COL.curb), -0.015, s0, s1);
+  ribbon(g, C, 0, k.half, surf, 0, s0, s1);
+  const m0 = s0 + 0.12, m1 = s1 - 0.12;
+  if (m1 - m0 > 0.1) {
+    if (e.kind === 1) {
+      dashes(g, C, 0, 0.035, 0.32, 0.25, COL.white, 0.02, m0, m1);
+    } else {
+      for (const off of [0.03, -0.03]) ribbon(g, C, off, 0.022, () => rgb(COL.yellow), 0.02, m0, m1);
+      dashes(g, C, 0.28, 0.03, 0.32, 0.25, COL.white, 0.02, m0, m1);
+      dashes(g, C, -0.28, 0.03, 0.32, 0.25, COL.white, 0.02, m0, m1);
     }
-    piers(g, C, s0, s1);
+  }
+  // Railings and piers stay between the junction polygons, so bridges meeting at a junction never cut through each other.
+  for (const [r0, r1] of bridgeRanges(C)) {
+    const w0 = Math.max(r0, s0 + 0.05), w1 = Math.min(r1, s1 - 0.05);
+    if (w1 - w0 < 0.3) continue;
+    for (const sg of [-1, 1]) {
+      wall(g, C, sg * (k.half + 0.04), w0, w1, -0.14, 0.0, COL.fascia);   // deck edge: visible thickness
+      wall(g, C, sg * (k.half + 0.03), w0, w1, 0.0, 0.16, COL.rail);      // railings
+    }
+    piers(g, C, w0, w1);
   }
 }
-// Junction surfaces: the real turn paths between lanes, so junctions take their shape from the traffic.
+// The arms of a junction node sorted by angle, with the trim that keeps neighbouring arms from overlapping.
+function junctionArms(n) {
+  const arms = [];
+  for (const eid of n.edges) {
+    const e = edges.get(eid);
+    if (!e || e.a === e.b) continue;
+    const atA = e.a === n.id, q = curveAt(e.C, atA ? Math.min(0.3, e.len / 2) : Math.max(e.len - 0.3, e.len / 2));
+    const dx = atA ? q.dx : -q.dx, dz = atA ? q.dz : -q.dz;
+    arms.push({ e, atA, hw: KIND[e.kind].half, dx, dz, ang: Math.atan2(dz, dx) });
+  }
+  arms.sort((p, q) => p.ang - q.ang);
+  let maxHw = 0;
+  for (const a of arms) maxHw = Math.max(maxHw, a.hw);
+  let t = arms.length >= 3 ? maxHw * 1.1 + 0.1 : 0.1;
+  for (let i = 0; i < arms.length && arms.length > 1; i++) {
+    const a = arms[i], b = arms[(i + 1) % arms.length];
+    let th = b.ang - a.ang; if (th <= 0) th += Math.PI * 2;
+    if (th < Math.PI - 0.05) t = Math.max(t, (a.hw + b.hw) / 2 / Math.tan(th / 2) + 0.1);
+  }
+  t = Math.min(t, 1.3);
+  for (const a of arms) a.t = Math.min(t, a.e.len * 0.4);
+  return arms;
+}
+// Outline of a junction: each arm contributes its two edge corners at the trim distance, neighbouring corners
+// are joined by a rounded fillet, so the junction adapts to any number of roads at any angle.
+function junctionPoly(n, arms, extra) {
+  const pts = [], corners = [];
+  for (const a of arms) {
+    const s = a.atA ? a.t : a.e.len - a.t, q = curveAt(a.e.C, s);
+    const dx = a.atA ? q.dx : -q.dx, dz = a.atA ? q.dz : -q.dz, w = a.hw + extra;
+    corners.push({ lo: { x: q.x + dz * w, y: q.y, z: q.z - dx * w }, hi: { x: q.x - dz * w, y: q.y, z: q.z + dx * w }, dx, dz });
+  }
+  const N = corners.length, lim = 2.2 * Math.max(...arms.map(a => a.t)) + extra * 2;
+  for (let i = 0; i < N; i++) {
+    const a = corners[i], b = corners[(i + 1) % N];
+    const A = a.hi, B = b.lo;
+    pts.push(A);
+    const det = -(a.dx * b.dz - a.dz * b.dx);
+    let X = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, z: (A.z + B.z) / 2 };
+    if (Math.abs(det) > 0.05) {
+      const bx = B.x - A.x, bz = B.z - A.z;
+      const lam = (-bx * b.dz + b.dx * bz) / det, mu = (a.dx * bz - a.dz * bx) / det;
+      if (lam < 0 && mu < 0) {
+        let cx = A.x + lam * a.dx, cz = A.z + lam * a.dz;
+        const d = Math.hypot(cx - n.x, cz - n.z);
+        if (d > lim) { cx = n.x + (cx - n.x) * lim / d; cz = n.z + (cz - n.z) * lim / d; }
+        X = { x: cx, y: X.y, z: cz };
+      }
+    }
+    for (let k = 1; k < 7; k++) {
+      const u = k / 7, v = 1 - u;
+      pts.push({ x: v * v * A.x + 2 * u * v * X.x + u * u * B.x, y: A.y + (B.y - A.y) * u, z: v * v * A.z + 2 * u * v * X.z + u * u * B.z });
+    }
+  }
+  return pts;
+}
+function fillPoly(g, c, pts, colOf) {
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    g.tri(c, a, b, colOf(c), colOf(a), colOf(b));
+  }
+}
 function buildRoads() {
   const g = new Geo();
-  for (const e of edges.values()) drawEdge(g, e);
   const curb = () => rgb(COL.curb);
   const surf = surfaceOf(rgb(COL.asphalt), rgb(COL.deck));
-  for (const c of conns.values()) {
-    if (c.uturn) continue;
-    ribbon(g, c.C, 0, c.half + 0.07, curb, -0.015);
-    ribbon(g, c.C, 0, c.half, surf, 0);
-  }
+  const armsOf = new Map();
   for (const n of nodes.values()) {
-    if (n.door >= 0) { g.disk(n.x, n.y + 0.005, n.z, 0.3, rgb(COL.pave)); continue; }
-    let r = 0;
-    for (const eid of n.edges) r = Math.max(r, KIND[edges.get(eid).kind].half);
-    if (!r) continue;
-    g.disk(n.x, n.y - 0.015, n.z, r + 0.07, curb());
-    // Same colour function as the ribbons, so the coplanar disk never shows as a dark patch on the deck.
-    g.disk(n.x, n.y, n.z, r, surf);
+    if (n.door >= 0 || n.edges.size < 2) continue;
+    armsOf.set(n.id, junctionArms(n));
   }
-  swapGeometry(roadMesh, g.geometry());
+  const trimAt = (n, e) => {
+    const arms = armsOf.get(n.id), a = arms && arms.find(x => x.e === e);
+    return a ? a.t : 0;
+  };
+  for (const e of edges.values()) drawEdge(g, e, trimAt(nodes.get(e.a), e), trimAt(nodes.get(e.b), e));
+  for (const n of nodes.values()) {
+    if (n.door >= 0) continue;
+    const arms = armsOf.get(n.id);
+    if (arms && arms.length >= 2) {
+      const lo = { x: n.x, y: n.y - 0.015, z: n.z }, hi = { x: n.x, y: n.y, z: n.z };
+      fillPoly(g, lo, junctionPoly(n, arms, 0.07).map(p => ({ x: p.x, y: p.y - 0.015, z: p.z })), curb);
+      fillPoly(g, hi, junctionPoly(n, arms, 0), surf);
+    } else if (n.edges.size === 1) {
+      const r = KIND[edges.get([...n.edges][0]).kind].half;
+      g.disk(n.x, n.y - 0.015, n.z, r + 0.07, curb());
+      g.disk(n.x, n.y, n.z, r, surf);
+    }
+  }
+  // Driveways from the district buildings to the doors: flat strips in the same mesh as the road.
+  const pave = rgb(COL.pave);
+  for (const d of S.districts) {
+    for (const dw of d.driveways) {
+      const L = Math.hypot(dw.x1 - dw.x0, dw.z1 - dw.z0) || 1, px = -(dw.z1 - dw.z0) / L * 0.23, pz = (dw.x1 - dw.x0) / L * 0.23;
+      const y = ROAD_H + 0.004, P = (x, z) => ({ x, y, z });
+      g.quad(P(dw.x0 + px, dw.z0 + pz), P(dw.x1 + px, dw.z1 + pz), P(dw.x1 - px, dw.z1 - pz), P(dw.x0 - px, dw.z0 - pz), pave);
+    }
+  }
+  swapGeometry(roadMesh, g.geometry(true));
   swapGeometry(treeMesh, buildTrees());
 }
 function swapGeometry(mesh, geo) {
