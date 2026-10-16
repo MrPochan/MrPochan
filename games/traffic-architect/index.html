@@ -78,6 +78,8 @@ body {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 .jam.turn { background: #e08a1c; }
+.who { margin: 10px 0 0; font-size: 13px; color: var(--muted); text-align: center; }
+.who a { color: var(--accent); }
 .popup {
   position: absolute; left: 0; top: 0; padding: 2px 7px; border-radius: 7px;
   background: #f2c14e; color: #3b2a00; font-size: 12px; font-weight: 700; white-space: nowrap;
@@ -362,6 +364,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         <li>Шкала скорости — средняя скорость машин от свободной за последние 30 секунд. Кнопки «Пробки» и «Скорость» подсвечивают участки дорог от зелёного к бордовому. Если машины надолго встают в пробку, город не растёт, но игру можно продолжить и разгрузить дороги.</li>
       </ul>
     </details>
+    <p id="whoami" class="who" hidden></p>
     <button id="startBtn" class="primary" type="button">Начать</button>
   </section>
 </div>
@@ -3238,6 +3241,7 @@ function step(dt) {
   S.meter = clamp(S.meter + (pressure * 2.5 - 1.5) * dt, 0, 100);
   S.jamCool = Math.max(0, S.jamCool - dt);
   collectHeat(dt);
+  if (S.cars.length > (S.peakCars || 0)) S.peakCars = S.cars.length;
   // Capacity (share of cars that are not standing still) and speed (share of the speed they could drive), both
   // averaged over the last 30 seconds of game time: one value per second, the newest second still filling up.
   if (S.cars.length) {
@@ -3869,7 +3873,7 @@ $('editRemove').addEventListener('click', () => {
   if (sec) { removeSection(sec.e, sec.s0, sec.s1); S.sel = S.selR = null; S.selDirty = true; }
 });
 $('planCancel').addEventListener('click', () => { S.plan = null; S.planDirty = true; });
-$('startBtn').addEventListener('click', () => { endDemo(); newGame(); });
+$('startBtn').addEventListener('click', () => { if (ONLINE && !Net.ready) return; endDemo(); newGame(); startPlay(); });
 window.addEventListener('resize', resize);
 
 // ---------- Loop ----------
@@ -3967,6 +3971,58 @@ setTool('road');
 setSpeed(1);
 updateHud();
 requestAnimationFrame(frame);
+
+// ---------- Online: login check and session reports ----------
+// On roadflow.ru the game needs a login made on the main site (the same cookie covers /play/). Anywhere else it runs offline.
+const ONLINE = /(^|\.)roadflow\.ru$/.test(location.hostname) || ((location.hostname === 'localhost' || location.hostname === '127.0.0.1') && new URLSearchParams(location.search).has('online'));
+const Net = { user: null, playId: null, ready: !ONLINE, timer: 0 };
+function netPost(path, body, beacon) {
+  const json = JSON.stringify(body);
+  if (beacon && navigator.sendBeacon) { try { return navigator.sendBeacon(path, new Blob([json], { type: 'text/plain' })); } catch (e) { /* fall through */ } }
+  return fetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: json, keepalive: !!beacon }).then(r => r.status === 401 ? Promise.reject(new Error('401')) : r.json());
+}
+function playStats() {
+  const days = Math.max(0, S.day - 6);
+  return { id: Net.playId, seconds: Math.round(S.t), days, population: totalPop(), mood: Math.round(S.mood), delivered: S.delivered,
+    money: Math.floor(S.money), districts: S.districts.length, avg_trip: S.avgTrip == null ? null : Math.round(S.avgTrip * 10) / 10, peak_cars: S.peakCars || 0 };
+}
+function endPlay(beacon) {
+  if (!ONLINE || !Net.playId) return;
+  Promise.resolve(netPost('/api/play/end', playStats(), beacon)).catch(() => {});
+  Net.playId = null;
+  clearInterval(Net.timer);
+}
+function startPlay() {
+  if (!ONLINE) return;
+  endPlay(false);
+  netPost('/api/play/start', {}).then(r => {
+    Net.playId = r.id;
+    S.peakCars = 0;
+    clearInterval(Net.timer);
+    Net.timer = setInterval(() => {
+      if (!Net.playId || S.demo || !S.running) return;
+      netPost('/api/play/ping', playStats()).catch(e => { if (String(e.message) === '401') { clearInterval(Net.timer); location.href = '/#login'; } });
+    }, 15000);
+  }).catch(e => { if (String(e.message) === '401') location.href = '/#login'; });
+}
+if (ONLINE) {
+  startEl.querySelector('#startBtn').disabled = true;
+  const who = document.getElementById('whoami');
+  who.hidden = false;
+  who.textContent = 'Проверяем вход…';
+  fetch('/api/me', { credentials: 'same-origin' }).then(r => {
+    if (r.status === 401) { location.href = '/#login'; return null; }
+    return r.json();
+  }).then(j => {
+    if (!j) return;
+    Net.user = j.user; Net.ready = true;
+    who.innerHTML = '';
+    who.append('Вы вошли как ' + j.user.name + ' · ');
+    const a = document.createElement('a'); a.href = '/'; a.textContent = 'на главную'; who.append(a);
+    startEl.querySelector('#startBtn').disabled = false;
+  }).catch(() => { who.textContent = 'Нет связи с сервером. Обновите страницу.'; });
+  window.addEventListener('pagehide', () => endPlay(true));
+}
 
 // Debug handle for automated checks.
 window.trafficArchitect = {

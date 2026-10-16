@@ -1,0 +1,17 @@
+{
+  "name": "roadflow-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node test/flow.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1"
+  }
+}

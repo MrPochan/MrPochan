@@ -174,6 +174,15 @@ input[type="email"], input[type="password"], input[type="text"] {
 .row { display: flex; gap: 8px; }
 .row .btn { flex: 1; }
 
+
+.who { font-weight: 700; font-size: 14px; max-width: 28vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.statrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 10px; }
+.statrow div { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.statrow b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+.tablewrap { overflow-x: auto; margin-top: 12px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th { text-align: left; color: var(--muted); font-weight: 700; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; padding: 6px 8px; }
+td { padding: 6px 8px; border-top: 1px solid var(--line); white-space: nowrap; }
 footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--muted); font-size: 13px; justify-content: space-between; }
 
 @media (min-width: 720px) {
@@ -202,8 +211,10 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
       <a href="#account">Аккаунт</a>
     </nav>
     <span class="sp"></span>
+    <span class="who" id="who" hidden></span>
     <button class="btn ghost" id="openAuth" type="button">Войти</button>
-    <a class="btn go gameLink" href="../games/traffic-architect/index.html">Играть</a>
+    <button class="btn ghost" id="logout" type="button" hidden>Выйти</button>
+    <a class="btn go gameLink" href="/play/">Играть</a>
   </div>
 </header>
 
@@ -215,7 +226,7 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
       <p class="tag">Строй дороги. Пусти поток.</p>
       <p class="lead">Жители едут на работу, домой и отдыхать. Вы строите для них дороги, кольца и светофоры, пока город не встал в пробке.</p>
       <div class="cta">
-        <a class="btn go big gameLink" href="../games/traffic-architect/index.html">Играть сейчас</a>
+        <a class="btn go big gameLink" href="/play/">Играть сейчас</a>
         <a class="btn ghost big" href="#day">Как живёт город</a>
       </div>
     </div>
@@ -310,21 +321,27 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
 
   <section id="account">
     <p class="k">Аккаунт</p>
-    <h2>Скоро: свой профиль и рейтинг городов<span class="soon">скоро</span></h2>
+    <h2 id="accTitle">Войдите через Telegram</h2>
+    <p class="sub" id="accSub">Вход нужен, чтобы играть: сервер запоминает ваши игровые сессии. Отдельный пароль не нужен, подтверждение приходит в Telegram.</p>
     <div class="account">
-      <div class="card">
-        <h3>Что даст вход</h3>
+      <div class="card" id="accAnon">
+        <h3>Как войти</h3>
         <ul class="plain">
-          <li>Сохранение вашего города между сессиями и устройствами.</li>
-          <li>Рейтинг городов по числу жителей и настроению.</li>
-          <li>Лучшие результаты и история игр.</li>
+          <li>Нажмите «Войти» и откройте бота в Telegram.</li>
+          <li>Нажмите в боте «Start». Сайт увидит это сам.</li>
+          <li>Повторно входить не нужно: вы остаётесь в системе около 30 дней, на сайте и в игре.</li>
         </ul>
-        <p style="margin-top:12px">Пока аккаунтов нет. Игра работает без входа, лучший результат хранится в вашем браузере.</p>
+        <div class="cta"><button class="btn" id="openAuth2" type="button">Войти через Telegram</button></div>
+      </div>
+      <div class="card" id="accUser" hidden>
+        <h3>Ваши игры</h3>
+        <div class="statrow" id="statRow"></div>
+        <div class="tablewrap"><table id="hist"><thead><tr><th>Начало</th><th>В игре</th><th>Дней</th><th>Жителей</th><th>Доехали</th></tr></thead><tbody></tbody></table></div>
+        <p class="note" id="histEmpty" hidden>Игр пока нет. Нажмите «Играть», и первая сессия появится здесь.</p>
       </div>
       <div class="card">
-        <h3>Войти или создать аккаунт</h3>
-        <p>Кнопка уже на месте. Вход заработает, когда появится сервер аккаунтов.</p>
-        <div class="cta"><button class="btn" id="openAuth2" type="button">Войти</button><a class="btn ghost gameLink" href="../games/traffic-architect/index.html">Играть без входа</a></div>
+        <h3>Что хранится</h3>
+        <p>Ваш Telegram-номер (числовой id), имя и @логин, которые Telegram передаёт боту, и сводка каждой игровой сессии: время, дни, жители, настроение, деньги. Полное сохранение карты города появится позже.</p>
       </div>
     </div>
   </section>
@@ -336,27 +353,23 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
 </main>
 
 <dialog id="auth" aria-labelledby="authTitle">
-  <form class="dlg" id="authForm" method="dialog" novalidate>
-    <h3 id="authTitle">Вход</h3>
-    <div class="seg" role="group" aria-label="Вход или регистрация">
-      <button type="button" id="tabIn" aria-pressed="true">Вход</button>
-      <button type="button" id="tabUp" aria-pressed="false">Регистрация</button>
-    </div>
-    <label for="aName" id="aNameL" hidden>Имя в игре<input type="text" id="aName" autocomplete="nickname" placeholder="Мэр Сосновый"></label>
-    <label for="aMail">Почта<input type="email" id="aMail" autocomplete="email" placeholder="you@example.com"></label>
-    <label for="aPass">Пароль<input type="password" id="aPass" autocomplete="current-password" placeholder="Не меньше 8 символов"></label>
+  <div class="dlg">
+    <h3 id="authTitle">Вход через Telegram</h3>
+    <p class="note" style="margin:0" id="authLead">Откройте бота и нажмите «Start». Вернуться на сайт не придётся: он войдёт сам.</p>
     <div class="msg" id="aMsg" role="status" hidden></div>
+    <a class="btn go big" id="aOpen" href="#" target="_blank" rel="noopener" hidden>Открыть Telegram</a>
+    <p class="note" id="aWait" hidden style="margin:0">Ждём подтверждения в Telegram… <span id="aLeft"></span></p>
     <div class="row">
       <button class="btn ghost" type="button" id="aClose">Закрыть</button>
-      <button class="btn" type="submit" id="aSubmit">Войти</button>
+      <button class="btn" type="button" id="aStart">Получить ссылку</button>
     </div>
-  </form>
+  </div>
 </dialog>
 
 <script>
 (function () {
-  // The game lives next to this page; change this one line if the site is laid out differently.
-  var GAME_URL = '../games/traffic-architect/index.html';
+  // The game is served from /play/ on the same site, behind the same login.
+  var GAME_URL = '/play/';
   document.querySelectorAll('.gameLink').forEach(function (a) { a.setAttribute('href', GAME_URL); });
 
   // ---- live scene: cars on three roads, colours of the district they go to ----
@@ -446,36 +459,80 @@ footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--line);
   bWe.addEventListener('click', function () { pickDay('we'); });
   pickDay('wk');
 
-  // ---- account dialog: the interface only, there is no account server yet ----
-  var dlg = document.getElementById('auth'), up = false;
-  var tabIn = document.getElementById('tabIn'), tabUp = document.getElementById('tabUp');
-  function setMode(isUp) {
-    up = isUp;
-    tabIn.setAttribute('aria-pressed', !isUp); tabUp.setAttribute('aria-pressed', isUp);
-    document.getElementById('aNameL').hidden = !isUp;
-    document.getElementById('authTitle').textContent = isUp ? 'Регистрация' : 'Вход';
-    document.getElementById('aSubmit').textContent = isUp ? 'Создать аккаунт' : 'Войти';
-    document.getElementById('aPass').setAttribute('autocomplete', isUp ? 'new-password' : 'current-password');
-    document.getElementById('aMsg').hidden = true;
+  // ---- login through the Telegram bot ----
+  var $ = function (id) { return document.getElementById(id); };
+  var dlg = $('auth'), me = null, pollTimer = 0, tickTimer = 0;
+  function api(path, opts) {
+    opts = opts || {};
+    return fetch(path, { method: opts.method || 'GET', credentials: 'same-origin', headers: opts.body ? { 'content-type': 'application/json' } : {}, body: opts.body ? JSON.stringify(opts.body) : undefined })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, json: j }; }); });
   }
+  function fmtTime(sec) { sec = Math.round(sec); var m = Math.floor(sec / 60); return m >= 60 ? Math.floor(m / 60) + ' ч ' + (m % 60) + ' мин' : m + ' мин'; }
+  function fmtDate(t) { var d = new Date(t * 1000); return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); }
+  function render() {
+    var on = !!me;
+    $('openAuth').hidden = on; $('logout').hidden = !on; $('who').hidden = !on;
+    $('accAnon').hidden = on; $('accUser').hidden = !on;
+    if (on) {
+      $('who').textContent = me.user.name;
+      $('accTitle').textContent = 'Привет, ' + me.user.name;
+      $('accSub').textContent = 'Вы вошли через Telegram. Игра открывается без повторного входа.';
+      var st = me.stats;
+      $('statRow').innerHTML = '';
+      [['Игр', st.sessions], ['Время в игре', fmtTime(st.seconds)], ['Рекорд жителей', st.best_pop], ['Дней в лучшей игре', st.best_days]].forEach(function (x) {
+        var d = document.createElement('div'); d.innerHTML = '<span class="k"></span><b></b>';
+        d.firstChild.textContent = x[0]; d.lastChild.textContent = x[1]; $('statRow').appendChild(d);
+      });
+      var tb = $('hist').querySelector('tbody'); tb.innerHTML = '';
+      me.history.forEach(function (h) {
+        var tr = document.createElement('tr');
+        [fmtDate(h.started_at), fmtTime(h.seconds), h.days, h.population, h.delivered].forEach(function (v) { var td = document.createElement('td'); td.textContent = v; tr.appendChild(td); });
+        tb.appendChild(tr);
+      });
+      $('histEmpty').hidden = me.history.length > 0; $('hist').hidden = me.history.length === 0;
+    } else {
+      $('accTitle').textContent = 'Войдите через Telegram';
+      $('accSub').textContent = 'Вход нужен, чтобы играть: сервер запоминает ваши игровые сессии. Отдельный пароль не нужен, подтверждение приходит в Telegram.';
+    }
+  }
+  function loadMe() {
+    return api('/api/me').then(function (r) { me = r.status === 200 ? r.json : null; render(); return me; }).catch(function () { me = null; render(); });
+  }
+  function stopPolling() { clearTimeout(pollTimer); clearInterval(tickTimer); }
+  function say(text) { var m = $('aMsg'); m.hidden = !text; m.textContent = text || ''; }
+  function resetDialog() { stopPolling(); say(''); $('aOpen').hidden = true; $('aWait').hidden = true; $('aStart').hidden = false; $('aStart').disabled = false; $('aStart').textContent = 'Получить ссылку'; }
   function openAuth() {
-    setMode(false);
+    resetDialog();
     if (dlg.showModal) { try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', ''); } } else dlg.setAttribute('open', '');
-    document.getElementById('aMail').focus();
   }
-  document.getElementById('openAuth').addEventListener('click', openAuth);
-  document.getElementById('openAuth2').addEventListener('click', openAuth);
-  tabIn.addEventListener('click', function () { setMode(false); });
-  tabUp.addEventListener('click', function () { setMode(true); });
-  document.getElementById('aClose').addEventListener('click', function () { if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); });
-  document.getElementById('authForm').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var mail = document.getElementById('aMail').value.trim(), pass = document.getElementById('aPass').value, msg = document.getElementById('aMsg');
-    msg.hidden = false;
-    if (!/^\S+@\S+\.\S+$/.test(mail)) { msg.textContent = 'Введите почту в формате name@example.com.'; return; }
-    if (pass.length < 8) { msg.textContent = 'Пароль должен быть не короче 8 символов.'; return; }
-    msg.textContent = 'Аккаунты пока не работают, данные никуда не отправлены. Играть можно без входа.';
+  function closeAuth() { stopPolling(); if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); }
+  function poll(token, secret, until) {
+    api('/api/auth/poll?token=' + token + '&secret=' + secret).then(function (r) {
+      var s = r.json.status;
+      if (s === 'ok') { stopPolling(); closeAuth(); loadMe().then(function () { if (/login/.test(location.hash)) history.replaceState(null, '', location.pathname); }); return; }
+      if (s === 'pending' && Date.now() < until) { pollTimer = setTimeout(function () { poll(token, secret, until); }, 2000); return; }
+      stopPolling(); resetDialog(); say('Ссылка устарела. Получите новую.');
+    }).catch(function () { pollTimer = setTimeout(function () { poll(token, secret, until); }, 4000); });
+  }
+  $('aStart').addEventListener('click', function () {
+    $('aStart').disabled = true; say('');
+    api('/api/auth/start', { method: 'POST', body: {} }).then(function (r) {
+      if (r.status !== 200) { $('aStart').disabled = false; say(r.status === 429 ? 'Слишком много попыток. Подождите несколько минут.' : r.status === 503 ? 'Вход пока не настроен на сервере.' : 'Сервер не отвечает. Попробуйте позже.'); return; }
+      var j = r.json, until = Date.now() + j.expiresIn * 1000;
+      $('aOpen').href = j.botUrl; $('aOpen').hidden = false; $('aWait').hidden = false; $('aStart').hidden = true;
+      try { window.open(j.botUrl, '_blank', 'noopener'); } catch (e) { /* the button below does the same */ }
+      var tick = function () { var left = Math.max(0, Math.round((until - Date.now()) / 1000)); $('aLeft').textContent = Math.floor(left / 60) + ':' + ('0' + (left % 60)).slice(-2); };
+      tick(); tickTimer = setInterval(tick, 1000);
+      poll(j.token, j.secret, until);
+    }).catch(function () { $('aStart').disabled = false; say('Сервер не отвечает. Попробуйте позже.'); });
   });
+  $('openAuth').addEventListener('click', openAuth);
+  $('openAuth2').addEventListener('click', openAuth);
+  $('aClose').addEventListener('click', closeAuth);
+  dlg.addEventListener('close', stopPolling);
+  $('logout').addEventListener('click', function () { api('/api/auth/logout', { method: 'POST', body: {} }).then(function () { me = null; render(); }); });
+  // /play/ sends visitors without a session here as /#login
+  loadMe().then(function () { if (!me && /login/.test(location.hash)) openAuth(); });
 })();
 </script>
 </body>
