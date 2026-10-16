@@ -135,7 +135,7 @@ body {
 }
 .tool {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
-  min-width: 70px; padding: 7px 6px 6px; border-radius: 12px; cursor: pointer;
+  min-width: 62px; padding: 7px 5px 6px; border-radius: 12px; cursor: pointer;
   background: transparent; color: var(--fg); border: 1px solid transparent;
   font: 600 11px/1.1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -149,10 +149,14 @@ body {
 }
 .planbar-in {
   pointer-events: auto; display: flex; align-items: center; gap: 10px;
-  padding: 8px 8px 8px 14px; border-radius: 14px; max-width: 100%;
+  padding: 8px 8px 8px 14px; border-radius: 14px; width: 100%; max-width: 460px;
   background: var(--panel); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
-.pinfo { display: grid; gap: 2px; min-width: 0; }
+.editin { flex-wrap: wrap; padding: 10px; }
+.editin .pinfo { flex-basis: 100%; padding: 0 4px; }
+.editin .btn { flex: 1 1 0; }
+.editin #editClose { flex: 0 0 46px; }
+.pinfo { display: grid; gap: 2px; min-width: 0; flex: 1 1 auto; }
 .pcost { font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums; }
 .pmsg { font-size: 12px; color: var(--muted); }
 .btn {
@@ -240,6 +244,18 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   </div>
 </div>
 
+<div id="editBar" class="planbar" hidden>
+  <div class="planbar-in editin">
+    <div class="pinfo">
+      <b id="editTitle" class="pcost">Дорога</b>
+      <span id="editMsg" class="pmsg"></span>
+    </div>
+    <button id="editClose" class="btn ghost" type="button" aria-label="Закрыть">✕</button>
+    <button id="editRemove" class="btn ghost" type="button">Снести</button>
+    <button id="editUpgrade" class="btn go" type="button">Улучшить</button>
+  </div>
+</div>
+
 <nav class="hud bottom">
   <div id="hint" class="hint"></div>
   <div class="bar">
@@ -250,6 +266,10 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     <button class="tool" data-tool="avenue" type="button">
       <svg viewBox="0 0 34 22"><rect x="0" y="1" width="34" height="20" rx="2" fill="#4a5058"/><path d="M2 8.5h30M2 13.5h30" stroke="#f2c94c" stroke-width="1"/><path d="M3 11h28" stroke="#f4f4ef" stroke-width="1" stroke-dasharray="4 3"/></svg>
       <span>Проспект</span>
+    </button>
+    <button class="tool" data-tool="edit" type="button">
+      <svg viewBox="0 0 34 22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l1-5 10-10 4 4-10 10zM18 5l4 4"/></svg>
+      <span>Правка</span>
     </button>
     <button class="tool" data-tool="bulldoze" type="button">
       <svg viewBox="0 0 34 22"><path d="M9 4l16 14M25 4L9 18" stroke="#ff6159" stroke-width="3" stroke-linecap="round"/></svg>
@@ -336,6 +356,7 @@ const HINTS = {
   road: 'Проведите линию — дорога. Два пальца — камера',
   avenue: 'Проведите линию — проспект. Тап по дороге — расширить',
   bulldoze: 'Нажимайте или проводите по дороге, чтобы снести',
+  edit: 'Тап по дороге — выбрать, улучшить или снести',
   pan: 'Тяните, чтобы двигать камеру',
 };
 
@@ -813,14 +834,64 @@ function removeEdge(e) {
   }
   afterNetworkChange();
 }
+const upgradeCost = e => Math.round(nominalCost(2, e.len, e.frac) - nominalCost(1, e.len, e.frac));
+function nodeNeed(n) { return !n || n.door >= 0 || n.edges.size < 2 ? 0 : junctionArms(n).need; }
+// Why a road cannot become an avenue without running into its neighbours; empty if it can.
+function upgradeProblem(e) {
+  if (e.kind !== 1) return 'Это уже проспект';
+  e.kind = 2;
+  try { return upgradeConflict(e); } finally { e.kind = 1; }
+}
+function upgradeConflict(e) {
+  const hw = KIND[e.kind].half + 0.07;
+  const A = nodes.get(e.a), B = nodes.get(e.b);
+  for (const n of [A, B]) {
+    if (n.door >= 0 || n.edges.size < 2) continue;
+    if (nodeNeed(n) > MAX_TRIM) return 'Тесно: дороги на перекрёстке сольются';
+    for (const eid of n.edges) {
+      const f = edges.get(eid), far = nodes.get(f.a === n.id ? f.b : f.a);
+      if (nodeNeed(n) + nodeNeed(far) > f.len - 0.3) return 'Участок слишком короткий для проспекта';
+    }
+  }
+  if (e.len < 1) return 'Участок слишком короткий для проспекта';
+  const nearShared = (p, f) => [A, B].some(n => (f.a === n.id || f.b === n.id) && Math.hypot(p.x - n.x, p.z - n.z) < 1.7);
+  for (const f of edges.values()) {
+    if (f === e) continue;
+    const need = hw + KIND[f.kind].half + 0.13;
+    for (const p of e.C.P) {
+      if (nearShared(p, f)) continue;
+      if (nearestOnCurve(f.C, p.x, p.z).d < need) return 'Рядом другая дорога: дороги сольются';
+    }
+  }
+  const doorNear = p => [A, B].some(n => n.door >= 0 && Math.hypot(p.x - n.x, p.z - n.z) < 2.4);
+  for (const p of e.C.P) {
+    if (p.x < 0.8 || p.z < 0.8 || p.x > FIELD - 0.8 || p.z > FIELD - 0.8) return 'Слишком близко к краю поля';
+    if (doorNear(p)) continue;
+    for (const d of S.districts) if (Math.abs(p.x - d.cx) < 1.42 && Math.abs(p.z - d.cz) < 1.42) return 'Рядом район: проспект не поместится';
+  }
+  return '';
+}
 function upgradeEdge(e) {
   if (e.kind !== 1) return false;
-  const extra = Math.round(nominalCost(2, e.len, e.frac) - nominalCost(1, e.len, e.frac));
+  const bad = upgradeProblem(e);
+  if (bad) { toast(bad, 2600); return false; }
+  const extra = upgradeCost(e);
   if (S.money < extra) { toast(`Нужно $${extra} на проспект`, 2200); return false; }
   S.money -= extra;
   e.kind = 2;
   afterNetworkChange();
   return true;
+}
+// upgradeProblem is a full scan, so it is only repeated after the network or the districts change.
+function cachedProblem(e) {
+  const k = `${S.netVer | 0}|${S.districts.length}|${e.id}`;
+  if (S.pk !== k) { S.pk = k; S.pv = upgradeProblem(e); }
+  return S.pv;
+}
+function selectNear(x, z) {
+  const near = nearestEdge(x, z);
+  S.sel = near && near.h.d < 0.8 ? near.e.id : null;
+  S.selDirty = true;
 }
 // Cars keep their place: segments that still exist are kept, the rest of the route is planned again.
 function afterNetworkChange() {
@@ -848,6 +919,8 @@ function afterNetworkChange() {
   }
   S.cars = S.cars.filter(c => !c.dead);
   S.dirty = true;
+  S.selDirty = true;
+  S.netVer = (S.netVer | 0) + 1;
 }
 
 // ---------- Planning: raw stroke -> smooth curve -> checks -> cost ----------
@@ -1216,7 +1289,9 @@ const treeMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
 treeMesh.castShadow = true;
 const planMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }));
 planMesh.renderOrder = 2;
-scene.add(groundMesh, waterMesh, roadMesh, treeMesh, planMesh);
+const selMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide }));
+selMesh.renderOrder = 2;
+scene.add(groundMesh, waterMesh, roadMesh, treeMesh, planMesh, selMesh);
 
 const bodyGeo = new THREE.BoxGeometry(CAR_LEN, 0.09, CAR_W);
 bodyGeo.translate(0, 0.085, 0);
@@ -1245,7 +1320,7 @@ const projV = new THREE.Vector3();
 // ---------- State ----------
 const S = {
   running: false, over: false, t: 0,
-  money: START_MONEY, delivered: 0, meter: 0, speed: 1, tool: 'road', dirty: true, planDirty: true,
+  money: START_MONEY, delivered: 0, meter: 0, speed: 1, tool: 'road', dirty: true, planDirty: true, sel: null, selDirty: true,
   plan: null, districts: [], cars: [], popups: [], names: [], trees: [],
   nextDistrictIn: 0, jamCool: 0, bestScore: 0,
 };
@@ -1256,7 +1331,7 @@ let CW = 1, CH = 1, DPR = 1;
 const $ = id => document.getElementById(id);
 const cv = $('world');
 const toastEl = $('toast'), hintEl = $('hint'), labelsEl = $('labels');
-const startEl = $('startOverlay'), overEl = $('overOverlay'), planBar = $('planBar');
+const startEl = $('startOverlay'), overEl = $('overOverlay'), planBar = $('planBar'), editBar = $('editBar');
 const hud = {};
 for (const id of ['money', 'score', 'districts', 'meterFill', 'meterVal']) hud[id] = $(id);
 
@@ -1283,6 +1358,7 @@ function toast(msg, ms = 2600) {
 function setTool(t) {
   S.tool = t;
   if (t !== 'road' && t !== 'avenue' && S.plan && S.plan.drawing) S.plan = null;
+  if (t !== 'edit') { S.sel = null; S.selDirty = true; }
   document.querySelectorAll('.tool').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
   setText(hintEl, HINTS[t]);
   S.planDirty = true;
@@ -1466,6 +1542,7 @@ function drawEdge(g, e, ta, tb) {
     piers(g, C, w0, w1);
   }
 }
+const MAX_TRIM = 1.3;
 // The arms of a junction node sorted by angle, with the trim that keeps neighbouring arms from overlapping.
 function junctionArms(n) {
   const arms = [];
@@ -1485,7 +1562,8 @@ function junctionArms(n) {
     let th = b.ang - a.ang; if (th <= 0) th += Math.PI * 2;
     if (th < Math.PI - 0.05) t = Math.max(t, (a.hw + b.hw) / 2 / Math.tan(th / 2) + 0.1);
   }
-  t = Math.min(t, 1.3);
+  arms.need = arms.length >= 2 ? t : 0;     // the trim the junction would like, before it is capped
+  t = Math.min(t, MAX_TRIM);
   for (const a of arms) a.t = Math.min(t, a.e.len * 0.4);
   return arms;
 }
@@ -1559,7 +1637,10 @@ function buildRoads() {
   const pave = rgb(COL.pave);
   for (const d of S.districts) {
     for (const dw of d.driveways) {
-      const L = Math.hypot(dw.x1 - dw.x0, dw.z1 - dw.z0) || 1, px = -(dw.z1 - dw.z0) / L * 0.23, pz = (dw.x1 - dw.x0) / L * 0.23;
+      const door = nodes.get(d.doors[d.driveways.indexOf(dw)]);
+      let hw = 0.23;
+      if (door) for (const eid of door.edges) hw = Math.max(hw, KIND[edges.get(eid).kind].half);
+      const L = Math.hypot(dw.x1 - dw.x0, dw.z1 - dw.z0) || 1, px = -(dw.z1 - dw.z0) / L * hw, pz = (dw.x1 - dw.x0) / L * hw;
       const y = ROAD_H + 0.004, P = (x, z) => ({ x, y, z });
       g.quad(P(dw.x0 + px, dw.z0 + pz), P(dw.x1 + px, dw.z1 + pz), P(dw.x1 - px, dw.z1 - pz), P(dw.x0 - px, dw.z0 - pz), pave);
     }
@@ -1861,6 +1942,34 @@ function updatePlanUi() {
   setText($('planMsg'), pl.valid ? (affordable ? `${KIND[pl.kind].name} · ${Math.round(pl.length)} ед.` : 'Не хватает денег') : pl.msg);
   $('planApply').disabled = !(pl.valid && affordable);
 }
+// Highlight of the selected road: what it is now, or what the avenue would take up (red if it cannot be built).
+function buildSelGeo() {
+  const e = S.sel && edges.get(S.sel), g = new Geo();
+  if (!e) return g.geometry();
+  let col = [0.45, 0.7, 1], hw = KIND[e.kind].half;
+  if (e.kind === 1) {
+    hw = KIND[2].half;
+    col = cachedProblem(e) ? [0.84, 0.35, 0.35] : upgradeCost(e) <= S.money ? [0.49, 0.83, 0.42] : [0.95, 0.68, 0.2];
+  }
+  ribbon(g, e.C, 0, hw, () => col, 0.07);
+  return g.geometry();
+}
+function updateEditUi() {
+  if (S.sel && !edges.has(S.sel)) { S.sel = null; S.selDirty = true; }
+  const e = S.tool === 'edit' && S.sel ? edges.get(S.sel) : null;
+  editBar.hidden = !e;
+  if (!e) return;
+  const refund = Math.floor(nominalCost(e.kind, e.len, e.frac) * 0.5);
+  setText($('editTitle'), `${KIND[e.kind].name} · ${Math.round(e.len)} ед.`);
+  setText($('editRemove'), `Снести +$${refund}`);
+  const up = $('editUpgrade');
+  up.hidden = e.kind !== 1;
+  if (e.kind !== 1) { setText($('editMsg'), 'Максимальный уровень'); return; }
+  const bad = cachedProblem(e), cost = upgradeCost(e);
+  setText($('editMsg'), bad || (S.money < cost ? 'Не хватает денег' : 'Проспект: больше полос и скорость'));
+  setText(up, `Улучшить $${cost}`);
+  up.disabled = !!bad || S.money < cost;
+}
 function updateHint() {
   const pl = S.plan;
   if (pl && pl.drawing) {
@@ -1909,6 +2018,10 @@ cv.addEventListener('pointerdown', e => {
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (ptrs.size === 1) {
     if (S.tool === 'pan') { drag = { mode: 'pan', x: e.clientX, y: e.clientY }; return; }
+    if (S.tool === 'edit') {
+      drag = { mode: 'editpan', x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, moved: false, w: groundAt(e.clientX, e.clientY) };
+      return;
+    }
     const w = groundAt(e.clientX, e.clientY);
     if (!w) { drag = null; return; }
     if (S.tool === 'bulldoze') {
@@ -1930,7 +2043,9 @@ cv.addEventListener('pointermove', e => {
   const p = ptrs.get(e.pointerId);
   if (p) { p.x = e.clientX; p.y = e.clientY; }
   if (!drag) return;
-  if (drag.mode === 'pan' && ptrs.size === 1) {
+  if ((drag.mode === 'pan' || drag.mode === 'editpan') && ptrs.size === 1) {
+    if (drag.mode === 'editpan' && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 8) drag.moved = true;
+    if (drag.mode === 'editpan' && !drag.moved) return;
     panPx(e.clientX - drag.x, e.clientY - drag.y);
     drag.x = e.clientX; drag.y = e.clientY;
   } else if (drag.mode === 'bulldoze' && ptrs.size === 1) {
@@ -1955,6 +2070,7 @@ cv.addEventListener('pointermove', e => {
 function endPtr(e) {
   const wasPlan = drag && drag.mode === 'plan';
   ptrs.delete(e.pointerId);
+  if (drag && drag.mode === 'editpan' && ptrs.size === 0 && !drag.moved && drag.w) selectNear(drag.w.x, drag.w.z);
   if (wasPlan && ptrs.size === 0 && S.plan && S.plan.drawing) {
     const len = polyLen(S.plan.raw);
     if (len < 0.5) {
@@ -1996,6 +2112,9 @@ cv.addEventListener('wheel', ev => {
 document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
 document.querySelectorAll('.sp').forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.speed))));
 $('planApply').addEventListener('click', () => { applyPlan(); });
+$('editClose').addEventListener('click', () => { S.sel = null; S.selDirty = true; });
+$('editUpgrade').addEventListener('click', () => { const e = edges.get(S.sel); if (e) upgradeEdge(e); });
+$('editRemove').addEventListener('click', () => { const e = edges.get(S.sel); if (e) { removeEdge(e); S.sel = null; S.selDirty = true; } });
 $('planCancel').addEventListener('click', () => { S.plan = null; S.planDirty = true; });
 $('startBtn').addEventListener('click', newGame);
 $('againBtn').addEventListener('click', newGame);
@@ -2008,6 +2127,12 @@ function frame(now) {
   last = now;
   if (S.running && !S.over) for (let s = 0; s < S.speed && !S.over; s++) step(dt);
   if (S.dirty) rebuildWorld();
+  if (S.selDirty || S.sel) {
+    // The preview depends on money, so it is refreshed while something is selected.
+    S.selDirty = false;
+    const key = S.sel + '|' + Math.floor(S.money) + '|' + (S.netVer | 0) + '|' + S.districts.length;
+    if (key !== S.selKey) { S.selKey = key; swapGeometry(selMesh, buildSelGeo()); }
+  }
   if (S.planDirty) {
     S.planDirty = false;
     swapGeometry(planMesh, buildPlanGeo());
@@ -2015,6 +2140,7 @@ function frame(now) {
   syncCars();
   updateLabels();
   updatePlanUi();
+  updateEditUi();
   updateHint();
   updateHud();
   renderer.render(scene, camera);
@@ -2034,7 +2160,7 @@ requestAnimationFrame(frame);
 // Debug handle for automated checks.
 window.trafficArchitect = {
   S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD },
-  newGame, step, setTool, setSpeed, carPose, applyPlan, removeNear, upgradeNear,
+  newGame, step, setTool, setSpeed, carPose, applyPlan, removeNear, upgradeNear, selectNear, upgradeProblem, upgradeEdge,
   planAt(points, kind) {
     S.plan = computePlan(points.map(p => ({ x: p.x, z: p.z })), kind === 'avenue' ? 2 : 1);
     S.plan.drawing = false;
