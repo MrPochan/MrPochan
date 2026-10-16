@@ -1,0 +1,1086 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Архитектор трафика</title>
+<style>
+/* Full-bleed isometric canvas with a floating HUD. The UI chrome uses tokens;
+   the world keeps a fixed daylight palette so roads and districts stay readable. */
+:root {
+  --bg: #dfe9ea;
+  --panel: rgba(255, 255, 255, 0.93);
+  --panel-line: rgba(30, 50, 60, 0.12);
+  --fg: #1f2b33;
+  --muted: #5d6c75;
+  --accent: #2a7fd0;
+  --ok: #2f9d62;
+  --warn: #e0a21b;
+  --bad: #d6453d;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15202a;
+    --panel: rgba(24, 34, 44, 0.94);
+    --panel-line: rgba(180, 210, 230, 0.14);
+    --fg: #e8eff4;
+    --muted: #98a8b3;
+    --accent: #5aa9ef;
+    --ok: #4cc382;
+    --warn: #f2bd3d;
+    --bad: #ff6b63;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15202a;
+  --panel: rgba(24, 34, 44, 0.94);
+  --panel-line: rgba(180, 210, 230, 0.14);
+  --fg: #e8eff4;
+  --muted: #98a8b3;
+  --accent: #5aa9ef;
+  --ok: #4cc382;
+  --warn: #f2bd3d;
+  --bad: #ff6b63;
+  color-scheme: dark;
+}
+
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  overflow: hidden;
+  font: 14px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+.hud { position: fixed; left: 0; right: 0; pointer-events: none; }
+#top {
+  top: 0;
+  display: grid;
+  gap: 6px;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) max(12px, env(safe-area-inset-right, 0px)) 0 max(12px, env(safe-area-inset-left, 0px));
+}
+.row { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; }
+.pill {
+  display: flex; align-items: baseline; gap: 6px; pointer-events: auto;
+  background: var(--panel); border: 1px solid var(--panel-line); border-radius: 12px;
+  padding: 6px 10px; box-shadow: 0 2px 10px rgba(20, 40, 60, 0.12);
+}
+.pill .k { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.pill b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.btn { cursor: pointer; font: inherit; font-weight: 700; color: var(--fg); }
+.meter { flex: 1 1 0; min-width: 0; align-items: center; }
+.track { flex: 1; height: 8px; border-radius: 4px; background: rgba(127, 127, 127, 0.2); overflow: hidden; }
+.track i {
+  display: block; height: 100%; background: var(--ok);
+  transform-origin: left center; transform: scaleX(0); transition: background 0.3s;
+}
+.track i.warn { background: var(--warn); }
+.track i.bad { background: var(--bad); }
+.meter b { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+
+#tools {
+  bottom: 0;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 0 max(12px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 12px) max(12px, env(safe-area-inset-left, 0px));
+}
+.hint {
+  font-size: 12px; font-weight: 600; text-align: center;
+  background: var(--panel); border: 1px solid var(--panel-line);
+  padding: 5px 12px; border-radius: 999px; box-shadow: 0 2px 10px rgba(20, 40, 60, 0.12);
+}
+.bar { display: flex; gap: 6px; width: 100%; max-width: 520px; pointer-events: auto; }
+.tool {
+  flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 9px 4px 8px; border-radius: 14px; cursor: pointer;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--panel-line);
+  font: 600 12px/1.1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  box-shadow: 0 4px 14px rgba(20, 40, 60, 0.18);
+}
+.tool small { font-size: 10px; color: var(--muted); font-weight: 600; }
+.tool.on { box-shadow: 0 0 0 2px var(--accent), 0 4px 14px rgba(20, 40, 60, 0.18); border-color: transparent; }
+.ic { height: 16px; display: grid; place-items: center; font-size: 15px; line-height: 1; }
+.sw { position: relative; display: block; width: 34px; height: 6px; border-radius: 3px; background: #474d56; }
+.sw.av { height: 11px; border-radius: 4px; }
+.sw.av::after {
+  content: ""; position: absolute; left: 4px; right: 4px; top: 50%; height: 1px; margin-top: -0.5px;
+  background: #f2c94c;
+}
+
+.toast {
+  position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 116px);
+  transform: translate(-50%, -8px); opacity: 0; pointer-events: none; z-index: 5;
+  max-width: calc(100% - 32px); padding: 9px 14px; border-radius: 12px; text-align: center;
+  background: var(--panel); border: 1px solid var(--panel-line); box-shadow: 0 6px 20px rgba(20, 40, 60, 0.18);
+  font-weight: 600; font-size: 13px; transition: opacity 0.25s, transform 0.25s;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.overlay {
+  position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
+  padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));
+  background: rgba(12, 22, 30, 0.42); backdrop-filter: blur(3px);
+}
+.card {
+  width: min(360px, 100%); padding: 22px 20px 20px; border-radius: 18px;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--panel-line);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+}
+.card h1 { margin: 0 0 8px; font-size: 22px; line-height: 1.15; text-wrap: balance; }
+.card p { margin: 0; color: var(--muted); font-size: 14px; }
+.card ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; display: grid; gap: 4px; }
+.primary {
+  width: 100%; margin-top: 16px; padding: 12px; border: 0; border-radius: 12px; cursor: pointer;
+  background: var(--accent); color: #fff;
+  font: 700 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.stats div { background: rgba(127, 127, 127, 0.1); border-radius: 12px; padding: 10px 6px; text-align: center; }
+.stats span { display: block; font-size: 11px; color: var(--muted); }
+.stats b { font-size: 20px; font-variant-numeric: tabular-nums; }
+
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .track i, .toast { transition: none; }
+}
+</style>
+</head>
+<body>
+<canvas id="world" aria-label="Карта города"></canvas>
+
+<header id="top" class="hud">
+  <div class="row">
+    <div class="pill"><span class="k">Монеты</span><b id="money">0</b></div>
+    <div class="pill"><span class="k">Доехали</span><b id="score">0</b></div>
+    <div class="pill"><span class="k">Районы</span><b id="districts">0</b></div>
+  </div>
+  <div class="row">
+    <div class="pill meter"><span class="k">Пробки</span><div class="track"><i id="meterFill"></i></div><b id="meterVal">0%</b></div>
+    <button id="speed" class="pill btn" type="button">×1</button>
+  </div>
+</header>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<nav id="tools" class="hud">
+  <div id="hint" class="hint"></div>
+  <div class="bar">
+    <button class="tool" data-tool="pan" type="button"><span class="ic">✋</span>Карта</button>
+    <button class="tool on" data-tool="road" type="button"><span class="ic"><i class="sw"></i></span>Дорога<small>8</small></button>
+    <button class="tool" data-tool="avenue" type="button"><span class="ic"><i class="sw av"></i></span>Проспект<small>24</small></button>
+    <button class="tool" data-tool="bulldoze" type="button"><span class="ic">✕</span>Снос</button>
+  </div>
+</nav>
+
+<div id="startOverlay" class="overlay">
+  <section class="card" aria-labelledby="startTitle">
+    <h1 id="startTitle">Архитектор трафика</h1>
+    <p>Районы растут, и жители ездят друг к другу. Стройте дороги и проспекты, соединяйте районы мостами через реку и не дайте городу встать.</p>
+    <ul>
+      <li>Проведите пальцем — дорога. Два пальца — карта и зум.</li>
+      <li>Проспект пропускает вдвое больше машин, мост стоит дороже.</li>
+      <li>Пробки заполняют шкалу. Заполнится — игра окончена.</li>
+    </ul>
+    <button id="startBtn" class="primary" type="button">Начать</button>
+  </section>
+</div>
+
+<div id="overOverlay" class="overlay" hidden>
+  <section class="card" aria-labelledby="overTitle">
+    <h1 id="overTitle">Город встал</h1>
+    <p>Пробки заполнили шкалу. Попробуйте проспекты и объездные дороги.</p>
+    <div class="stats">
+      <div><span>Доехали</span><b id="fScore">0</b></div>
+      <div><span>Районов</span><b id="fDistricts">0</b></div>
+      <div><span>Рекорд</span><b id="fBest">0</b></div>
+    </div>
+    <button id="againBtn" class="primary" type="button">Ещё раз</button>
+  </section>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// ---------- Config ----------
+const W = 16, H = 16;                  // grid size in tiles
+const HW = 32, HH = 16;                // half tile width / height (2:1 isometric)
+const WALL = 18;                       // visible thickness of the map edge
+const JAM_T = 6;                       // seconds a car may wait before it counts as a jam
+const ZMIN = 0.3, ZMAX = 2.4;
+const WATER_MULT = 2.5;                // road on water is a bridge and costs more
+// cap: cars per lane on one tile (a lane is the side a car enters from).
+// head: seconds between two cars entering the same tile, which limits a junction's throughput.
+const KIND = {
+  1: { cap: 2, speed: 1.25, head: 0.55, cost: 8,  width: 10 },   // road
+  2: { cap: 3, speed: 1.7,  head: 0.30, cost: 24, width: 17 },   // avenue
+};
+// Water row per column. Neighbouring columns differ by at most 1, so the river has no diagonal gaps.
+const RIVER = [6, 6, 7, 7, 8, 8, 8, 9, 9, 9, 8, 8, 7, 7, 6, 6];
+const NAMES = ['Сосновый', 'Речной', 'Центральный', 'Зелёный', 'Солнечный', 'Западный', 'Восточный', 'Яблоневый', 'Ясный', 'Тихий', 'Озёрный', 'Парковый', 'Заречный', 'Липовый', 'Северный', 'Новый', 'Лесной', 'Вишнёвый', 'Дубовый', 'Степной'];
+const ROOFS = [
+  { top: '#c4553f', left: '#ecc39c', right: '#cf9566' },
+  { top: '#3d6e9e', left: '#d3e6f4', right: '#a1c2da' },
+  { top: '#4f8a4a', left: '#dcefc9', right: '#b0cf94' },
+  { top: '#7a52a0', left: '#eadcf3', right: '#bda5d3' },
+];
+const GRASS = ['#9dcd72', '#8fc26a', '#a9d47f'];
+const CAR_HEX = ['#e4572e', '#f3a712', '#f5f5f5', '#2e86ab', '#7b2cbf', '#2a9d8f', '#ef6f8e', '#2b2f36'];
+const SPEEDS = [1, 2, 4];
+const HINTS = {
+  road: 'Палец — дорога · два пальца — карта и зум',
+  avenue: 'Проспект пропускает вдвое больше машин',
+  bulldoze: 'Нажмите дорогу, чтобы снести (половина цены вернётся)',
+  pan: 'Тяните, чтобы двигать карту',
+};
+
+// ---------- Helpers ----------
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const N = W * H;
+const idxOf = (i, j) => j * W + i;
+const cx = k => k % W;
+const cy = k => (k / W) | 0;
+const inb = (i, j) => i >= 0 && j >= 0 && i < W && j < H;
+const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+// Lane on tile `to` for a car arriving from its neighbour `from`.
+const laneIdx = (to, from) => DIRS.findIndex(([dx, dy]) => dx === cx(from) - cx(to) && dy === cy(from) - cy(to));
+const iso = (x, y) => ({ x: (x - y) * HW, y: (x + y) * HH });
+const cellCenter = (i, j) => iso(i + 0.5, j + 0.5);
+const sideOf = (i, j) => (j < RIVER[i] ? 0 : 1);
+const costOf = (kind, water) => Math.round(KIND[kind].cost * (water ? WATER_MULT : 1));
+const dist2 = (a, b) => Math.max(20, Math.hypot(a.x - b.x, a.y - b.y));
+const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+function hash(i, j) {
+  let h = Math.imul(i + 1, 0x27d4eb2d) ^ Math.imul(j + 1, 0x165667b1);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  h ^= h >>> 13;
+  return (h >>> 0) / 4294967296;
+}
+function shade(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = v => clamp(v + a, 0, 255);
+  const r = f(n >> 16), g = f((n >> 8) & 255), b = f(n & 255);
+  return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
+}
+const CAR_PAL = CAR_HEX.map(h => ({ top: h, left: shade(h, -22), right: shade(h, -44) }));
+const CAB_PAL = { top: '#d6eef9', left: '#8dbdd8', right: '#6ea4c2' };
+
+// ---------- State ----------
+const cells = Array.from({ length: N }, () => ({
+  kind: 0, water: false, tree: false, tv: 0, jx: 0, jy: 0, g: 0,
+  district: -1, occ: 0, lane: [0, 0, 0, 0], cool: 0, qc: 0,
+}));
+const S = {
+  running: false, over: false, t: 0,
+  money: 0, delivered: 0, meter: 0, speed: 1, tool: 'road', hover: null,
+  districts: [], cars: [], popups: [], names: [],
+  nextDistrictIn: 0, jamCool: 0, bestScore: 0,
+};
+const cam = { x: 0, y: 256, z: 1 };
+let CW = 0, CH = 0, DPR = 1;
+
+// ---------- DOM ----------
+const $ = id => document.getElementById(id);
+const cv = $('world'), ctx = cv.getContext('2d');
+const toastEl = $('toast'), hintEl = $('hint');
+const startEl = $('startOverlay'), overEl = $('overOverlay');
+const hud = {};
+for (const id of ['money', 'score', 'districts', 'speed', 'meterFill', 'meterVal']) hud[id] = $(id);
+
+function setText(el, v) {
+  const s = String(v);
+  if (el.textContent !== s) el.textContent = s;
+}
+function updateHud() {
+  setText(hud.money, Math.floor(S.money));
+  setText(hud.score, S.delivered);
+  setText(hud.districts, S.districts.length);
+  setText(hud.speed, '×' + S.speed);
+  const lvl = S.meter < 40 ? 'ok' : S.meter < 75 ? 'warn' : 'bad';
+  if (hud.meterFill.className !== lvl) hud.meterFill.className = lvl;
+  hud.meterFill.style.transform = `scaleX(${(S.meter / 100).toFixed(3)})`;
+  setText(hud.meterVal, Math.round(S.meter) + '%');
+}
+let toastTimer = 0;
+function toast(msg, ms = 2600) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms);
+}
+function setTool(t) {
+  S.tool = t;
+  document.querySelectorAll('.tool').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
+  hintEl.textContent = HINTS[t];
+}
+function loadBest() {
+  try { return +localStorage.getItem('traffic-architect-best') || 0; } catch (e) { return 0; }
+}
+function saveBest(v) {
+  try { localStorage.setItem('traffic-architect-best', String(v)); } catch (e) { /* storage may be blocked */ }
+}
+
+// ---------- Camera ----------
+const w2s = (x, y) => ({ x: (x - cam.x) * cam.z + CW / 2, y: (y - cam.y) * cam.z + CH / 2 });
+const s2w = (x, y) => ({ x: (x - CW / 2) / cam.z + cam.x, y: (y - CH / 2) / cam.z + cam.y });
+function clampCam() {
+  cam.z = clamp(cam.z, ZMIN, ZMAX);
+  cam.x = clamp(cam.x, -640, 640);
+  cam.y = clamp(cam.y, -40, 600);
+}
+function fitCamera() {
+  cam.z = clamp(Math.min(CW / 1000, CH / 640), 0.34, 1.4);
+  cam.x = 0;
+  cam.y = 256;
+}
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  CW = window.innerWidth;
+  CH = window.innerHeight;
+  cv.width = Math.round(CW * DPR);
+  cv.height = Math.round(CH * DPR);
+}
+function cellAt(sx, sy) {
+  const w = s2w(sx, sy);
+  const i = Math.floor((w.x / HW + w.y / HH) / 2);
+  const j = Math.floor((w.y / HH - w.x / HW) / 2);
+  return inb(i, j) ? { i, j, k: idxOf(i, j) } : null;
+}
+
+// ---------- Map ----------
+function buildMap() {
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const c = cells[idxOf(i, j)];
+    c.kind = 0; c.occ = 0; c.lane = [0, 0, 0, 0]; c.cool = 0; c.district = -1;
+    c.water = j === RIVER[i];
+    c.tree = !c.water && Math.random() < 0.16;
+    c.tv = Math.random();
+    c.jx = (Math.random() - 0.5) * 0.4;
+    c.jy = (Math.random() - 0.5) * 0.4;
+    c.g = (hash(i, j) * GRASS.length) | 0;
+  }
+}
+
+function makeBoxes() {
+  const r = () => Math.random();
+  return [
+    { x: 0.12, y: 0.14, w: 0.42, d: 0.40, h: 12 + r() * 8 },
+    { x: 0.58, y: 0.10, w: 0.30, d: 0.34, h: 9 + r() * 10 },
+    { x: 0.34, y: 0.60, w: 0.34, d: 0.28, h: 7 + r() * 8 },
+  ];
+}
+
+function findSpot(side) {
+  for (let t = 0; t < 500; t++) {
+    const i = (Math.random() * W) | 0, j = (Math.random() * H) | 0, k = idxOf(i, j), c = cells[k];
+    if (c.water || c.kind || c.district >= 0) continue;
+    if (side !== undefined && sideOf(i, j) !== side) continue;
+    if (S.districts.some(d => Math.abs(cx(d.cell) - i) + Math.abs(cy(d.cell) - j) < 3)) continue;
+    return k;
+  }
+  return -1;
+}
+
+function addDistrict(side) {
+  const k = findSpot(side);
+  if (k < 0) return false;
+  const di = S.districts.length;
+  cells[k].tree = false;
+  cells[k].district = di;
+  S.districts.push({
+    cell: k, name: S.names[di], pal: ROOFS[di % ROOFS.length], boxes: makeBoxes(),
+    age: 0, acc: 0, queue: 0, retry: 0, hasRoad: false, noLink: false,
+  });
+  return true;
+}
+
+// ---------- Routing ----------
+const dist = new Float64Array(N), prev = new Int32Array(N), done = new Uint8Array(N);
+
+// Dijkstra over road tiles. Busy tiles cost more, so cars route around congestion.
+function dijkstra(src) {
+  dist.fill(Infinity); prev.fill(-1); done.fill(0);
+  dist[src] = 0;
+  for (;;) {
+    let u = -1, best = Infinity;
+    for (let k = 0; k < N; k++) if (!done[k] && dist[k] < best) { best = dist[k]; u = k; }
+    if (u < 0) break;
+    done[u] = 1;
+    const i = cx(u), j = cy(u);
+    for (const [di, dj] of DIRS) {
+      const ni = i + di, nj = j + dj;
+      if (!inb(ni, nj)) continue;
+      const v = idxOf(ni, nj), c = cells[v];
+      if (!c.kind || done[v]) continue;
+      const nd = best + 1 + 2.5 * c.occ / (KIND[c.kind].cap * 2);
+      if (nd < dist[v]) { dist[v] = nd; prev[v] = u; }
+    }
+  }
+}
+
+function doorsOf(d) {
+  const i = cx(d.cell), j = cy(d.cell), out = [];
+  for (const [di, dj] of DIRS) {
+    const ni = i + di, nj = j + dj;
+    if (inb(ni, nj) && cells[idxOf(ni, nj)].kind) out.push(idxOf(ni, nj));
+  }
+  return out;
+}
+
+// Closest road tile touching district d, from the last dijkstra(). -1 if unreachable.
+function bestDoor(d) {
+  let door = -1, bd = Infinity;
+  for (const v of doorsOf(d)) if (dist[v] < bd) { bd = dist[v]; door = v; }
+  return door;
+}
+
+function pathTo(src, end) {
+  const p = [];
+  for (let v = end; v !== -1; v = prev[v]) { p.push(v); if (v === src) break; }
+  return p.reverse();
+}
+
+// Random reachable district other than the origin, with the route to it.
+function pickDestination(src, originDi) {
+  dijkstra(src);
+  const opts = [];
+  for (let di = 0; di < S.districts.length; di++) {
+    if (di === originDi) continue;
+    const door = bestDoor(S.districts[di]);
+    if (door >= 0) opts.push({ di, door });
+  }
+  if (!opts.length) return null;
+  const o = opts[(Math.random() * opts.length) | 0];
+  return { di: o.di, path: pathTo(src, o.door) };
+}
+
+// ---------- Cars ----------
+function trySpawn(d, di) {
+  let entry = -1, load = Infinity;
+  for (const v of doorsOf(d)) {
+    const c = cells[v], cap = KIND[c.kind].cap;
+    if (c.lane[laneIdx(v, d.cell)] < cap && c.cool <= 0 && c.occ / (cap * 2) < load) {
+      load = c.occ / (cap * 2);
+      entry = v;
+    }
+  }
+  if (entry < 0) return;
+  const pick = pickDestination(entry, di);
+  if (!pick) { d.noLink = true; d.retry = 1; return; }
+  d.noLink = false;
+  d.queue--;
+  const side = laneIdx(entry, d.cell), ec = cells[entry];
+  ec.occ++;
+  ec.lane[side]++;
+  ec.cool = KIND[ec.kind].head;
+  S.cars.push({
+    path: pick.path, idx: 0, side, p: 0, wait: 0, qrank: 0, warned: false, dead: false,
+    dest: pick.di, destCell: S.districts[pick.di].cell, inCell: d.cell,
+    len: pick.path.length, offset: Math.random() < 0.5 ? -0.17 : 0.17,
+    col: CAR_PAL[(Math.random() * CAR_PAL.length) | 0],
+  });
+}
+
+// Car position in grid units. A car drives from the entry edge to the exit edge of its tile.
+function carPos(c) {
+  const cur = c.path[c.idx];
+  const ci = cx(cur), cj = cy(cur);
+  const out = c.idx + 1 < c.path.length ? c.path[c.idx + 1] : c.destCell;
+  const inn = c.idx > 0 ? c.path[c.idx - 1] : c.inCell;
+  const ox = cx(out) - ci, oy = cy(out) - cj;
+  const ix = cx(inn) - ci, iy = cy(inn) - cj;
+  const p = c.qrank > 0 ? Math.max(0.12, 1 - 0.3 * c.qrank) : c.p;
+  const sx = ci + 0.5 + 0.5 * ix, sy = cj + 0.5 + 0.5 * iy;
+  const ex = ci + 0.5 + 0.5 * ox, ey = cj + 0.5 + 0.5 * oy;
+  const dx = ex - sx, dy = ey - sy, len = Math.hypot(dx, dy) || 1;
+  return {
+    x: sx + dx * p - (dy / len) * c.offset,
+    y: sy + dy * p + (dx / len) * c.offset,
+    dx, dy,
+  };
+}
+
+function leaveTile(c) {
+  const t = cells[c.path[c.idx]];
+  t.occ--;
+  t.lane[c.side]--;
+}
+
+function deliver(c) {
+  const p = carPos(c);
+  const at = iso(p.x, p.y);
+  leaveTile(c);
+  c.dead = true;
+  const fare = Math.round(4 + c.len * 0.9);
+  S.money += fare;
+  S.delivered++;
+  S.popups.push({ x: at.x, y: at.y, text: '+' + fare, age: 0 });
+}
+
+// Advance one car: cross the current tile, then wait for room and headway on the next one.
+function stepCar(c, dt) {
+  const here = cells[c.path[c.idx]];
+  if (!here.kind) { c.dead = true; return; }
+  if (c.p < 1) {
+    const k = KIND[here.kind];
+    c.p = Math.min(1, c.p + k.speed * (1 - 0.35 * Math.min(1, here.occ / (k.cap * 2))) * dt);
+    c.wait = 0;
+    return;
+  }
+  if (c.idx === c.path.length - 1) { deliver(c); return; }
+  const nv = c.path[c.idx + 1], nxt = cells[nv], nk = KIND[nxt.kind];
+  const ln = laneIdx(nv, c.path[c.idx]);
+  if (nxt.lane[ln] < nk.cap && nxt.cool <= 0) {
+    leaveTile(c);
+    nxt.occ++;
+    nxt.lane[ln]++;
+    nxt.cool = nk.head;
+    c.idx++; c.side = ln; c.p = 0; c.wait = 0;
+  } else {
+    c.wait += dt;
+  }
+}
+
+// A removed road reroutes the cars that still have it ahead; cars standing on it are lost.
+function rerouteAfterRemoval(k) {
+  for (const c of S.cars) {
+    if (c.dead) continue;
+    const at = c.path.indexOf(k, c.idx);
+    if (at < 0) continue;
+    if (at === c.idx) { c.dead = true; continue; }
+    const cur = c.path[c.idx];
+    dijkstra(cur);
+    const door = bestDoor(S.districts[c.dest]);
+    if (door < 0) { c.dead = true; leaveTile(c); continue; }
+    c.inCell = c.idx > 0 ? c.path[c.idx - 1] : c.inCell;
+    c.path = pathTo(cur, door);
+    c.idx = 0;
+    c.len = c.path.length;
+  }
+}
+
+// ---------- Player actions ----------
+function previewOf(k) {
+  const c = cells[k], tool = S.tool;
+  if (tool === 'pan') return null;
+  if (tool === 'bulldoze') {
+    if (!c.kind) return { ok: false, price: 0 };
+    return { ok: true, price: -Math.floor(costOf(c.kind, c.water) * 0.5) };
+  }
+  const want = tool === 'avenue' ? 2 : 1;
+  if (c.district >= 0 || c.kind >= want) return { ok: false, price: 0 };
+  const price = costOf(want, c.water) - (c.kind ? costOf(c.kind, c.water) : 0);
+  return { ok: S.money >= price, price, short: S.money < price };
+}
+
+let lastNoMoney = 0;
+function act(k) {
+  if (!S.running || S.over) return;
+  const pv = previewOf(k);
+  if (!pv) return;
+  if (S.tool === 'bulldoze') {
+    if (!pv.ok) return;
+    S.money -= pv.price;                // negative price: refund
+    cells[k].kind = 0;
+    rerouteAfterRemoval(k);
+    cells[k].occ = 0;
+    cells[k].lane = [0, 0, 0, 0];
+    S.cars = S.cars.filter(c => !c.dead);
+    return;
+  }
+  if (!pv.ok) {
+    const now = performance.now();
+    if (pv.short && now - lastNoMoney > 2500) {
+      lastNoMoney = now;
+      toast('Не хватает монет. Доставляйте машины, чтобы заработать', 2400);
+    }
+    return;
+  }
+  S.money -= pv.price;
+  cells[k].kind = S.tool === 'avenue' ? 2 : 1;
+  cells[k].tree = false;
+}
+
+function lineCells(i0, j0, i1, j1) {
+  const out = [];
+  let i = i0, j = j0;
+  while (i !== i1) { i += Math.sign(i1 - i); out.push([i, j]); }
+  while (j !== j1) { j += Math.sign(j1 - j); out.push([i, j]); }
+  return out;
+}
+
+// ---------- Simulation ----------
+function step(dt) {
+  S.t += dt;
+  for (const c of cells) if (c.cool > 0) c.cool -= dt;
+
+  // New districts appear over time and pay a small bonus.
+  S.nextDistrictIn -= dt;
+  if (S.nextDistrictIn <= 0) {
+    if (S.districts.length < 20 && addDistrict()) {
+      const d = S.districts[S.districts.length - 1];
+      S.money += 25;
+      toast(`Новый район «${d.name}» · +25 монет`, 3000);
+      S.nextDistrictIn = Math.max(9, 20 - S.districts.length * 0.7);
+    } else {
+      S.nextDistrictIn = 2;
+    }
+  }
+
+  // Residents grow in number and set off for work; the rate climbs as a district ages.
+  for (let di = 0; di < S.districts.length; di++) {
+    const d = S.districts[di];
+    d.age += dt;
+    d.hasRoad = doorsOf(d).length > 0;
+    d.acc += Math.min(0.3, 0.1 + d.age * 0.003) * dt;
+    if (d.acc >= 1) { d.acc -= 1; if (d.queue < 12) d.queue++; }
+    d.retry = Math.max(0, d.retry - dt);
+    if (d.queue > 0 && d.retry === 0) trySpawn(d, di);
+  }
+
+  for (const c of S.cars) if (!c.dead) stepCar(c, dt);
+
+  // Queue slots for drawing, and jam bookkeeping.
+  for (const c of cells) c.qc = 0;
+  let jams = 0;
+  for (const c of S.cars) {
+    if (c.dead) continue;
+    c.qrank = c.wait > 0 ? cells[c.path[c.idx]].qc++ : 0;
+    if (c.wait > JAM_T) {
+      jams++;
+      if (!c.warned) {
+        c.warned = true;
+        if (S.jamCool <= 0) {
+          toast('Пробка! Постройте проспект или объездную дорогу', 3200);
+          S.jamCool = 12;
+        }
+      }
+    }
+  }
+  S.cars = S.cars.filter(c => !c.dead);
+
+  // Jam meter: blocked cars and long queues at connected districts push it up fast;
+  // queues at unconnected districts push it up more slowly. It drains otherwise.
+  let pressure = jams;
+  for (const d of S.districts) {
+    if (d.queue < 8) continue;
+    pressure += d.hasRoad && !d.noLink ? 1 : 0.35;
+  }
+  S.meter = clamp(S.meter + (pressure * 2.5 - 1.5) * dt, 0, 100);
+  S.jamCool = Math.max(0, S.jamCool - dt);
+
+  for (const p of S.popups) p.age += dt;
+  S.popups = S.popups.filter(p => p.age < 1.2);
+
+  if (S.meter >= 100) gameOver();
+}
+
+function newGame() {
+  buildMap();
+  S.districts = []; S.cars = []; S.popups = [];
+  S.names = NAMES.slice().sort(() => Math.random() - 0.5);
+  S.t = 0; S.money = 150; S.delivered = 0; S.meter = 0;
+  S.over = false; S.running = true;
+  S.nextDistrictIn = 12; S.jamCool = 0;
+  addDistrict(0);
+  addDistrict(1);
+  fitCamera();
+  startEl.hidden = true;
+  overEl.hidden = true;
+  toast('Соедините районы дорогой и мостом через реку', 4200);
+  updateHud();
+}
+
+function gameOver() {
+  S.over = true;
+  if (S.delivered > S.bestScore) { S.bestScore = S.delivered; saveBest(S.bestScore); }
+  $('fScore').textContent = S.delivered;
+  $('fDistricts').textContent = S.districts.length;
+  $('fBest').textContent = S.bestScore;
+  overEl.hidden = false;
+}
+
+// ---------- Drawing ----------
+function tilePath(i, j, e = 0) {
+  const a = iso(i + e, j + e), b = iso(i + 1 - e, j + e);
+  const c = iso(i + 1 - e, j + 1 - e), d = iso(i + e, j + 1 - e);
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.lineTo(d.x, d.y);
+  ctx.closePath();
+}
+
+function drawMapEdge() {
+  const a = iso(0, H), b = iso(W, H), c = iso(W, 0);
+  ctx.fillStyle = '#7d6246';
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(b.x, b.y + WALL); ctx.lineTo(a.x, a.y + WALL);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#5e4a36';
+  ctx.beginPath();
+  ctx.moveTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.lineTo(c.x, c.y + WALL); ctx.lineTo(b.x, b.y + WALL);
+  ctx.closePath(); ctx.fill();
+}
+
+function drawGround(now) {
+  for (let k = 0; k < N; k++) {
+    const c = cells[k], i = cx(k), j = cy(k);
+    tilePath(i, j);
+    ctx.fillStyle = c.water ? '#4ea7d9' : GRASS[c.g];
+    ctx.fill();
+    if (c.water) {
+      tilePath(i, j, 0.2);
+      ctx.fillStyle = `rgba(255,255,255,${(0.1 + 0.08 * Math.sin(now / 700 + i * 0.9 + j * 1.7)).toFixed(3)})`;
+      ctx.fill();
+    } else if (c.district >= 0) {
+      tilePath(i, j, 0.12);
+      ctx.fillStyle = '#e6dcc4';
+      ctx.fill();
+    }
+    tilePath(i, j);
+    ctx.strokeStyle = 'rgba(40,70,30,0.12)';
+    ctx.lineWidth = 0.7;
+    ctx.stroke();
+  }
+}
+
+function strokeSeg(s, color, width, dx = 0, dy = 0) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(s.a.x + dx, s.a.y + dy);
+  ctx.lineTo(s.b.x + dx, s.b.y + dy);
+  ctx.stroke();
+}
+function dot(p, r, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawRoads() {
+  const segs = [], nodes = [];
+  for (let k = 0; k < N; k++) {
+    const c = cells[k];
+    if (!c.kind) continue;
+    const i = cx(k), j = cy(k), p = cellCenter(i, j), w = KIND[c.kind].width;
+    nodes.push({ p, w, bridge: c.water });
+    for (const [di, dj] of [[1, 0], [0, 1]]) {        // each neighbour pair once
+      const ni = i + di, nj = j + dj;
+      if (!inb(ni, nj)) continue;
+      const o = cells[idxOf(ni, nj)];
+      if (!o.kind) continue;
+      segs.push({
+        a: p, b: cellCenter(ni, nj),
+        w: Math.max(w, KIND[o.kind].width),
+        bridge: c.water || o.water,
+        av: c.kind === 2 || o.kind === 2,
+      });
+    }
+  }
+  ctx.lineCap = 'round';
+  for (const s of segs) if (s.bridge) strokeSeg(s, 'rgba(0,40,70,0.28)', s.w + 6, 0, 3);
+  for (const s of segs) strokeSeg(s, s.bridge ? '#2f3740' : '#63686f', s.w + 3);
+  for (const n of nodes) dot(n.p, (n.w + 3) / 2, n.bridge ? '#2f3740' : '#63686f');
+  for (const s of segs) strokeSeg(s, s.bridge ? '#8c949e' : '#474d56', s.w);
+  for (const n of nodes) dot(n.p, n.w / 2, n.bridge ? '#8c949e' : '#474d56');
+  for (const s of segs) {
+    if (s.bridge) continue;
+    ctx.setLineDash(s.av ? [5, 4] : [3, 4]);
+    strokeSeg(s, s.av ? '#f2c94c' : '#f4f1e8', s.av ? 1.2 : 0.9);
+  }
+  ctx.setLineDash([]);
+}
+
+function drawHover() {
+  if (S.hover == null || !S.running || S.over) return;
+  const pv = previewOf(S.hover);
+  if (!pv || (!pv.ok && !pv.short)) return;
+  const k = S.hover;
+  tilePath(cx(k), cy(k));
+  ctx.fillStyle = !pv.ok ? 'rgba(214,69,61,0.32)'
+    : S.tool === 'bulldoze' ? 'rgba(214,69,61,0.35)' : 'rgba(47,157,98,0.35)';
+  ctx.fill();
+}
+
+// Box with its base at height z; x/y are the back corner in grid units.
+function drawBox(x0, y0, w, d, h, pal, z) {
+  const A = iso(x0, y0), B = iso(x0 + w, y0), C = iso(x0 + w, y0 + d), D = iso(x0, y0 + d);
+  const t = z + h;
+  ctx.fillStyle = pal.left;     // faces +y, lower-left
+  ctx.beginPath();
+  ctx.moveTo(D.x, D.y - z); ctx.lineTo(C.x, C.y - z); ctx.lineTo(C.x, C.y - t); ctx.lineTo(D.x, D.y - t);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = pal.right;    // faces +x, lower-right
+  ctx.beginPath();
+  ctx.moveTo(C.x, C.y - z); ctx.lineTo(B.x, B.y - z); ctx.lineTo(B.x, B.y - t); ctx.lineTo(C.x, C.y - t);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = pal.top;
+  ctx.beginPath();
+  ctx.moveTo(A.x, A.y - t); ctx.lineTo(B.x, B.y - t); ctx.lineTo(C.x, C.y - t); ctx.lineTo(D.x, D.y - t);
+  ctx.closePath(); ctx.fill();
+}
+
+function drawTree(c, i, j) {
+  const p = iso(i + 0.5 + c.jx, j + 0.5 + c.jy);
+  ctx.fillStyle = 'rgba(30,50,20,0.20)';
+  ctx.beginPath(); ctx.ellipse(p.x + 3, p.y, 7, 3, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#7a5636';
+  ctx.fillRect(p.x - 1.2, p.y - 7, 2.4, 8);
+  if (c.tv < 0.5) {
+    ctx.fillStyle = '#3f8a46';
+    ctx.beginPath(); ctx.arc(p.x, p.y - 13, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#63ad5c';
+    ctx.beginPath(); ctx.arc(p.x - 2.5, p.y - 15.5, 3.6, 0, Math.PI * 2); ctx.fill();
+  } else {
+    ctx.fillStyle = '#2e6b3d';
+    ctx.beginPath(); ctx.moveTo(p.x, p.y - 30); ctx.lineTo(p.x + 7, p.y - 9); ctx.lineTo(p.x - 7, p.y - 9);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#3f8551';
+    ctx.beginPath(); ctx.moveTo(p.x, p.y - 24); ctx.lineTo(p.x + 5.5, p.y - 8); ctx.lineTo(p.x - 5.5, p.y - 8);
+    ctx.closePath(); ctx.fill();
+  }
+}
+
+function drawDistrict(d, i, j) {
+  const g = 1 + 0.45 * Math.min(1, d.age / 150);      // districts grow visibly
+  for (const b of d.boxes) drawBox(i + b.x, j + b.y, b.w, b.d, b.h * g, d.pal, 0);
+}
+
+function drawCar(c, p) {
+  const along = Math.abs(p.dx) >= Math.abs(p.dy);
+  const L = 0.34, Wd = 0.17;
+  const bw = along ? L : Wd, bd = along ? Wd : L;
+  const x0 = p.x - bw / 2, y0 = p.y - bd / 2;
+  const s = iso(p.x, p.y);
+  ctx.fillStyle = 'rgba(20,32,44,0.22)';
+  ctx.beginPath(); ctx.ellipse(s.x + 1, s.y + 1, 7, 3.4, 0, 0, Math.PI * 2); ctx.fill();
+  drawBox(x0, y0, bw, bd, 4, c.col, 0);
+  const ix = along ? 0.09 : 0.035, iy = along ? 0.035 : 0.09;
+  drawBox(x0 + ix, y0 + iy, bw - 2 * ix, bd - 2 * iy, 2.5, CAB_PAL, 4);
+  if (c.wait > 0.2) {
+    const sg = along ? Math.sign(p.dx) : Math.sign(p.dy);
+    const f = along ? iso(p.x + sg * L / 2, p.y) : iso(p.x, p.y + sg * L / 2);
+    ctx.fillStyle = '#ff3b30';
+    ctx.beginPath(); ctx.arc(f.x, f.y - 2.5, 1.8, 0, Math.PI * 2); ctx.fill();
+  }
+  if (c.wait > JAM_T) {
+    ctx.fillStyle = `rgba(214,69,61,${(0.25 + 0.2 * Math.sin(S.t * 8)).toFixed(2)})`;
+    ctx.beginPath(); ctx.ellipse(s.x, s.y, 11, 5.5, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawObjects() {
+  const items = [];
+  for (let k = 0; k < N; k++) {
+    const c = cells[k];
+    if (c.tree) { const i = cx(k), j = cy(k); items.push({ d: i + j + 0.9, draw: () => drawTree(c, i, j) }); }
+  }
+  for (const d of S.districts) {
+    const i = cx(d.cell), j = cy(d.cell);
+    items.push({ d: i + j + 1.1, draw: () => drawDistrict(d, i, j) });
+  }
+  for (const c of S.cars) {
+    const p = carPos(c);
+    items.push({ d: p.x + p.y + 0.02, draw: () => drawCar(c, p) });
+  }
+  items.sort((a, b) => a.d - b.d);
+  for (const it of items) it.draw();
+}
+
+// Pill-shaped label in screen space.
+function rr(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function label(text, x, y, fg, bg) {
+  ctx.font = '600 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const w = Math.ceil(ctx.measureText(text).width) + 14, h = 20;
+  rr(x - w / 2, y - h / 2, w, h, 10);
+  ctx.fillStyle = bg;
+  ctx.fill();
+  ctx.fillStyle = fg;
+  ctx.fillText(text, x, y + 0.5);
+}
+
+function drawLabels() {
+  if (!S.running) return;
+  for (const d of S.districts) {
+    const i = cx(d.cell), j = cy(d.cell), g = 1 + 0.45 * Math.min(1, d.age / 150);
+    const top = iso(i + 0.5, j + 0.5);
+    const s = w2s(top.x, top.y - 30 * g - 20);
+    label(d.name, s.x, s.y, '#1f2b33', 'rgba(255,255,255,0.94)');
+    if (!d.hasRoad) label('нет дороги', s.x, s.y + 22, '#ffffff', '#d6453d');
+    else if (d.noLink) label('нет связи', s.x, s.y + 22, '#ffffff', '#d6453d');
+    else if (d.queue > 0) {
+      const hot = d.queue >= 8;
+      label('в очереди ' + d.queue, s.x, s.y + 22, hot ? '#ffffff' : '#4a3300', hot ? '#d6453d' : 'rgba(255,226,160,0.96)');
+    }
+  }
+  if (S.hover != null) {
+    const pv = previewOf(S.hover);
+    if (pv && (pv.ok || pv.short) && pv.price) {
+      const c = cellCenter(cx(S.hover), cy(S.hover));
+      const s = w2s(c.x, c.y);
+      label(pv.price > 0 ? '−' + pv.price : '+' + (-pv.price), s.x, s.y,
+        pv.ok ? '#1f2b33' : '#ffffff', pv.ok ? 'rgba(255,255,255,0.94)' : '#d6453d');
+    }
+  }
+  for (const p of S.popups) {
+    const s = w2s(p.x, p.y - 16 - p.age * 30);
+    ctx.globalAlpha = Math.max(0, 1 - p.age / 1.2);
+    label(p.text, s.x, s.y, '#4a3300', 'rgba(242,189,61,0.96)');
+    ctx.globalAlpha = 1;
+  }
+}
+
+function render(now) {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const sky = ctx.createLinearGradient(0, 0, 0, CH);
+  sky.addColorStop(0, '#bfe3f2');
+  sky.addColorStop(1, '#e9f2da');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, CW, CH);
+
+  const z = cam.z * DPR;
+  ctx.setTransform(z, 0, 0, z, (CW / 2 - cam.x * cam.z) * DPR, (CH / 2 - cam.y * cam.z) * DPR);
+  drawMapEdge();
+  drawGround(now);
+  drawRoads();
+  drawHover();
+  drawObjects();
+
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  drawLabels();
+}
+
+// ---------- Input ----------
+const ptrs = new Map();
+let drag = null;
+
+cv.addEventListener('pointerdown', e => {
+  if (!S.running || S.over) return;
+  cv.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 1) {
+    if (S.tool === 'pan') {
+      drag = { mode: 'pan', x: e.clientX, y: e.clientY };
+    } else {
+      const c = cellAt(e.clientX, e.clientY);
+      drag = { mode: 'build', last: c };
+      if (c) act(c.k);
+    }
+  } else {
+    const [a, b] = [...ptrs.values()];
+    drag = { mode: 'pinch', d: dist2(a, b), m: mid(a, b) };
+  }
+});
+
+cv.addEventListener('pointermove', e => {
+  const p = ptrs.get(e.pointerId);
+  if (p) { p.x = e.clientX; p.y = e.clientY; }
+  const hc = cellAt(e.clientX, e.clientY);
+  S.hover = hc ? hc.k : null;
+  if (!drag) return;
+
+  if (drag.mode === 'pan' && ptrs.size === 1) {
+    cam.x -= (e.clientX - drag.x) / cam.z;
+    cam.y -= (e.clientY - drag.y) / cam.z;
+    drag.x = e.clientX; drag.y = e.clientY;
+    clampCam();
+  } else if (drag.mode === 'build' && ptrs.size === 1) {
+    if (hc) {
+      if (drag.last) for (const [i, j] of lineCells(drag.last.i, drag.last.j, hc.i, hc.j)) act(idxOf(i, j));
+      else act(hc.k);
+      drag.last = hc;
+    }
+  } else if (drag.mode === 'pinch' && ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()];
+    const d = dist2(a, b), m = mid(a, b);
+    const anchor = s2w(drag.m.x, drag.m.y);          // world point under the old midpoint
+    cam.z = clamp(cam.z * d / drag.d, ZMIN, ZMAX);
+    cam.x = anchor.x - (m.x - CW / 2) / cam.z;
+    cam.y = anchor.y - (m.y - CH / 2) / cam.z;
+    drag.d = d; drag.m = m;
+    clampCam();
+  }
+});
+
+function endPtr(e) {
+  ptrs.delete(e.pointerId);
+  if (e.pointerType === 'touch') S.hover = null;
+  if (ptrs.size === 0) drag = null;
+  else if (drag && drag.mode === 'pinch') {
+    // One finger left after a pinch: pan, so the lifted finger never paints roads by accident.
+    const q = ptrs.values().next().value;
+    drag = { mode: 'pan', x: q.x, y: q.y };
+  }
+}
+cv.addEventListener('pointerup', endPtr);
+cv.addEventListener('pointercancel', endPtr);
+cv.addEventListener('pointerleave', () => { if (!ptrs.size) S.hover = null; });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const anchor = s2w(e.clientX, e.clientY);
+  cam.z = clamp(cam.z * Math.exp(-e.deltaY * 0.0015), ZMIN, ZMAX);
+  cam.x = anchor.x - (e.clientX - CW / 2) / cam.z;
+  cam.y = anchor.y - (e.clientY - CH / 2) / cam.z;
+  clampCam();
+}, { passive: false });
+
+document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+$('speed').addEventListener('click', () => {
+  S.speed = SPEEDS[(SPEEDS.indexOf(S.speed) + 1) % SPEEDS.length];
+});
+$('startBtn').addEventListener('click', newGame);
+$('againBtn').addEventListener('click', newGame);
+window.addEventListener('resize', () => { resize(); fitCamera(); });
+
+// ---------- Loop ----------
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (S.running && !S.over) for (let s = 0; s < S.speed && !S.over; s++) step(dt);
+  render(now);
+  updateHud();
+  requestAnimationFrame(frame);
+}
+
+resize();
+S.bestScore = loadBest();
+buildMap();
+fitCamera();
+setTool('road');
+updateHud();
+requestAnimationFrame(frame);
+
+// Debug handle for automated checks.
+window.trafficArchitect = {
+  S, cells, act, step, newGame, previewOf, setTool,
+  toScreen: (i, j) => { const c = cellCenter(i, j); return w2s(c.x, c.y); },
+};
+})();
+</script>
+</body>
+</html>
