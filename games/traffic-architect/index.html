@@ -155,7 +155,9 @@ body {
 .editin { flex-wrap: wrap; padding: 10px; }
 .editin .pinfo { flex-basis: 100%; padding: 0 4px; }
 .editin .btn { flex: 1 1 0; }
-.editin #editClose { flex: 0 0 46px; }
+.editin #editClose, .editin #nodeClose { flex: 0 0 46px; }
+.nodein .btn { flex: 1 1 28%; padding: 9px 6px; }
+.nodein #nodeClose { flex: 0 0 46px; }
 .pinfo { display: grid; gap: 2px; min-width: 0; flex: 1 1 auto; }
 .pcost { font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums; }
 .pmsg { font-size: 12px; color: var(--muted); }
@@ -256,6 +258,21 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   </div>
 </div>
 
+<div id="nodeBar" class="planbar" hidden>
+  <div class="planbar-in editin nodein">
+    <div class="pinfo">
+      <b id="nodeTitle" class="pcost">Перекрёсток</b>
+      <span id="nodeMsg" class="pmsg"></span>
+    </div>
+    <button id="nodeClose" class="btn ghost" type="button" aria-label="Закрыть">✕</button>
+    <button id="nodeLight" class="btn go" type="button">Светофор</button>
+    <button id="ringOff" class="btn ghost" type="button">Убрать кольцо</button>
+    <button id="ring1" class="btn ghost" type="button">S</button>
+    <button id="ring2" class="btn ghost" type="button">M</button>
+    <button id="ring3" class="btn ghost" type="button">L</button>
+  </div>
+</div>
+
 <nav class="hud bottom">
   <div id="hint" class="hint"></div>
   <div class="bar">
@@ -330,7 +347,10 @@ const isWater = (x, z) => waterDist(x, z) < 0;
 const KIND = {
   1: { name: 'Дорога', lanes: 1, speed: 1.3, head: 0.5, unit: 9, half: 0.3, offs: [0.16] },
   2: { name: 'Проспект', lanes: 2, speed: 1.8, head: 0.3, unit: 22, half: 0.52, offs: [0.16, 0.4] },
+  3: { name: 'Кольцо', lanes: 1, speed: 1.0, head: 0.4, unit: 9, half: 0.24, offs: [0] },   // one-way ring road
 };
+const RING_SIZES = { 1: { r: 1.0, name: 'S', cost: 45 }, 2: { r: 1.5, name: 'M', cost: 70 }, 3: { r: 2.1, name: 'L', cost: 100 } };
+const LIGHT_COST = 30, LIGHT_SLOT = 6.5, LIGHT_GREEN = 4.8, LIGHT_YELLOW = 0.9;
 const WATER_EXTRA = 1.5;               // water length costs (1 + WATER_EXTRA) times the land price
 const CAR_LEN = 0.5, CAR_W = 0.24, MIN_GAP = 0.25, TIME_GAP = 0.5, ACCEL = 1.2, DECEL = 2.5;
 const MAX_CARS = 400;
@@ -356,7 +376,7 @@ const HINTS = {
   road: 'Проведите линию — дорога. Два пальца — камера',
   avenue: 'Проведите линию — проспект. Тап по дороге — расширить',
   bulldoze: 'Нажимайте или проводите по дороге, чтобы снести',
-  edit: 'Тап по дороге — выбрать, улучшить или снести',
+  edit: 'Тап по дороге или перекрёстку',
   pan: 'Тяните, чтобы двигать камеру',
 };
 
@@ -494,6 +514,7 @@ const nodes = new Map();        // id -> node {id, x, y, z, door, edges:Set, ins
 const edges = new Map();        // id -> edge {id, a, b, kind, C, len, frac}
 const lanes = new Map();        // key 'L<edge>.<dir>.<li>' -> lane {key, from, to, C, len, speed, head, kind}
 const conns = new Map();        // id -> connector {id, key 'C<id>', inKey, outKey, node, C, len, speed, head, conn:true}
+const rings = new Map();         // id -> roundabout {id, x, y, z, r, size, nodes:[], edges:[]}
 const connByPair = new Map();   // inKey + '>' + outKey -> connector id
 const bk = new Map();           // segment key -> cars on it, nearest to the segment end first
 const pendingNext = new Map();  // lane key -> cars on a connector that will enter it next
@@ -540,7 +561,7 @@ function rebuildLanes() {
   }
   for (const e of edges.values()) {
     const k = KIND[e.kind];
-    for (let dir = 0; dir < 2; dir++) {
+    for (let dir = 0; dir < (e.oneway ? 1 : 2); dir++) {
       for (let li = 0; li < k.lanes; li++) {
         const off = k.offs[li], n = e.C.P.length, lp = [];
         for (let i = 0; i < n; i++) {
@@ -608,6 +629,7 @@ function shapeConn(c) {
   c.C = makeCurve(pts);
   c.len = c.C.len;
   c.d0 = { x: d0x, z: d0z };
+  c.ringEntry = B.kind === 3 && A.kind !== 3;
 }
 // Which turns of one junction cross, merge or overlap each other: a car may only enter a turn while none of those is occupied.
 function computeConflicts() {
@@ -822,6 +844,7 @@ function remapLane(key, nodeId, into, e1, e2) {
   return key;
 }
 function removeEdge(e) {
+  if (e.ring) { toast('Кольцо убирается в режиме «Правка»', 2600); return; }
   S.money += Math.floor(nominalCost(e.kind, e.len, e.frac) * 0.5);
   removeEdgeRecord(e);
   const pre = `L${e.id}.`;
@@ -882,6 +905,230 @@ function upgradeEdge(e) {
   afterNetworkChange();
   return true;
 }
+// ---------- Roundabouts and traffic lights ----------
+function setEdgeCurve(e, pts2) {
+  let wet = 0;
+  for (let i = 0; i < pts2.length - 1; i++) {
+    const L = Math.hypot(pts2[i + 1].x - pts2[i].x, pts2[i + 1].z - pts2[i].z);
+    if (isWater((pts2[i].x + pts2[i + 1].x) / 2, (pts2[i].z + pts2[i + 1].z) / 2)) wet += L;
+  }
+  e.C = makeCurve(pts2.map(p => ({ x: p.x, y: hAt(p.x, p.z), z: p.z })));
+  e.len = e.C.len;
+  e.frac = e.len > 0 ? wet / e.len : 0;
+}
+// Where an arm crosses the circle of radius r around its node: arc length from the node and the point.
+function armContact(n, e, r) {
+  const atA = e.a === n.id;
+  for (let s = 0.05; s <= e.len; s += 0.05) {
+    const q = curveAt(e.C, atA ? s : e.len - s);
+    if (Math.hypot(q.x - n.x, q.z - n.z) >= r) return { s, x: q.x, z: q.z };
+  }
+  return null;
+}
+function ringArms(n, r) {
+  const out = [];
+  for (const id of n.edges) {
+    const e = edges.get(id);
+    if (!e || e.a === e.b) continue;
+    const c = armContact(n, e, r);
+    out.push({ e, c, far: nodes.get(e.a === n.id ? e.b : e.a) });
+  }
+  return out;
+}
+// Why a junction cannot become a roundabout of this radius; empty if it can.
+function ringProblem(n, r) {
+  if (!n || n.door >= 0 || n.ringId) return 'Здесь кольцо не построить';
+  const arms = ringArms(n, r);
+  if (arms.length < 3) return 'Нужен перекрёсток минимум из трёх дорог';
+  for (const a of arms) {
+    if (!a.c || a.e.len - a.c.s < nodeNeed(a.far) + 0.9) return 'Дорога слишком короткая для кольца';
+    a.phi = Math.atan2(a.c.z - n.z, a.c.x - n.x);
+  }
+  arms.sort((p, q) => p.phi - q.phi);
+  for (let i = 0; i < arms.length; i++) {
+    let d = arms[(i + 1) % arms.length].phi - arms[i].phi;
+    if (d <= 0) d += Math.PI * 2;
+    if (r * d < 1.4) return 'Дороги расходятся слишком близко для такого кольца';
+  }
+  const mine = new Set(arms.map(a => a.e));
+  for (const f of edges.values()) {
+    if (mine.has(f)) continue;
+    if (nearestOnCurve(f.C, n.x, n.z).d < r + KIND[f.kind].half + 0.5) return 'Рядом другая дорога';
+  }
+  const farIds = new Set(arms.map(a => a.far.id));
+  for (const d of S.districts) {
+    if (d.doors.some(id => farIds.has(id))) continue;
+    if (Math.abs(n.x - d.cx) < 1.42 + r && Math.abs(n.z - d.cz) < 1.42 + r) return 'Рядом район';
+  }
+  if (n.x < r + 0.7 || n.z < r + 0.7 || n.x > FIELD - r - 0.7 || n.z > FIELD - r - 0.7) return 'Слишком близко к краю поля';
+  return '';
+}
+function dropConnsAt(ids) {
+  for (const [id, c] of [...conns]) if (ids.has(c.node)) conns.delete(id);
+}
+function makeRoundabout(n, size, free) {
+  const R = RING_SIZES[size].r, cost = RING_SIZES[size].cost;
+  const bad = ringProblem(n, R);
+  if (bad) { toast(bad, 2600); return null; }
+  if (!free && S.money < cost) { toast(`Нужно $${cost} на кольцо`, 2200); return null; }
+  const arms = ringArms(n, R);
+  for (const a of arms) a.phi = Math.atan2(a.c.z - n.z, a.c.x - n.x);
+  const ring = { id: ++seq, x: n.x, y: n.y, z: n.z, r: R, size, nodes: [], edges: [] };
+  for (const a of arms) {
+    const rn = addNode(n.x + Math.cos(a.phi) * R, n.z + Math.sin(a.phi) * R);
+    rn.ringId = ring.id;
+    ring.nodes.push(rn.id);
+    a.rn = rn;
+    const e = a.e, atA = e.a === n.id, P = e.C.P, cum = e.C.cum, pts = [];
+    if (atA) {
+      pts.push({ x: rn.x, z: rn.z });
+      for (let i = 0; i < P.length; i++) if (cum[i] > a.c.s + 0.03) pts.push({ x: P[i].x, z: P[i].z });
+      e.a = rn.id;
+    } else {
+      for (let i = 0; i < P.length; i++) if (cum[i] < e.len - a.c.s - 0.03) pts.push({ x: P[i].x, z: P[i].z });
+      pts.push({ x: rn.x, z: rn.z });
+      e.b = rn.id;
+    }
+    n.edges.delete(e.id);
+    rn.edges.add(e.id);
+    setEdgeCurve(e, pts);
+  }
+  // Traffic goes counter-clockwise as seen on screen (right-hand traffic): the angle decreases along the ring.
+  const order = arms.slice().sort((p, q) => q.phi - p.phi);
+  for (let i = 0; i < order.length; i++) {
+    const A = order[i], B = order[(i + 1) % order.length];
+    const p0 = A.phi;
+    let p1 = B.phi;
+    if (p1 >= p0) p1 -= Math.PI * 2;
+    const steps = Math.max(3, Math.ceil(R * (p0 - p1) / 0.22)), pts = [];
+    for (let k = 0; k <= steps; k++) {
+      const ph = p0 + (p1 - p0) * k / steps;
+      pts.push({ x: n.x + Math.cos(ph) * R, z: n.z + Math.sin(ph) * R });
+    }
+    const re = makeEdge(A.rn, B.rn, 3, pts);
+    re.oneway = true;
+    re.ring = ring.id;
+    ring.edges.push(re.id);
+  }
+  dropConnsAt(new Set([n.id]));
+  nodes.delete(n.id);
+  rings.set(ring.id, ring);
+  if (!free) S.money -= cost;
+  afterNetworkChange();
+  return ring;
+}
+function dissolveRing(ring) {
+  const X = addNode(ring.x, ring.z);
+  const own = new Set(ring.edges), nodeIds = new Set(ring.nodes);
+  for (const id of ring.nodes) {
+    const rn = nodes.get(id);
+    if (!rn) continue;
+    for (const eid of [...rn.edges]) {
+      if (own.has(eid)) continue;
+      const e = edges.get(eid), P = e.C.P.map(p => ({ x: p.x, z: p.z }));
+      if (e.a === rn.id) { P.unshift({ x: X.x, z: X.z }); e.a = X.id; } else { P.push({ x: X.x, z: X.z }); e.b = X.id; }
+      rn.edges.delete(eid);
+      X.edges.add(eid);
+      setEdgeCurve(e, P);
+    }
+  }
+  for (const eid of ring.edges) { const e = edges.get(eid); if (e) removeEdgeRecord(e); }
+  dropConnsAt(nodeIds);
+  for (const id of ring.nodes) nodes.delete(id);
+  rings.delete(ring.id);
+  afterNetworkChange();
+  return X;
+}
+function resizeRing(ring, size) {
+  if (ring.size === size) return ring;
+  const oldCost = RING_SIZES[ring.size].cost, cost = RING_SIZES[size].cost, diff = cost - Math.floor(oldCost * 0.5);
+  if (S.money < diff) { toast(`Нужно $${diff} на перестройку`, 2200); return ring; }
+  const oldSize = ring.size, X = dissolveRing(ring);
+  const made = makeRoundabout(X, size, true);
+  if (!made) return makeRoundabout(dropLight(X), oldSize, true);
+  S.money -= diff;
+  return made;
+}
+function dropLight(n) { n.light = false; return n; }
+// Phases of a signal: opposite arms go together, every other arm gets its own phase.
+function computeLights() {
+  for (const n of nodes.values()) {
+    if (!n.light) continue;
+    if (n.door >= 0 || n.ringId || n.edges.size < 3) { n.light = false; n.phaseOf = null; continue; }
+    const arms = junctionArms(n), used = new Set(), phases = [];
+    for (let i = 0; i < arms.length; i++) {
+      if (used.has(i)) continue;
+      used.add(i);
+      const ph = [i];
+      for (let j = 0; j < arms.length; j++) {
+        if (used.has(j)) continue;
+        let d = Math.abs(arms[j].ang - arms[i].ang);
+        if (d > Math.PI) d = Math.PI * 2 - d;
+        if (Math.abs(d - Math.PI) < 0.45) { used.add(j); ph.push(j); break; }
+      }
+      phases.push(ph);
+    }
+    n.phaseOf = new Map();
+    phases.forEach((ph, k) => {
+      for (const i of ph) {
+        const e = arms[i].e, dir = e.b === n.id ? 0 : 1;
+        for (let li = 0; li < KIND[e.kind].lanes; li++) n.phaseOf.set(`L${e.id}.${dir}.${li}`, k);
+      }
+    });
+    n.nPhase = phases.length;
+    if (n.t0 === undefined) n.t0 = Math.random() * LIGHT_SLOT * n.nPhase;
+  }
+}
+function lightState(n, phase) {
+  const cyc = n.nPhase * LIGHT_SLOT, t = (S.t + n.t0) % cyc, slot = Math.floor(t / LIGHT_SLOT), u = t - slot * LIGHT_SLOT;
+  if (slot !== phase) return 'r';
+  return u < LIGHT_GREEN ? 'g' : u < LIGHT_GREEN + LIGHT_YELLOW ? 'y' : 'r';
+}
+function toggleLight(n) {
+  if (!n || n.door >= 0 || n.ringId || n.edges.size < 3) return;
+  if (n.light) { n.light = false; n.phaseOf = null; }
+  else {
+    if (S.money < LIGHT_COST) { toast(`Нужно $${LIGHT_COST} на светофор`, 2200); return; }
+    S.money -= LIGHT_COST;
+    n.light = true;
+  }
+  computeLights();
+  S.lightKey = null;
+  S.selDirty = true;
+}
+const LAMP = { g: 0x3ddc84, y: 0xffd23f, r: 0xff4d4d };
+function lightsKey() {
+  let k = '';
+  for (const n of nodes.values()) {
+    if (!n.light || !n.phaseOf) continue;
+    k += n.id + ':';
+    for (let p = 0; p < n.nPhase; p++) k += lightState(n, p);
+    k += ';';
+  }
+  return k + edges.size + '|' + (S.netVer | 0);
+}
+// Stop lines and signal posts at each arm of a signalised junction.
+function buildLights() {
+  const g = new Geo(), post = 0x2b2f36, line = rgb(COL.white);
+  for (const n of nodes.values()) {
+    if (!n.light || !n.phaseOf) continue;
+    for (const a of junctionArms(n)) {
+      const e = a.e, key = `L${e.id}.${e.b === n.id ? 0 : 1}.0`, ph = n.phaseOf.get(key);
+      if (ph === undefined) continue;
+      const s = a.atA ? a.t + 0.14 : e.len - a.t - 0.14, q = curveAt(e.C, s);
+      const dx = a.atA ? q.dx : -q.dx, dz = a.atA ? q.dz : -q.dz;
+      const nx = dz, nz = -dx, hw = a.hw, y = q.y + 0.03;
+      const P = (o, l) => ({ x: q.x + nx * o + dx * l, y, z: q.z + nz * o + dz * l });
+      g.quad(P(0.02, -0.035), P(hw, -0.035), P(hw, 0.035), P(0.02, 0.035), line);
+      const px = q.x + nx * (hw + 0.1), pz = q.z + nz * (hw + 0.1), by = q.y;
+      g.box(px - 0.025, by, pz - 0.025, px + 0.025, by + 0.42, pz + 0.025, post);
+      g.box(px - 0.06, by + 0.42, pz - 0.06, px + 0.06, by + 0.56, pz + 0.06, LAMP[lightState(n, ph)]);
+    }
+  }
+  return g.geometry();
+}
+function clearSel() { S.sel = S.selNode = S.selRing = null; S.selDirty = true; }
+
 // upgradeProblem is a full scan, so it is only repeated after the network or the districts change.
 function cachedProblem(e) {
   const k = `${S.netVer | 0}|${S.districts.length}|${e.id}`;
@@ -889,9 +1136,17 @@ function cachedProblem(e) {
   return S.pv;
 }
 function selectNear(x, z) {
+  clearSel();
+  for (const r of rings.values()) if (Math.hypot(x - r.x, z - r.z) < r.r + 0.5) { S.selRing = r.id; return; }
+  let best = null, bd = 0.8;
+  for (const n of nodes.values()) {
+    if (n.door >= 0 || n.ringId || n.edges.size < 3) continue;
+    const d = Math.hypot(x - n.x, z - n.z);
+    if (d < bd) { bd = d; best = n; }
+  }
+  if (best) { S.selNode = best.id; return; }
   const near = nearestEdge(x, z);
-  S.sel = near && near.h.d < 0.8 ? near.e.id : null;
-  S.selDirty = true;
+  if (near && near.e.kind !== 3 && near.h.d < 0.8) S.sel = near.e.id;
 }
 // Cars keep their place: segments that still exist are kept, the rest of the route is planned again.
 function afterNetworkChange() {
@@ -921,6 +1176,7 @@ function afterNetworkChange() {
   S.dirty = true;
   S.selDirty = true;
   S.netVer = (S.netVer | 0) + 1;
+  computeLights();
 }
 
 // ---------- Planning: raw stroke -> smooth curve -> checks -> cost ----------
@@ -987,7 +1243,7 @@ function snapTarget(p) {
   }
   if (best) return best;
   const near = nearestEdge(p.x, p.z);
-  if (!near || near.h.d >= SNAP_EDGE) return null;
+  if (!near || near.h.d >= SNAP_EDGE || near.e.kind === 3) return null;
   const e = near.e, s = near.h.s;
   if (s < 0.4) return { type: 'node', id: e.a, x: nodes.get(e.a).x, z: nodes.get(e.a).z };
   if (s > e.len - 0.4) return { type: 'node', id: e.b, x: nodes.get(e.b).x, z: nodes.get(e.b).z };
@@ -1052,6 +1308,11 @@ function tangentAt(pts, i) {
 // Empty string if the plan can be built, otherwise the reason.
 function planProblem(pts, cum) {
   const n = pts.length, total = cum[n - 1];
+  for (const e of edges.values()) {
+    if (e.kind !== 3) continue;
+    const P = e.C.P;
+    for (let j = 0; j < P.length - 1; j++) for (let i = 0; i < pts.length - 1; i++) if (segHit(pts[i], pts[i + 1], P[j], P[j + 1])) return 'Кольцо нельзя пересекать';
+  }
   for (const p of pts) {
     if (p.x < 0.4 || p.z < 0.4 || p.x > FIELD - 0.4 || p.z > FIELD - 0.4) return 'За пределами поля';
     for (const d of S.districts) if (Math.abs(p.x - d.cx) < 1.12 && Math.abs(p.z - d.cz) < 1.12) return 'Через район нельзя';
@@ -1291,7 +1552,8 @@ const planMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLamber
 planMesh.renderOrder = 2;
 const selMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide }));
 selMesh.renderOrder = 2;
-scene.add(groundMesh, waterMesh, roadMesh, treeMesh, planMesh, selMesh);
+const lightMesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+scene.add(groundMesh, waterMesh, roadMesh, treeMesh, planMesh, selMesh, lightMesh);
 
 const bodyGeo = new THREE.BoxGeometry(CAR_LEN, 0.09, CAR_W);
 bodyGeo.translate(0, 0.085, 0);
@@ -1320,7 +1582,7 @@ const projV = new THREE.Vector3();
 // ---------- State ----------
 const S = {
   running: false, over: false, t: 0,
-  money: START_MONEY, delivered: 0, meter: 0, speed: 1, tool: 'road', dirty: true, planDirty: true, sel: null, selDirty: true,
+  money: START_MONEY, delivered: 0, meter: 0, speed: 1, tool: 'road', dirty: true, planDirty: true, sel: null, selNode: null, selRing: null, selDirty: true,
   plan: null, districts: [], cars: [], popups: [], names: [], trees: [],
   nextDistrictIn: 0, jamCool: 0, bestScore: 0,
 };
@@ -1358,7 +1620,7 @@ function toast(msg, ms = 2600) {
 function setTool(t) {
   S.tool = t;
   if (t !== 'road' && t !== 'avenue' && S.plan && S.plan.drawing) S.plan = null;
-  if (t !== 'edit') { S.sel = null; S.selDirty = true; }
+  if (t !== 'edit') clearSel();
   document.querySelectorAll('.tool').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
   setText(hintEl, HINTS[t]);
   S.planDirty = true;
@@ -1523,7 +1785,9 @@ function drawEdge(g, e, ta, tb) {
   ribbon(g, C, 0, k.half, surf, 0, s0, s1);
   const m0 = s0 + 0.12, m1 = s1 - 0.12;
   if (m1 - m0 > 0.1) {
-    if (e.kind === 1) {
+    if (e.kind === 3) {
+      for (const sg of [-1, 1]) ribbon(g, C, sg * (k.half - 0.03), 0.014, () => rgb(COL.white), 0.02, m0, m1);
+    } else if (e.kind === 1) {
       dashes(g, C, 0, 0.035, 0.32, 0.25, COL.white, 0.02, m0, m1);
     } else {
       for (const off of [0.03, -0.03]) ribbon(g, C, off, 0.022, () => rgb(COL.yellow), 0.02, m0, m1);
@@ -1710,7 +1974,17 @@ function carPose(car) {
 }
 // A turn is busy while a short cool-down runs, or while a car is in a turn that crosses or merges with it.
 function connBusy(c, need) {
-  if (nodes.get(c.node).cool > 0) return true;
+  const node = nodes.get(c.node);
+  if (node.cool > 0) return true;
+  if (node.light && node.phaseOf) {
+    const ph = node.phaseOf.get(c.inKey);
+    if (ph !== undefined && lightState(node, ph) !== 'g') return true;
+  }
+  if (c.ringEntry) {
+    // Cars may not fill the ring completely, or it would lock up.
+    const L = lanes.get(c.outKey), cnt = (laneCount.get(c.outKey) || 0) + (pendingNext.get(c.outKey) || 0);
+    if (L && cnt >= Math.max(1, Math.floor(L.len / need) - 1)) return true;
+  }
   for (const f of c.conf) {
     const arr = bkOf(f.key);
     if (!arr.length) continue;
@@ -1865,7 +2139,7 @@ function clearWorld() {
   S.districts = [];
   S.cars = [];
   S.popups = [];
-  nodes.clear(); edges.clear(); lanes.clear(); conns.clear(); connByPair.clear();
+  nodes.clear(); edges.clear(); lanes.clear(); conns.clear(); connByPair.clear(); rings.clear();
   bk.clear(); laneCount.clear();
   S.plan = null;
 }
@@ -1944,7 +2218,11 @@ function updatePlanUi() {
 }
 // Highlight of the selected road: what it is now, or what the avenue would take up (red if it cannot be built).
 function buildSelGeo() {
-  const e = S.sel && edges.get(S.sel), g = new Geo();
+  const g = new Geo();
+  const rg = S.selRing && rings.get(S.selRing), nd = S.selNode && nodes.get(S.selNode);
+  if (rg) g.disk(rg.x, rg.y + 0.08, rg.z, rg.r + 0.4, [0.45, 0.7, 1], 32);
+  else if (nd) g.disk(nd.x, nd.y + 0.08, nd.z, 0.6, [0.45, 0.7, 1], 24);
+  const e = S.sel && edges.get(S.sel);
   if (!e) return g.geometry();
   let col = [0.45, 0.7, 1], hw = KIND[e.kind].half;
   if (e.kind === 1) {
@@ -1954,7 +2232,44 @@ function buildSelGeo() {
   ribbon(g, e.C, 0, hw, () => col, 0.07);
   return g.geometry();
 }
+const nodeBar = $('nodeBar');
+let ringProbs = null, ringProbKey = '';
+function updateNodeUi() {
+  if (S.selRing && !rings.has(S.selRing)) { S.selRing = null; S.selDirty = true; }
+  if (S.selNode && !nodes.has(S.selNode)) { S.selNode = null; S.selDirty = true; }
+  const ring = S.tool === 'edit' && S.selRing ? rings.get(S.selRing) : null;
+  const n = S.tool === 'edit' && S.selNode ? nodes.get(S.selNode) : null;
+  nodeBar.hidden = !ring && !n;
+  if (!ring && !n) return;
+  $('nodeLight').hidden = !!ring;
+  $('ringOff').hidden = !ring;
+  let msg = '';
+  if (ring) {
+    setText($('nodeTitle'), `Кольцо · ${RING_SIZES[ring.size].name}`);
+    for (const k of [1, 2, 3]) {
+      const b = $('ring' + k), diff = RING_SIZES[k].cost - Math.floor(RING_SIZES[ring.size].cost * 0.5);
+      setText(b, k === ring.size ? `${RING_SIZES[k].name} ✓` : `${RING_SIZES[k].name} · $${diff}`);
+      b.disabled = k === ring.size || S.money < diff;
+    }
+    msg = 'Размер кольца можно менять';
+  } else {
+    const key = `${n.id}|${S.netVer | 0}|${S.districts.length}`;
+    if (key !== ringProbKey) { ringProbKey = key; ringProbs = [1, 2, 3].map(k => ringProblem(n, RING_SIZES[k].r)); }
+    setText($('nodeTitle'), `Перекрёсток · ${n.edges.size} дороги`);
+    setText($('nodeLight'), n.light ? 'Убрать светофор' : `Светофор $${LIGHT_COST}`);
+    $('nodeLight').disabled = !n.light && S.money < LIGHT_COST;
+    for (const k of [1, 2, 3]) {
+      const b = $('ring' + k);
+      setText(b, `Кольцо ${RING_SIZES[k].name} · $${RING_SIZES[k].cost}`);
+      b.disabled = !!ringProbs[k - 1] || S.money < RING_SIZES[k].cost;
+      if (ringProbs[k - 1]) msg = msg || `${RING_SIZES[k].name}: ${ringProbs[k - 1]}`;
+    }
+    msg = msg || (n.light ? 'Светофор работает' : 'Выберите кольцо или светофор');
+  }
+  setText($('nodeMsg'), msg);
+}
 function updateEditUi() {
+  updateNodeUi();
   if (S.sel && !edges.has(S.sel)) { S.sel = null; S.selDirty = true; }
   const e = S.tool === 'edit' && S.sel ? edges.get(S.sel) : null;
   editBar.hidden = !e;
@@ -2112,7 +2427,18 @@ cv.addEventListener('wheel', ev => {
 document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
 document.querySelectorAll('.sp').forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.speed))));
 $('planApply').addEventListener('click', () => { applyPlan(); });
-$('editClose').addEventListener('click', () => { S.sel = null; S.selDirty = true; });
+$('editClose').addEventListener('click', clearSel);
+$('nodeClose').addEventListener('click', clearSel);
+$('nodeLight').addEventListener('click', () => toggleLight(nodes.get(S.selNode)));
+for (const k of [1, 2, 3]) $('ring' + k).addEventListener('click', () => {
+  if (S.selRing) { const r = resizeRing(rings.get(S.selRing), k); if (r) S.selRing = r.id; }
+  else { const n = nodes.get(S.selNode), r = n && makeRoundabout(n, k, false); if (r) { S.selNode = null; S.selRing = r.id; } }
+  S.selDirty = true;
+});
+$('ringOff').addEventListener('click', () => {
+  const r = rings.get(S.selRing);
+  if (r) { const X = dissolveRing(r); S.selRing = null; S.selNode = X.id; S.selDirty = true; }
+});
 $('editUpgrade').addEventListener('click', () => { const e = edges.get(S.sel); if (e) upgradeEdge(e); });
 $('editRemove').addEventListener('click', () => { const e = edges.get(S.sel); if (e) { removeEdge(e); S.sel = null; S.selDirty = true; } });
 $('planCancel').addEventListener('click', () => { S.plan = null; S.planDirty = true; });
@@ -2127,12 +2453,14 @@ function frame(now) {
   last = now;
   if (S.running && !S.over) for (let s = 0; s < S.speed && !S.over; s++) step(dt);
   if (S.dirty) rebuildWorld();
-  if (S.selDirty || S.sel) {
+  if (S.selDirty || S.sel || S.selNode || S.selRing) {
     // The preview depends on money, so it is refreshed while something is selected.
     S.selDirty = false;
-    const key = S.sel + '|' + Math.floor(S.money) + '|' + (S.netVer | 0) + '|' + S.districts.length;
+    const key = S.sel + '|' + S.selNode + '|' + S.selRing + '|' + Math.floor(S.money) + '|' + (S.netVer | 0) + '|' + S.districts.length;
     if (key !== S.selKey) { S.selKey = key; swapGeometry(selMesh, buildSelGeo()); }
   }
+  const lk = lightsKey();
+  if (lk !== S.lightKey) { S.lightKey = lk; swapGeometry(lightMesh, buildLights()); }
   if (S.planDirty) {
     S.planDirty = false;
     swapGeometry(planMesh, buildPlanGeo());
@@ -2160,7 +2488,7 @@ requestAnimationFrame(frame);
 // Debug handle for automated checks.
 window.trafficArchitect = {
   S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD },
-  newGame, step, setTool, setSpeed, carPose, applyPlan, removeNear, upgradeNear, selectNear, upgradeProblem, upgradeEdge,
+  newGame, step, setTool, setSpeed, carPose, applyPlan, removeNear, upgradeNear, selectNear, upgradeProblem, upgradeEdge, rings, makeRoundabout, dissolveRing, resizeRing, ringProblem, toggleLight, lightState,
   planAt(points, kind) {
     S.plan = computePlan(points.map(p => ({ x: p.x, z: p.z })), kind === 'avenue' ? 2 : 1);
     S.plan.drawing = false;
