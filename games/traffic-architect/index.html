@@ -324,23 +324,10 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         <li>Проведите линию — игра сгладит её в кривую. Проверьте цену и нажмите «Построить».</li>
         <li>Дорога соединяется с районом у его выезда. Пересечение с другой дорогой становится перекрёстком.</li>
         <li>В режиме «Правка» перекрёсток можно превратить в кольцо или поставить светофор.</li>
-        <li>Пробки заполняют шкалу. Заполнится — игра окончена.</li>
+        <li>Пробки заполняют шкалу. Пока она полная, город не растёт, но игру можно продолжить и разгрузить дороги.</li>
       </ul>
     </details>
     <button id="startBtn" class="primary" type="button">Начать</button>
-  </section>
-</div>
-
-<div id="overOverlay" class="overlay" hidden>
-  <section class="card" aria-labelledby="overTitle">
-    <h1 id="overTitle">Город встал</h1>
-    <p>Пробки заполнили шкалу. Попробуйте проспекты и объездные дороги.</p>
-    <div class="stats">
-      <div><span>Доехали</span><b id="fScore">0</b></div>
-      <div><span>Районов</span><b id="fDistricts">0</b></div>
-      <div><span>Рекорд</span><b id="fBest">0</b></div>
-    </div>
-    <button id="againBtn" class="primary" type="button">Ещё раз</button>
   </section>
 </div>
 
@@ -1811,7 +1798,7 @@ let CW = 1, CH = 1, DPR = 1;
 const $ = id => document.getElementById(id);
 const cv = $('world');
 const toastEl = $('toast'), hintEl = $('hint'), labelsEl = $('labels');
-const startEl = $('startOverlay'), overEl = $('overOverlay'), planBar = $('planBar'), editBar = $('editBar');
+const startEl = $('startOverlay'), planBar = $('planBar'), editBar = $('editBar');
 const hud = {};
 for (const id of ['money', 'score', 'districts', 'meterFill', 'meterVal']) hud[id] = $(id);
 
@@ -2457,7 +2444,9 @@ function step(dt) {
   S.nextDistrictIn -= dt;
   if (S.nextDistrictIn <= 0) {
     const linked = districtsLinked();
-    if (S.districts.length < MAX_DISTRICTS && !linked) {
+    if (S.meter >= 100) {
+      S.nextDistrictIn = 3;                    // a jammed city does not grow
+    } else if (S.districts.length < MAX_DISTRICTS && !linked) {
       // A new district only appears once every district so far is connected.
       if (S.t - (S.linkHint === undefined ? -99 : S.linkHint) > 30) { S.linkHint = S.t; toast('Новый район появится, когда все районы соединены дорогами', 3400); }
       S.nextDistrictIn = 3;
@@ -2509,7 +2498,15 @@ function step(dt) {
     p.el.remove();
     return false;
   });
-  if (S.meter >= 100) gameOver();
+  if (S.meter >= 100 && S.fullCool <= 0) {
+    // The city is jammed, but the game goes on: no new districts until the jam eases, and the player can fix it.
+    S.fullCool = 25;
+    toast('Город стоит в пробке — игра продолжается. Постройте кольцо, светофор или объезд', 4200);
+  }
+  S.fullCool = Math.max(0, (S.fullCool || 0) - dt);
+  // The best score is saved as it grows, since a game no longer ends.
+  if (S.delivered > S.bestScore) { S.bestScore = S.delivered; S.bestDirty = true; }
+  if (S.bestDirty && S.t - (S.bestSaved || 0) > 10) { S.bestSaved = S.t; S.bestDirty = false; saveBest(S.bestScore); }
 }
 
 // ---------- Menu background ----------
@@ -2598,19 +2595,10 @@ function newGame() {
   }
   updateCamera();
   startEl.hidden = true;
-  overEl.hidden = true;
   toast('Соедините районы дорогой через реку — от выезда к выезду', 4200);
   S.dirty = true;
   S.planDirty = true;
   updateHud();
-}
-function gameOver() {
-  S.over = true;
-  if (S.delivered > S.bestScore) { S.bestScore = S.delivered; saveBest(S.bestScore); }
-  $('fScore').textContent = S.delivered;
-  $('fDistricts').textContent = S.districts.length;
-  $('fBest').textContent = S.bestScore;
-  overEl.hidden = false;
 }
 
 // ---------- Per-frame view sync ----------
@@ -2914,7 +2902,6 @@ $('editUpgrade').addEventListener('click', () => { const e = edges.get(S.sel); i
 $('editRemove').addEventListener('click', () => { const e = edges.get(S.sel); if (e) { removeEdge(e); S.sel = null; S.selDirty = true; } });
 $('planCancel').addEventListener('click', () => { S.plan = null; S.planDirty = true; });
 $('startBtn').addEventListener('click', () => { endDemo(); newGame(); });
-$('againBtn').addEventListener('click', newGame);
 window.addEventListener('resize', resize);
 
 // ---------- Loop ----------
