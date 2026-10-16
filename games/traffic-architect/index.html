@@ -322,7 +322,7 @@ const MAX_DISTRICTS = 14, MIN_DISTRICT_GAP = 7;
 const SPEEDS = [1, 2, 4];
 const NAMES = ['Сосновый', 'Речной', 'Центральный', 'Зелёный', 'Солнечный', 'Западный', 'Восточный', 'Яблоневый', 'Ясный', 'Тихий', 'Озёрный', 'Парковый', 'Заречный', 'Липовый', 'Северный', 'Новый', 'Лесной', 'Вишнёвый', 'Дубовый', 'Степной'];
 const WALLS = [0xf1e7cf, 0xcfe3f2, 0xf4d35e, 0xe8c7b5, 0xd9e4dd, 0xf6f1e4];
-const ROOFS = [0x8e4b3c, 0x3d6e9e, 0x6b7785, 0xb0543e, 0x4f6d7a, 0x7d5a8f];
+const ROOFS = [0xe4572e, 0x2e86ab, 0xf3a712, 0x7b2cbf, 0x2a9d8f, 0xef6f8e];   // also the colour of cars heading there
 const CAR_COLORS = [0xe4572e, 0xf3a712, 0xf2f2f2, 0x2e86ab, 0x7b2cbf, 0x2a9d8f, 0xef6f8e, 0x3a3f47, 0xffd166];
 const JAM_COLOR = 0xff3b30;
 const GRASS = 0x7b9f56;
@@ -511,6 +511,12 @@ function removeEdgeRecord(e) {
 function rebuildLanes() {
   lanes.clear();
   for (const n of nodes.values()) { n.ins = []; n.outs = []; }
+  // Lanes stop where the junction polygon starts (the same trim the road drawing uses), so turns are wide arcs through it.
+  const trimOf = new Map();
+  for (const n of nodes.values()) {
+    if (n.door >= 0 || n.edges.size < 2) continue;
+    for (const a of junctionArms(n)) trimOf.set(n.id + ':' + a.e.id, a.t);
+  }
   for (const e of edges.values()) {
     const k = KIND[e.kind];
     for (let dir = 0; dir < 2; dir++) {
@@ -522,9 +528,13 @@ function rebuildLanes() {
           lp.push({ x: p.x + sg * nn.x * off, y: p.y, z: p.z + sg * nn.z * off });
         }
         const key = `L${e.id}.${dir}.${li}`;
+        const from = dir === 0 ? e.a : e.b, to = dir === 0 ? e.b : e.a;
+        let C = makeCurve(lp);
+        const t0 = trimOf.get(from + ':' + e.id) || 0, t1 = trimOf.get(to + ':' + e.id) || 0;
+        if ((t0 || t1) && C.len - t0 - t1 > 0.1) C = makeCurve(subCurve(C, t0, C.len - t1, 0).map(q => ({ x: q.x, y: q.y, z: q.z })));
         const lane = {
-          key, from: dir === 0 ? e.a : e.b, to: dir === 0 ? e.b : e.a, kind: e.kind,
-          C: makeCurve(lp), len: 0, speed: k.speed, head: k.head,
+          key, from, to, kind: e.kind,
+          C, len: 0, speed: k.speed, head: k.head,
         };
         lane.len = lane.C.len;
         lanes.set(key, lane);
@@ -544,33 +554,79 @@ function connFor(inKey, outKey) {
   const pk = inKey + '>' + outKey;
   const have = connByPair.get(pk);
   if (have !== undefined) return conns.get(have);
-  const A = lanes.get(inKey), B = lanes.get(outKey);
+  const id = ++seq;
+  const c = { id, key: 'C' + id, inKey, outKey, node: lanes.get(inKey).to, conn: true, conf: [] };
+  conns.set(id, c);
+  connByPair.set(pk, id);
+  shapeConn(c);
+  return c;
+}
+// Turn path: a cubic Bezier from the end of the incoming lane to the start of the outgoing lane.
+function shapeConn(c) {
+  const A = lanes.get(c.inKey), B = lanes.get(c.outKey);
   const P0 = A.C.P[A.C.P.length - 1], Pa = A.C.P[A.C.P.length - 2];
   const P3 = B.C.P[0], Pb = B.C.P[1];
   const d0l = Math.hypot(P0.x - Pa.x, P0.z - Pa.z) || 1, d1l = Math.hypot(Pb.x - P3.x, Pb.z - P3.z) || 1;
   const d0x = (P0.x - Pa.x) / d0l, d0z = (P0.z - Pa.z) / d0l, d1x = (Pb.x - P3.x) / d1l, d1z = (Pb.z - P3.z) / d1l;
-  const k = Math.max(0.12, Math.hypot(P3.x - P0.x, P3.z - P0.z) * 0.45);
+  const k = Math.max(0.12, Math.hypot(P3.x - P0.x, P3.z - P0.z) * 0.42);
   const P1 = { x: P0.x + d0x * k, z: P0.z + d0z * k }, P2 = { x: P3.x - d1x * k, z: P3.z - d1z * k };
-  const pts = [];
-  for (let i = 0; i <= 12; i++) {
-    const t = i / 12, u = 1 - t;
+  const pts = [], N = 16;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N, u = 1 - t;
     pts.push({
       x: u * u * u * P0.x + 3 * u * u * t * P1.x + 3 * u * t * t * P2.x + t * t * t * P3.x,
       y: P0.y + (P3.y - P0.y) * t,
       z: u * u * u * P0.z + 3 * u * u * t * P1.z + 3 * u * t * t * P2.z + t * t * t * P3.z,
     });
   }
-  const id = ++seq;
-  const uturn = d0x * d1x + d0z * d1z < -0.5;
-  const c = {
-    id, key: 'C' + id, inKey, outKey, node: A.to, C: makeCurve(pts), conn: true, uturn,
-    half: Math.max(KIND[A.kind].half, KIND[B.kind].half),
-    speed: 0.75 * Math.min(A.speed, B.speed), head: A.head,
-  };
+  c.node = A.to;
+  c.uturn = d0x * d1x + d0z * d1z < -0.5;
+  c.half = Math.max(KIND[A.kind].half, KIND[B.kind].half);
+  c.speed = 0.75 * Math.min(A.speed, B.speed);
+  c.head = A.head;
+  c.C = makeCurve(pts);
   c.len = c.C.len;
-  conns.set(id, c);
-  connByPair.set(pk, id);
-  return c;
+  c.d0 = { x: d0x, z: d0z };
+}
+// Which turns of one junction cross, merge or overlap each other: a car may only enter a turn while none of those is occupied.
+function computeConflicts() {
+  const byNode = new Map();
+  for (const c of conns.values()) {
+    c.conf = [];
+    let arr = byNode.get(c.node);
+    if (!arr) { arr = []; byNode.set(c.node, arr); }
+    arr.push(c);
+  }
+  const mark = c => {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const p of c.C.P) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+    c.bb = [x0 - 0.3, x1 + 0.3, z0 - 0.3, z1 + 0.3];
+  };
+  for (const arr of byNode.values()) {
+    for (const c of arr) mark(c);
+    for (let i = 0; i < arr.length; i++) {
+      for (let j = i + 1; j < arr.length; j++) {
+        const a = arr[i], b = arr[j];
+        if (a.bb[1] < b.bb[0] || b.bb[1] < a.bb[0] || a.bb[3] < b.bb[2] || b.bb[3] < a.bb[2]) continue;
+        let hit = false;
+        for (let m = 0; m < a.C.P.length && !hit; m++) {
+          const p = a.C.P[m], ta = a.C.N[m];
+          for (let q = 0; q < b.C.P.length; q++) {
+            const r = b.C.P[q], d = Math.hypot(p.x - r.x, p.z - r.z);
+            if (d < 0.2) { hit = true; break; }
+            if (d < 0.3) {
+              const tb = b.C.N[q];
+              if (ta.x * tb.x + ta.z * tb.z < 0.9) { hit = true; break; }
+            }
+          }
+        }
+        if (!hit) continue;
+        const same = a.inKey === b.inKey;
+        a.conf.push({ key: b.key, same });
+        b.conf.push({ key: a.key, same });
+      }
+    }
+  }
 }
 function rebuildConnPairs() {
   connByPair.clear();
@@ -579,8 +635,7 @@ function rebuildConnPairs() {
 // Every turn through every junction exists up front, so the junction surface can be drawn from the real turn paths.
 function buildAllConns() {
   for (const c of conns.values()) {
-    const A = lanes.get(c.inKey), B = lanes.get(c.outKey);
-    if (A && B) c.half = Math.max(KIND[A.kind].half, KIND[B.kind].half);
+    if (lanes.get(c.inKey) && lanes.get(c.outKey)) shapeConn(c);
   }
   for (const n of nodes.values()) {
     if (n.door >= 0) continue;
@@ -591,6 +646,7 @@ function buildAllConns() {
       }
     }
   }
+  computeConflicts();
 }
 
 // Dijkstra over lane states. Doors are dead ends for through traffic; busy lanes cost more.
@@ -768,6 +824,9 @@ function upgradeEdge(e) {
 }
 // Cars keep their place: segments that still exist are kept, the rest of the route is planned again.
 function afterNetworkChange() {
+  // Junction trims change when roads are added or removed, so keep each car where it is in the world.
+  const was = new Map();
+  for (const car of S.cars) if (!car.dead && segOf(car.route[car.idx])) was.set(car, carPose(car));
   rebuildLanes();
   rebuildConnPairs();
   buildAllConns();
@@ -781,6 +840,11 @@ function afterNetworkChange() {
     if (!rest) { car.dead = true; continue; }
     car.route = seg.conn ? [cur].concat(rest) : rest;
     car.idx = 0;
+    const w = was.get(car);
+    if (w) {
+      const h = nearestOnCurve(seg.C, w.x, w.z);
+      if (h.d < 1.5) car.s = h.s;
+    }
   }
   S.cars = S.cars.filter(c => !c.dead);
   S.dirty = true;
@@ -1113,6 +1177,12 @@ cabGeo.translate(-0.01, 0.17, 0);
 const carBody = new THREE.InstancedMesh(bodyGeo, new THREE.MeshLambertMaterial({ color: 0xffffff }), MAX_CARS);
 const carCab = new THREE.InstancedMesh(cabGeo, new THREE.MeshLambertMaterial({ color: 0xbcd3e3 }), MAX_CARS);
 carBody.castShadow = carCab.castShadow = true;
+// The per-car colour buffer is sized by count, and must exist before the first render or the shader ignores it.
+{
+  const white = new THREE.Color(1, 1, 1);
+  carBody.setColorAt(0, white);
+  carCab.setColorAt(0, white);
+}
 carBody.count = carCab.count = 0;
 scene.add(carBody, carCab);
 
@@ -1496,7 +1566,7 @@ function trySpawn(d, di) {
   const car = {
     route: pick.path, idx: 0, s: 0, v: 0, wait: 0, dead: false, warned: false,
     dest: pick.di, dist: total, len: pick.path.length,
-    col: CAR_COLORS[(Math.random() * CAR_COLORS.length) | 0],
+    col: S.districts[pick.di].roof,
   };
   let arr = bk.get(best);
   if (!arr) { arr = []; bk.set(best, arr); }
@@ -1508,6 +1578,17 @@ function carPose(car) {
   const seg = segOf(car.route[car.idx]);
   if (!seg) return { x: 0, y: 0, z: 0, dx: 1, dz: 0 };
   return curveAt(seg.C, car.s);
+}
+// A turn is busy while a short cool-down runs, or while a car is in a turn that crosses or merges with it.
+function connBusy(c, need) {
+  if (nodes.get(c.node).cool > 0) return true;
+  for (const f of c.conf) {
+    const arr = bkOf(f.key);
+    if (!arr.length) continue;
+    if (!f.same) return true;
+    for (const o of arr) if (o.s < need + 0.1) return true;
+  }
+  return false;
 }
 // Advance one car along its current segment. The car behind keeps the gap to the car ahead in the same lane.
 function moveCar(car, leader, dt) {
@@ -1522,7 +1603,7 @@ function moveCar(car, leader, dt) {
     const nk = car.route[car.idx + 1];
     nextSeg = segOf(nk);
     q = bkOf(nk);
-    if (nextSeg && nextSeg.conn) blocked = nodes.get(nextSeg.node).cool > 0;
+    if (nextSeg && nextSeg.conn) blocked = connBusy(nextSeg, need);
     else if (nextSeg) {
       // Cars still in a turn that leads into this lane have not reached the lane list yet; wait for them.
       const others = (pendingNext.get(nk) || 0) - (seg.conn ? 1 : 0);
@@ -1549,7 +1630,7 @@ function moveCar(car, leader, dt) {
       car.idx++;
       car.s = ns - len;
       if (nextSeg.conn) {
-        nodes.get(nextSeg.node).cool = nextSeg.head;
+        nodes.get(nextSeg.node).cool = Math.min(nextSeg.head, 0.3);
         if (car.idx + 1 < car.route.length) bumpPending(car.route[car.idx + 1]);
       }
     } else {
