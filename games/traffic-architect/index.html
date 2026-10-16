@@ -369,10 +369,10 @@ const KIND = {
   3: { name: 'Кольцо', lanes: 1, speed: 1.0, head: 0.4, unit: 9, half: 0.24, offs: [0] },   // one-way ring road
   4: { name: 'Кольцо, 2 полосы', lanes: 2, speed: 1.2, head: 0.35, unit: 15, half: 0.42, offs: [-0.15, 0.15] },
 };
-const RING_SIZES = { 1: { r: 1.0, name: 'S', cost: 45 }, 2: { r: 1.5, name: 'M', cost: 70 }, 3: { r: 2.1, name: 'L', cost: 100 } };
+const RING_SIZES = { 1: { r: 1.0, name: 'S', cost: 45, v: 1.0 }, 2: { r: 1.5, name: 'M', cost: 70, v: 1.1 }, 3: { r: 2.1, name: 'L', cost: 100, v: 1.3 } };   // v: speed on the ring
 const RING2_EXTRA = { 1: 25, 2: 40, 3: 60 };
 const ringTotal = (size, lanes) => RING_SIZES[size].cost + (lanes === 2 ? RING2_EXTRA[size] : 0);
-const LIGHT_COST = 30, LIGHT_SLOT = 6.5, LIGHT_GREEN = 4.8, LIGHT_YELLOW = 0.9;
+const LIGHT_COST = 30, LIGHT_MIN_GREEN = 3.5, LIGHT_MAX_GREEN = 13, LIGHT_YELLOW = 0.7, LIGHT_ALLRED = 0.5;
 const WATER_EXTRA = 1.5;               // water length costs (1 + WATER_EXTRA) times the land price
 const CAR_LEN = 0.5, CAR_W = 0.24, MIN_GAP = 0.25, TIME_GAP = 0.5, ACCEL = 1.2, DECEL = 2.5;
 const MAX_CARS = 400;
@@ -600,7 +600,7 @@ function rebuildLanes() {
         if ((t0 || t1) && C.len - t0 - t1 > 0.1) C = makeCurve(subCurve(C, t0, C.len - t1, 0).map(q => ({ x: q.x, y: q.y, z: q.z })));
         const lane = {
           key, from, to, kind: e.kind,
-          C, len: 0, speed: k.speed, head: k.head, ring: !!e.ring, ringId: e.ring || 0,
+          C, len: 0, speed: e.ringSpeed || k.speed, head: k.head, ring: !!e.ring, ringId: e.ring || 0,
         };
         lane.len = lane.C.len;
         lanes.set(key, lane);
@@ -861,7 +861,7 @@ function splitEdge(e, s) {
   if (e.ring) {
     // Splitting a ring road keeps it a one-way part of the same ring.
     const ring = rings.get(e.ring);
-    for (const ne of [e1, e2]) { ne.oneway = true; ne.ring = e.ring; }
+    for (const ne of [e1, e2]) { ne.oneway = true; ne.ring = e.ring; ne.ringSpeed = e.ringSpeed; }
     if (ring) {
       ring.edges = ring.edges.filter(id => id !== e.id).concat([e1.id, e2.id]);
       ring.nodes.push(X.id);
@@ -1063,6 +1063,7 @@ function makeRoundabout(n, size, free, lanes = 1) {
       pts.push({ x: n.x + Math.cos(ph) * R, z: n.z + Math.sin(ph) * R });
     }
     const re = makeEdge(A.rn, B.rn, lanes === 2 ? 4 : 3, pts);
+    re.ringSpeed = RING_SIZES[size].v * (lanes === 2 ? 1.1 : 1);
     re.oneway = true;
     re.ring = ring.id;
     ring.edges.push(re.id);
@@ -1144,7 +1145,7 @@ function setRingLanes(ring, lanes) {
     for (const car of S.cars) car.route = car.route.map(k => (k[0] === 'L' && gone(k) ? k.slice(0, -1) + '0' : k));
   }
   ring.lanes = lanes;
-  for (const id of ring.edges) edges.get(id).kind = lanes === 2 ? 4 : 3;
+  for (const id of ring.edges) { const e = edges.get(id); e.kind = lanes === 2 ? 4 : 3; e.ringSpeed = RING_SIZES[ring.size].v * (lanes === 2 ? 1.1 : 1); }
   afterNetworkChange();
 }
 function dropLight(n) { n.light = false; return n; }
@@ -1174,13 +1175,44 @@ function computeLights() {
       }
     });
     n.nPhase = phases.length;
-    if (n.t0 === undefined) n.t0 = Math.random() * LIGHT_SLOT * n.nPhase;
+    n.phaseKeys = phases.map(() => []);
+    for (const [key, k] of n.phaseOf) n.phaseKeys[k].push(key);
+    if (n.cur === undefined || n.cur >= n.nPhase) { n.cur = 0; n.mode = 'g'; n.mt = 0; }
   }
 }
+// The signal is actuated: a phase stays green while cars are queueing for it, goes early when nobody waits and
+// another phase does, and the next phase is the one with the longest queue.
 function lightState(n, phase) {
-  const cyc = n.nPhase * LIGHT_SLOT, t = (S.t + n.t0) % cyc, slot = Math.floor(t / LIGHT_SLOT), u = t - slot * LIGHT_SLOT;
-  if (slot !== phase) return 'r';
-  return u < LIGHT_GREEN ? 'g' : u < LIGHT_GREEN + LIGHT_YELLOW ? 'y' : 'r';
+  return phase === n.cur ? n.mode : 'r';
+}
+function lightWaiting(n, phase) {
+  let c = 0;
+  for (const key of n.phaseKeys[phase]) {
+    const ln = lanes.get(key);
+    if (!ln) continue;
+    for (const o of bkOf(key)) if (ln.len - o.s < 4) c++;
+  }
+  return c;
+}
+function updateLight(n, dt) {
+  n.mt += dt;
+  if (n.mode === 'g') {
+    const here = lightWaiting(n, n.cur);
+    let other = 0;
+    for (let p = 0; p < n.nPhase; p++) if (p !== n.cur) other = Math.max(other, lightWaiting(n, p));
+    const done = n.mt >= LIGHT_MAX_GREEN || (n.mt >= LIGHT_MIN_GREEN && here === 0 && other > 0) || (n.mt >= 7 && other > 0 && other >= here);
+    if (done) { n.mode = 'y'; n.mt = 0; }
+  } else if (n.mode === 'y') {
+    if (n.mt >= LIGHT_YELLOW) { n.mode = 'r'; n.mt = 0; }
+  } else if (n.mt >= LIGHT_ALLRED) {
+    // Round robin over the phases that have cars waiting, so no phase can be starved by a busier one.
+    let best = (n.cur + 1) % n.nPhase;
+    for (let k = 1; k <= n.nPhase; k++) {
+      const p = (n.cur + k) % n.nPhase;
+      if (lightWaiting(n, p) > 0) { best = p; break; }
+    }
+    n.cur = best; n.mode = 'g'; n.mt = 0;
+  }
 }
 function toggleLight(n) {
   if (!n || n.door >= 0 || n.ringId || n.edges.size < 3) return;
@@ -2245,6 +2277,20 @@ function carPose(car) {
   return curveAt(seg.C, car.s);
 }
 // A turn is busy while a short cool-down runs, or while a car is in a turn that crosses or merges with it.
+// How a junction treats traffic. An uncontrolled crossing makes everybody slow down and take turns; a signal lets
+// a platoon through at speed; a ring keeps cars moving.
+const isCrossing = n => n.door < 0 && n.edges.size >= 3;
+const isPlain = n => isCrossing(n) && !n.ringId && !(n.light && n.phaseOf);
+function connFactor(n) {
+  if (!isCrossing(n)) return 1;
+  if (n.ringId) return 1.25;
+  return n.light && n.phaseOf ? 1.15 : 0.7;
+}
+function headwayAt(n, seg) {
+  if (isPlain(n)) return 0.8;
+  if (n.light && n.phaseOf) return 0.25;
+  return Math.min(seg.head, 0.3);
+}
 function connBusy(c, need) {
   const node = nodes.get(c.node);
   if (node.cool > 0) return true;
@@ -2267,14 +2313,14 @@ function connBusy(c, need) {
           len += ln ? ln.len : 0;
         }
       }
-      if (tot >= Math.max(2, Math.floor(len / need) - 3)) return true;
+      if (tot >= Math.max(3, Math.floor(len / need) - 2)) return true;
     }
     // Cars already on the ring have priority: wait while one is close to this junction.
     for (const k of node.ins) {
       const ln = lanes.get(k);
       if (!ln || !ln.ring) continue;
       for (const o of bkOf(k)) {
-        if (o.s <= ln.len - 1.8) continue;
+        if (o.s <= ln.len - Math.min(1.8, ln.len * 0.55)) continue;
         // A car that leaves the ring at this junction never meets the one that joins it.
         const ns = segOf(o.route[o.idx + 1]);
         const out = ns && ns.conn && lanes.get(ns.outKey);
@@ -2338,9 +2384,11 @@ function moveCar(car, leader, dt) {
     else if (q.length) gap = toLine + q[q.length - 1].s - need;          // room in the next segment
     else gap = toLine + 0.6;
   }
-  let vT = clamp(gap / TIME_GAP, 0, seg.speed);
+  const vmax = seg.conn ? seg.speed * connFactor(nodes.get(seg.node)) : seg.speed;
+  let vT = clamp(gap / TIME_GAP, 0, vmax);
+  if (nextSeg && nextSeg.conn && isPlain(nodes.get(nextSeg.node))) vT = Math.min(vT, 0.3 + 0.9 * (len - car.s));   // slow down for an uncontrolled crossing
   if (mustGiveWay(car, dt)) vT = 0;
-  car.v = clamp(car.v + clamp(vT - car.v, -DECEL * dt, ACCEL * dt), 0, seg.speed);
+  car.v = clamp(car.v + clamp(vT - car.v, -DECEL * dt, ACCEL * dt), 0, vmax);
   let ns = car.s + car.v * dt;
   if (leader) ns = Math.min(ns, leader.s - need);
   ns = Math.max(ns, car.s);
@@ -2351,7 +2399,7 @@ function moveCar(car, leader, dt) {
       car.idx++;
       car.s = ns - len;
       if (nextSeg.conn) {
-        nodes.get(nextSeg.node).cool = Math.min(nextSeg.head, 0.3);
+        nodes.get(nextSeg.node).cool = headwayAt(nodes.get(nextSeg.node), nextSeg);
         if (car.idx + 1 < car.route.length) bumpPending(car.route[car.idx + 1], car.route[car.idx]);
       }
     } else {
@@ -2404,6 +2452,7 @@ function step(dt) {
   for (const n of nodes.values()) if (n.cool > 0) n.cool = Math.max(0, n.cool - dt);
   rebuildBuckets();
   buildCarGrid();
+  for (const n of nodes.values()) if (n.light && n.phaseOf) updateLight(n, dt);
 
   S.nextDistrictIn -= dt;
   if (S.nextDistrictIn <= 0) {
@@ -2658,7 +2707,7 @@ function updateNodeUi() {
     const lp = S.lpVal, cost = RING2_EXTRA[ring.size];
     setText($('ringLanes'), two ? '1 полоса' : `2 полосы $${cost}`);
     $('ringLanes').disabled = !two && (!!lp || S.money < cost);
-    msg = lp || (two ? 'Две полосы по кругу' : 'Можно добавить вторую полосу');
+    msg = lp || (two ? 'Две полосы: максимум пропускной способности' : 'Вторая полоса почти удваивает поток кольца');
   } else {
     const key = `${n.id}|${S.netVer | 0}|${S.districts.length}`;
     if (key !== ringProbKey) { ringProbKey = key; ringProbs = [1, 2, 3].map(k => ringProblem(n, RING_SIZES[k].r)); }
@@ -2671,7 +2720,7 @@ function updateNodeUi() {
       b.disabled = !!ringProbs[k - 1] || S.money < RING_SIZES[k].cost;
       if (ringProbs[k - 1]) msg = msg || `${RING_SIZES[k].name}: ${ringProbs[k - 1]}`;
     }
-    msg = msg || (n.light ? 'Светофор работает' : 'Выберите кольцо или светофор');
+    msg = msg || (n.light ? 'Светофор подстраивается под очередь' : 'Без регулировки при потоке будут пробки. Кольцо — поток без остановок, светофор — для плотного потока');
   }
   setText($('nodeMsg'), msg);
 }
