@@ -359,7 +359,7 @@ const KIND = {
 const RING_SIZES = { 1: { r: 1.0, name: 'S', cost: 45, v: 1.0 }, 2: { r: 1.5, name: 'M', cost: 70, v: 1.1 }, 3: { r: 2.1, name: 'L', cost: 100, v: 1.3 } };   // v: speed on the ring
 const RING2_EXTRA = { 1: 25, 2: 40, 3: 60 };
 const ringTotal = (size, lanes) => RING_SIZES[size].cost + (lanes === 2 ? RING2_EXTRA[size] : 0);
-const LIGHT_COST = 30, LIGHT_MIN_GREEN = 3.5, LIGHT_MAX_GREEN = 13, LIGHT_YELLOW = 0.7, LIGHT_ALLRED = 0.5;
+const LIGHT_COST = 30, LIGHT_MIN_GREEN = 5, LIGHT_MAX_GREEN = 16, LIGHT_YELLOW = 0.7, LIGHT_ALLRED = 0.5;
 const WATER_EXTRA = 1.5;               // water length costs (1 + WATER_EXTRA) times the land price
 const CAR_LEN = 0.5, CAR_W = 0.24, MIN_GAP = 0.25, TIME_GAP = 0.5, ACCEL = 1.2, DECEL = 2.5;
 const MAX_CARS = 400;
@@ -640,10 +640,24 @@ function shapeConn(c) {
   c.C = makeCurve(pts);
   c.len = c.C.len;
   c.d0 = { x: d0x, z: d0z };
+  c.turn = laneTurn(A, B);
   c.ringEntry = !!B.ring && !A.ring;
   c.ringThrough = !!B.ring && !!A.ring;
 }
 // Which turns of one junction cross, merge or overlap each other: a car may only enter a turn while none of those is occupied.
+// Right of way between two crossing turns: the main road (more lanes) first, then a left turn gives way to the
+// oncoming cars, and at an uncontrolled crossing between equal roads the car from the right goes first.
+function givesWay(a, b, plain) {
+  const A = lanes.get(a.inKey), B = lanes.get(b.inKey);
+  if (!A || !B) return false;
+  const rA = KIND[A.kind].lanes, rB = KIND[B.kind].lanes;
+  const dot = a.d0.x * b.d0.x + a.d0.z * b.d0.z;
+  if (plain && rA !== rB && dot < 0.7) return rA < rB;
+  if (dot < -0.7) return a.turn === 'L' && b.turn !== 'L';
+  if (!plain || dot > 0.7) return false;
+  const rx = -a.d0.z, rz = a.d0.x;
+  return -(b.d0.x * rx + b.d0.z * rz) > 0.5;
+}
 function computeConflicts() {
   const byNode = new Map();
   for (const c of conns.values()) {
@@ -677,8 +691,8 @@ function computeConflicts() {
         }
         if (!hit) continue;
         const same = a.inKey === b.inKey, merge = !same && a.outKey === b.outKey;
-        a.conf.push({ key: b.key, same, merge, entry: !!b.ringEntry });
-        b.conf.push({ key: a.key, same, merge, entry: !!a.ringEntry });
+        a.conf.push({ key: b.key, same, merge, entry: !!b.ringEntry, yp: givesWay(a, b, true), yl: givesWay(a, b, false) });
+        b.conf.push({ key: a.key, same, merge, entry: !!a.ringEntry, yp: givesWay(b, a, true), yl: givesWay(b, a, false) });
       }
     }
   }
@@ -691,6 +705,14 @@ function rebuildConnPairs() {
 // Lane discipline on a two-lane ring (right-hand traffic, the right lane is the outer one): cars leave the ring
 // from the outer lane only, a car in the right lane of a two-lane road joins the outer lane, and on the ring a
 // car may move from the inner lane to the outer one but never back.
+// Which way a car turns when it goes from lane A into lane B: R, S, L or U.
+function laneTurn(A, B) {
+  const P0 = A.C.P[A.C.P.length - 1], Pa = A.C.P[A.C.P.length - 2], P3 = B.C.P[0], Pb = B.C.P[1];
+  const d0l = Math.hypot(P0.x - Pa.x, P0.z - Pa.z) || 1, d1l = Math.hypot(Pb.x - P3.x, Pb.z - P3.z) || 1;
+  const d0x = (P0.x - Pa.x) / d0l, d0z = (P0.z - Pa.z) / d0l, d1x = (Pb.x - P3.x) / d1l, d1z = (Pb.z - P3.z) / d1l;
+  const ang = Math.atan2(d0x * d1z - d0z * d1x, d0x * d1x + d0z * d1z);      // positive: to the right on the screen
+  return Math.abs(ang) > 2.6 ? 'U' : ang > 0.5 ? 'R' : ang < -0.5 ? 'L' : 'S';
+}
 function turnAllowed(ik, ok) {
   const A = lanes.get(ik), B = lanes.get(ok);
   if (!A || !B) return true;
@@ -699,6 +721,21 @@ function turnAllowed(ik, ok) {
   if (A.ring && B.ring) return KIND[B.kind].lanes < 2 || lb >= la;
   if (A.ring) return KIND[A.kind].lanes < 2 || outerA;
   if (B.ring) return KIND[B.kind].lanes < 2 || KIND[A.kind].lanes < 2 || !outerA || outerB;
+  // Russian traffic rules at a crossing: a right turn from the right lane into the right lane, a left turn from the
+  // left lane into the left lane, straight on from any lane (keeping the lane when both roads have the same number).
+  const n = nodes.get(A.to);
+  if (n && n.door < 0 && n.edges.size >= 3) {
+    const t = laneTurn(A, B), nA = KIND[A.kind].lanes, nB = KIND[B.kind].lanes;
+    if (nA > 1) {
+      if (t === 'R' && la !== nA - 1) return false;
+      if (t === 'L' && la !== 0) return false;
+    }
+    if (nB > 1) {
+      if (t === 'R' && lb !== nB - 1) return false;
+      if (t === 'L' && lb !== 0) return false;
+      if (t === 'S' && nA === nB && lb !== la) return false;
+    }
+  }
   return true;
 }
 function buildAllConns() {
@@ -1146,12 +1183,15 @@ function computeLights() {
       if (used.has(i)) continue;
       used.add(i);
       const ph = [i];
+      // The arm that is closest to opposite goes in the same phase (within about 45 degrees).
+      let bj = -1, bd = 0.8;
       for (let j = 0; j < arms.length; j++) {
         if (used.has(j)) continue;
         let d = Math.abs(arms[j].ang - arms[i].ang);
         if (d > Math.PI) d = Math.PI * 2 - d;
-        if (Math.abs(d - Math.PI) < 0.45) { used.add(j); ph.push(j); break; }
+        if (Math.abs(d - Math.PI) < bd) { bd = Math.abs(d - Math.PI); bj = j; }
       }
+      if (bj >= 0) { used.add(bj); ph.push(bj); }
       phases.push(ph);
     }
     n.phaseOf = new Map();
@@ -1187,8 +1227,10 @@ function updateLight(n, dt) {
     const here = lightWaiting(n, n.cur);
     let other = 0;
     for (let p = 0; p < n.nPhase; p++) if (p !== n.cur) other = Math.max(other, lightWaiting(n, p));
-    const done = n.mt >= LIGHT_MAX_GREEN || (n.mt >= LIGHT_MIN_GREEN && here === 0 && other > 0) || (n.mt >= 7 && other > 0 && other >= here);
-    if (done) { n.mode = 'y'; n.mt = 0; }
+    // The green ends at the maximum, or once the queue has broken for a moment and someone else is waiting.
+    n.gap = here === 0 ? (n.gap || 0) + dt : 0;
+    const done = n.mt >= LIGHT_MAX_GREEN || (n.mt >= LIGHT_MIN_GREEN && n.gap > 1.2 && other > 0);
+    if (done) { n.mode = 'y'; n.mt = 0; n.gap = 0; }
   } else if (n.mode === 'y') {
     if (n.mt >= LIGHT_YELLOW) { n.mode = 'r'; n.mt = 0; }
   } else if (n.mt >= LIGHT_ALLRED) {
@@ -2324,15 +2366,15 @@ const isPlain = n => isCrossing(n) && !n.ringId && !(n.light && n.phaseOf);
 function connFactor(n) {
   if (!isCrossing(n)) return 1;
   if (n.ringId) return 1.25;
-  return n.light && n.phaseOf ? 1.15 : 0.7;
+  return n.light && n.phaseOf ? 1.4 : 1.0;
 }
 function headwayAt(n, seg) {
-  if (isPlain(n)) return 0.8;
-  if (n.light && n.phaseOf) return 0.25;
+  if (isPlain(n)) return 0.25;
+  if (n.light && n.phaseOf) return 0.15;
   if (n.ringId) return 0.1;                 // the ring's own rules keep cars apart
   return Math.min(seg.head, 0.3);
 }
-function connBusy(c, need) {
+function connBusy(c, need, car) {
   const node = nodes.get(c.node);
   if (node.cool > 0) return 'cool';
   if (node.light && node.phaseOf) {
@@ -2376,6 +2418,28 @@ function connBusy(c, need) {
     if (!f.same) return 'conf';
     for (const o of arr) if (o.s < need + 0.1) return 'same';
   }
+  if (car && isCrossing(node) && !node.ringId) {
+    // Right of way: wait for a car that is about to take a turn crossing mine and has priority over me.
+    const lightOn = !!(node.light && node.phaseOf);
+    let passed = false;
+    for (const f of c.conf) {
+      if (car.go > S.t) break;                                  // already decided to go: do not change its mind
+      if (!(lightOn ? f.yl : f.yp)) continue;
+      const oc = conns.get(Number(f.key.slice(1))), ln = oc && lanes.get(oc.inKey);
+      if (!ln) continue;
+      if (lightOn) { const ph = node.phaseOf.get(oc.inKey); if (ph === undefined || lightState(node, ph) !== 'g') continue; }
+      const o = bkOf(oc.inKey)[0];            // only the first car of a lane counts: the ones behind cannot go before it
+      if (o) {
+        if (o.s < ln.len - 1.8 || o.route[o.idx + 1] !== f.key) continue;
+        // A car with priority that is itself standing still gives way to the one that has been waiting longer
+        // (first come, first served), which breaks a circle of cars each waiting for the one on its right.
+        if (o.v < 0.1 && car.wait > o.wait) { passed = true; continue; }
+        if (car.wait > 3 + (car.id % 4)) { passed = true; continue; }       // and after a few seconds the car goes anyway
+        return 'yield';
+      }
+    }
+    if (passed) car.go = S.t + 1.5;                  // the decision to go holds for a moment, or the car would hesitate at the line
+  }
   return false;
 }
 // Advance one car along its current segment. The car behind keeps the gap to the car ahead in the same lane.
@@ -2391,7 +2455,7 @@ function moveCar(car, leader, dt) {
     const nk = car.route[car.idx + 1];
     nextSeg = segOf(nk);
     q = bkOf(nk);
-    if (nextSeg && nextSeg.conn) blocked = connBusy(nextSeg, need);
+    if (nextSeg && nextSeg.conn) blocked = connBusy(nextSeg, need, car);
     else if (nextSeg) {
       // Cars still in a turn that leads into this lane have not reached the lane list yet; wait for them.
       // Cars of other turns that lead into this lane; cars queued in my own turn are handled by the gap logic.
@@ -2426,7 +2490,7 @@ function moveCar(car, leader, dt) {
   }
   const vmax = seg.conn ? seg.speed * connFactor(nodes.get(seg.node)) : seg.speed;
   let vT = clamp(gap / TIME_GAP, 0, vmax);
-  if (nextSeg && nextSeg.conn && isPlain(nodes.get(nextSeg.node))) vT = Math.min(vT, 0.3 + 0.9 * (len - car.s));   // slow down for an uncontrolled crossing
+  if (nextSeg && nextSeg.conn && isPlain(nodes.get(nextSeg.node))) vT = Math.min(vT, 0.6 + 1.0 * (len - car.s));   // slow down for an uncontrolled crossing
   if (mustGiveWay(car, dt)) vT = 0;
   car.v = clamp(car.v + clamp(vT - car.v, -DECEL * dt, ACCEL * dt), 0, vmax);
   let ns = car.s + car.v * dt;
@@ -3040,7 +3104,7 @@ window.trafficArchitect = {
   },
   rebuildWorld,
   roadVerts: () => roadMesh.geometry.attributes.position.count,
-  conns: () => conns.size,
+  connCount: () => conns.size,
 };
 })();
 </script>
