@@ -93,17 +93,17 @@ body {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
 }
 .meter {
-  display: flex; align-items: center; gap: 8px; min-width: 170px; padding: 6px 10px; border-radius: 10px;
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; min-width: 190px; padding: 5px 10px 7px; border-radius: 10px;
   background: var(--panel); border: 1px solid var(--line); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
 }
-.track { flex: 1; height: 8px; border-radius: 4px; background: rgba(127, 127, 127, 0.22); overflow: hidden; }
+.track { grid-column: 1 / -1; grid-row: 2; height: 7px; border-radius: 4px; background: rgba(127, 127, 127, 0.22); overflow: hidden; }
 .track i {
   display: block; height: 100%; width: 100%; background: var(--ok);
   transform-origin: left center; transform: scaleX(0); transition: background 0.3s;
 }
 .track i.warn { background: var(--warn); }
 .track i.bad { background: var(--bad); }
-.meter b { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+.meter b { min-width: 3em; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
 .stats-row { display: grid; gap: 6px; justify-items: end; }
 .stat {
   display: flex; align-items: baseline; gap: 6px; padding: 5px 10px; border-radius: 10px;
@@ -226,9 +226,14 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   <div class="block">
     <div id="money" class="money">$600</div>
     <div class="meter">
-      <span class="k">Пробки</span>
+      <span class="k">Пропускная способность</span>
       <div class="track"><i id="meterFill"></i></div>
-      <b id="meterVal">0%</b>
+      <b id="meterVal">100%</b>
+    </div>
+    <div class="meter">
+      <span class="k">Скорость</span>
+      <div class="track"><i id="speedFill"></i></div>
+      <b id="speedVal">100%</b>
     </div>
   </div>
   <div class="block right">
@@ -326,7 +331,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         <li>Проведите линию — игра сгладит её в кривую. Проверьте цену и нажмите «Построить».</li>
         <li>Дорога соединяется с районом у его выезда. Пересечение с другой дорогой становится перекрёстком.</li>
         <li>В режиме «Правка» перекрёсток можно превратить в кольцо или поставить светофор.</li>
-        <li>Пробки заполняют шкалу. Пока она полная, город не растёт, но игру можно продолжить и разгрузить дороги.</li>
+        <li>Пропускная способность падает, когда дороги не справляются с потоком. Пока она на нуле, город не растёт, но игру можно продолжить и разгрузить дороги. Шкала скорости — средняя скорость машин от свободной.</li>
       </ul>
     </details>
     <button id="startBtn" class="primary" type="button">Начать</button>
@@ -517,6 +522,15 @@ function dashes(g, C, off, hw, dash, gap, hex, dy, s0 = 0, s1 = C.len) {
   }
 }
 
+// Dashes that fit the piece exactly with half a gap at each end, so two pieces joined end to end keep one even rhythm.
+function dashesFit(g, C, off, hw, dash, gap, hex, dy, s0, s1) {
+  const L = s1 - s0, n = Math.max(1, Math.round((L + gap) / (dash + gap))), per = L / n, d = per * dash / (dash + gap);
+  const col = rgb(hex), colOf = () => col;
+  for (let i = 0; i < n; i++) {
+    const a = s0 + i * per + (per - d) / 2;
+    if (d > 0.1) ribbon(g, C, off, hw, colOf, dy, a, a + d);
+  }
+}
 // ---------- Road graph ----------
 // Nodes are junctions, dead ends and district doors. Edges are two-way road pieces with a curve.
 // Lanes are the one-way parts of edges, connectors are the turns through a node.
@@ -735,6 +749,11 @@ function computeConflicts() {
         b.conf.push({ key: a.key, same, merge, entry: !!a.ringEntry, rel, tb: a.turn, right: -(a.d0.x * -b.d0.z + a.d0.z * b.d0.x) > 0.5 });
       }
     }
+  }  // A joint between two roads (nothing crosses there): only lanes merging into one lane can get in each other's way.
+  // The two directions run side by side, and waiting for each other there deadlocked.
+  for (const c of conns.values()) {
+    const nd = nodes.get(c.node);
+    if (nd && nd.edges.size < 3 && !nd.ringId) c.conf = c.conf.filter(f => f.same || f.merge);
   }
 }
 function rebuildConnPairs() {
@@ -1999,7 +2018,7 @@ const cv = $('world');
 const toastEl = $('toast'), hintEl = $('hint'), labelsEl = $('labels');
 const startEl = $('startOverlay'), planBar = $('planBar'), editBar = $('editBar');
 const hud = {};
-for (const id of ['money', 'score', 'districts', 'meterFill', 'meterVal']) hud[id] = $(id);
+for (const id of ['money', 'score', 'districts', 'meterFill', 'meterVal', 'speedFill', 'speedVal']) hud[id] = $(id);
 
 function setText(el, v) {
   const s = String(v);
@@ -2009,10 +2028,14 @@ function updateHud() {
   setText(hud.money, '$' + Math.floor(S.money).toLocaleString('en-US'));
   setText(hud.score, S.delivered);
   setText(hud.districts, S.districts.length);
-  const lvl = S.meter < 40 ? 'ok' : S.meter < 75 ? 'warn' : 'bad';
+  const cap = 100 - S.meter, lvl = cap > 60 ? 'ok' : cap > 25 ? 'warn' : 'bad';
   if (hud.meterFill.className !== lvl) hud.meterFill.className = lvl;
-  hud.meterFill.style.transform = `scaleX(${(S.meter / 100).toFixed(3)})`;
-  setText(hud.meterVal, Math.round(S.meter) + '%');
+  hud.meterFill.style.transform = `scaleX(${(cap / 100).toFixed(3)})`;
+  setText(hud.meterVal, Math.round(cap) + '%');
+  const sp = S.avgV === undefined ? 100 : S.avgV, sl = sp > 60 ? 'ok' : sp > 35 ? 'warn' : 'bad';
+  if (hud.speedFill.className !== sl) hud.speedFill.className = sl;
+  hud.speedFill.style.transform = `scaleX(${(sp / 100).toFixed(3)})`;
+  setText(hud.speedVal, Math.round(sp) + '%');
 }
 let toastTimer = 0;
 function toast(msg, ms = 2600) {
@@ -2209,6 +2232,7 @@ function drawEdge(g, e, ta, tb, pa, pb) {
   ribbon(g, C, 0, k.half + 0.07, () => rgb(COL.curb), -0.015, s0, s1);
   ribbon(g, C, 0, k.half, surf, 0, s0, s1);
   const m0 = s0 + (pa ? 0 : 0.12), m1 = s1 - (pb ? 0 : 0.12);
+  const dsh = (off, hw, d, gp) => ((pa || pb) ? dashesFit : dashes)(g, C, off, hw, d, gp, COL.white, 0.02, m0, m1);
   if (m1 - m0 > 0.1) {
     if (e.ring) {
       for (const sg of [-1, 1]) ribbon(g, C, sg * (k.half - 0.03), 0.014, () => rgb(COL.white), 0.02, m0, m1);
@@ -2216,18 +2240,18 @@ function drawEdge(g, e, ta, tb, pa, pb) {
     } else if (e.oneway) {
       // One-way road: edge lines instead of a centre line, and arrows showing the direction.
       for (const sg of [-1, 1]) ribbon(g, C, sg * (k.half - 0.04), 0.014, () => rgb(COL.white), 0.02, m0, m1);
-      if (e.kind === 2) dashes(g, C, 0, 0.03, 0.32, 0.25, COL.white, 0.02, m0, m1);
+      if (e.kind === 2) dsh(0, 0.03, 0.32, 0.25);
       const fwd = (e.owDir || 0) === 0;
       for (let sa = m0 + 0.9; sa < m1 - 0.5; sa += 2.4) {
         const q = curveAt(C, sa), fx = fwd ? q.dx : -q.dx, fz = fwd ? q.dz : -q.dz;
         for (const off of ONEWAY_OFFS[e.kind]) arrowGlyph(g, { x: q.x + q.nx * off, y: q.y, z: q.z + q.nz * off }, fx, fz, 'S', 0.9);
       }
     } else if (e.kind === 1) {
-      dashes(g, C, 0, 0.035, 0.32, 0.25, COL.white, 0.02, m0, m1);
+      dsh(0, 0.035, 0.32, 0.25);
     } else {
       for (const off of [0.03, -0.03]) ribbon(g, C, off, 0.022, () => rgb(COL.yellow), 0.02, m0, m1);
-      dashes(g, C, 0.28, 0.03, 0.32, 0.25, COL.white, 0.02, m0, m1);
-      dashes(g, C, -0.28, 0.03, 0.32, 0.25, COL.white, 0.02, m0, m1);
+      dsh(0.28, 0.03, 0.32, 0.25);
+      dsh(-0.28, 0.03, 0.32, 0.25);
     }
   }
   // Railings and piers stay between the junction polygons, so bridges meeting at a junction never cut through each other.
@@ -2708,6 +2732,7 @@ function moveCar(car, leader, dt) {
   if (nextSeg && nextSeg.conn && isPlain(nodes.get(nextSeg.node))) vT = Math.min(vT, 0.6 + 1.0 * (len - car.s));   // slow down for an uncontrolled crossing
   if (mustGiveWay(car, dt)) vT = 0;
   car.v = clamp(car.v + clamp(vT - car.v, -DECEL * dt, ACCEL * dt), 0, vmax);
+  car.vr = vmax > 0 ? car.v / vmax : 1;
   let ns = car.s + car.v * dt;
   if (leader) ns = Math.min(ns, leader.s - need);
   ns = Math.max(ns, car.s);
@@ -2828,6 +2853,13 @@ function step(dt) {
   }
   S.meter = clamp(S.meter + (pressure * 2.5 - 1.5) * dt, 0, 100);
   S.jamCool = Math.max(0, S.jamCool - dt);
+  // Average speed of all cars as a share of the speed they could drive; smoothed so the bar does not flicker.
+  if (S.cars.length) {
+    let sum = 0;
+    for (const car of S.cars) sum += car.vr === undefined ? 1 : car.vr;
+    const now = 100 * sum / S.cars.length, k = Math.min(1, dt * 0.6);
+    S.avgV = S.avgV === undefined ? now : S.avgV + (now - S.avgV) * k;
+  } else if (S.avgV !== undefined) S.avgV += (100 - S.avgV) * Math.min(1, dt * 0.3);
 
   for (const p of S.popups) p.age += dt;
   S.popups = S.popups.filter(p => {
@@ -2838,7 +2870,7 @@ function step(dt) {
   if (S.meter >= 100 && S.fullCool <= 0) {
     // The city is jammed, but the game goes on: no new districts until the jam eases, and the player can fix it.
     S.fullCool = 25;
-    toast('Город стоит в пробке — игра продолжается. Постройте кольцо, светофор или объезд', 4200);
+    toast('Пропускная способность исчерпана — игра продолжается. Постройте кольцо, светофор или объезд', 4200);
   }
   S.fullCool = Math.max(0, (S.fullCool || 0) - dt);
   // The best score is saved as it grows, since a game no longer ends.
@@ -2920,7 +2952,7 @@ function newGame() {
   buildGround();
   buildWater();
   placeTrees();
-  S.t = 0; S.money = START_MONEY; S.delivered = 0; S.meter = 0;
+  S.t = 0; S.money = START_MONEY; S.delivered = 0; S.meter = 0; S.avgV = undefined;
   S.over = false; S.running = true;
   S.nextDistrictIn = 12; S.jamCool = 0; S.linkHint = undefined;
   addDistrict(0);
