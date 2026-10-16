@@ -352,7 +352,7 @@ const waterDist = (x, z) => Math.abs(z - riverY(x)) - RIVER_HALF;   // negative 
 const isWater = (x, z) => waterDist(x, z) < 0;
 const KIND = {
   1: { name: 'Дорога', lanes: 1, speed: 1.3, head: 0.5, unit: 9, half: 0.3, offs: [0.16] },
-  2: { name: 'Проспект', lanes: 2, speed: 1.8, head: 0.3, unit: 22, half: 0.52, offs: [0.16, 0.4] },
+  2: { name: 'Проспект', lanes: 2, speed: 1.8, head: 0.3, unit: 22, half: 0.56, offs: [0.15, 0.43] },
   3: { name: 'Кольцо', lanes: 1, speed: 1.0, head: 0.4, unit: 9, half: 0.24, offs: [0] },   // one-way ring road
   4: { name: 'Кольцо, 2 полосы', lanes: 2, speed: 1.2, head: 0.35, unit: 15, half: 0.42, offs: [-0.15, 0.15] },
 };
@@ -1328,6 +1328,23 @@ function afterNetworkChange() {
     }
   }
   S.cars = S.cars.filter(c => !c.dead);
+  // Cars that were squeezed together when their lane changed are pushed apart again where there is room.
+  const groups = new Map();
+  for (const car of S.cars) {
+    const k = car.route[car.idx];
+    let arr = groups.get(k);
+    if (!arr) { arr = []; groups.set(k, arr); }
+    arr.push(car);
+  }
+  const need = CAR_LEN + MIN_GAP;
+  for (const arr of groups.values()) {
+    if (arr.length < 2) continue;
+    arr.sort((p, q) => q.s - p.s);
+    for (let i = 1; i < arr.length; i++) {
+      const lim = arr[i - 1].s - need;
+      if (arr[i].s > lim) arr[i].s = Math.max(0, lim);
+    }
+  }
   S.dirty = true;
   S.selDirty = true;
   S.netVer = (S.netVer | 0) + 1;
@@ -2005,7 +2022,9 @@ function drawEdge(g, e, ta, tb) {
   }
   // Railings and piers stay between the junction polygons, so bridges meeting at a junction never cut through each other.
   for (const [r0, r1] of bridgeRanges(C)) {
-    const w0 = Math.max(r0, s0 + 0.05), w1 = Math.min(r1, s1 - 0.05);
+    // No railings where a road meets a ring: they would cut across the mouth of the road.
+    const ringA = nodes.get(e.a) && nodes.get(e.a).ringId ? 0.9 : 0.05, ringB = nodes.get(e.b) && nodes.get(e.b).ringId ? 0.9 : 0.05;
+    const w0 = Math.max(r0, s0 + ringA), w1 = Math.min(r1, s1 - ringB);
     if (w1 - w0 < 0.3) continue;
     for (const sg of [-1, 1]) {
       wall(g, C, sg * (k.half + 0.04), w0, w1, -0.14, 0.0, COL.fascia);   // deck edge: visible thickness
@@ -2029,7 +2048,7 @@ function junctionArms(n) {
   if (n.ringId) {
     // A ring is drawn as one continuous band: no junction polygon, arms simply end inside the band.
     arms.need = 0;
-    for (const a of arms) { a.t = Math.min(a.e.ring ? 0.3 : 0.5, a.e.len * 0.4); a.td = a.e.ring ? 0 : 0.14; }
+    for (const a of arms) { a.t = Math.min(a.e.ring ? 0.3 : 0.5, a.e.len * 0.4); a.td = a.e.ring ? 0 : -0.05; }
     return arms;
   }
   let maxHw = 0;
@@ -2181,6 +2200,40 @@ function poseAhead(car, d) {
     i++;
   }
 }
+// Cars on a road with several lanes move to the lane with the shorter queue when it is clear beside them, and
+// plan their route again from there.
+function tryLaneChange(car) {
+  if (car.lc > S.t) return;
+  const key = car.route[car.idx];
+  if (key[0] !== 'L') return;
+  const ln = lanes.get(key);
+  if (!ln || ln.ring) return;
+  const nl = KIND[ln.kind].lanes;
+  if (nl < 2 || car.s < 0.8 || car.s > ln.len - 4.5) return;
+  const [e, d, li] = key.slice(1).split('.'), li0 = +li;
+  let ahead = 0;
+  for (const o of bkOf(key)) if (o.s > car.s) ahead++;
+  let best = null, bestAhead = ahead - 1;                 // worth it only if at least two cars fewer are in front
+  for (const lj of [li0 - 1, li0 + 1]) {
+    if (lj < 0 || lj >= nl) continue;
+    const k2 = `L${e}.${d}.${lj}`;
+    if (!lanes.get(k2)) continue;
+    let a2 = 0, clear = true;
+    for (const o of bkOf(k2)) {
+      if (o.s > car.s) a2++;
+      if (Math.abs(o.s - car.s) < CAR_LEN + MIN_GAP + 0.15) clear = false;
+    }
+    if (clear && a2 < bestAhead) { best = k2; bestAhead = a2; }
+  }
+  car.lc = S.t + 2.5;                                     // do not look again straight away
+  if (!best) return;
+  const rest = pathFromLane(best, car.dest);
+  if (!rest || rest[0] !== best) return;
+  const offs = KIND[ln.kind].offs;
+  car.lat = (offs[li0] - offs[+best.split('.')[2]]) + (car.lat || 0);
+  car.route = rest;
+  car.idx = 0;
+}
 function mustGiveWay(car, dt) {
   if (car.px === undefined) return false;
   const look = car.v * car.v / (2 * DECEL) + 0.14 + car.v * 0.1;
@@ -2276,14 +2329,15 @@ function connFactor(n) {
 function headwayAt(n, seg) {
   if (isPlain(n)) return 0.8;
   if (n.light && n.phaseOf) return 0.25;
+  if (n.ringId) return 0.1;                 // the ring's own rules keep cars apart
   return Math.min(seg.head, 0.3);
 }
 function connBusy(c, need) {
   const node = nodes.get(c.node);
-  if (node.cool > 0) return true;
+  if (node.cool > 0) return 'cool';
   if (node.light && node.phaseOf) {
     const ph = node.phaseOf.get(c.inKey);
-    if (ph !== undefined && lightState(node, ph) !== 'g') return true;
+    if (ph !== undefined && lightState(node, ph) !== 'g') return 'light';
   }
   if (c.ringEntry) {
     // The ring as a whole keeps a few free places, so cars can always move on round it. Counted by length,
@@ -2300,19 +2354,18 @@ function connBusy(c, need) {
           len += ln ? ln.len : 0;
         }
       }
-      if (tot >= Math.max(3, Math.floor(len / need) - 2)) return true;
+      if (tot >= Math.max(3, Math.floor(len / need) - 2)) return 'cap';
     }
-    // Cars already on the ring have priority: wait while one is close to this junction.
+    // Cars already on the ring have priority, but only the ones that would end up in the same lane as me: a car that
+    // leaves the ring here, or goes on in the other lane, is no reason to wait.
     for (const k of node.ins) {
       const ln = lanes.get(k);
       if (!ln || !ln.ring) continue;
+      const zone = Math.min(1.2, ln.len * 0.45);
       for (const o of bkOf(k)) {
-        if (o.s <= ln.len - Math.min(1.8, ln.len * 0.55)) continue;
-        // A car that leaves the ring at this junction never meets the one that joins it.
+        if (o.s <= ln.len - zone) continue;
         const ns = segOf(o.route[o.idx + 1]);
-        const out = ns && ns.conn && lanes.get(ns.outKey);
-        if (out && !out.ring) continue;
-        return true;
+        if (ns && ns.conn && ns.outKey === c.outKey) return 'prio';
       }
     }
   }
@@ -2320,8 +2373,8 @@ function connBusy(c, need) {
     if (c.ringThrough && f.entry) continue;     // cars joining the ring give way to the ones on it
     const arr = bkOf(f.key);
     if (!arr.length) continue;
-    if (!f.same) return true;
-    for (const o of arr) if (o.s < need + 0.1) return true;
+    if (!f.same) return 'conf';
+    for (const o of arr) if (o.s < need + 0.1) return 'same';
   }
   return false;
 }
@@ -2440,6 +2493,11 @@ function step(dt) {
   rebuildBuckets();
   buildCarGrid();
   for (const n of nodes.values()) if (n.light && n.phaseOf) updateLight(n, dt);
+  for (let t = 0; t < 3 && S.cars.length; t++) {
+    S.lcPtr = ((S.lcPtr || 0) + 1) % S.cars.length;
+    const c = S.cars[S.lcPtr];
+    if (c && !c.dead && c.v < 0.6) tryLaneChange(c);
+  }
 
   S.nextDistrictIn -= dt;
   if (S.nextDistrictIn <= 0) {
@@ -2614,6 +2672,12 @@ function syncCars(dt = 0.016) {
       let d = want - car.hd;
       d -= Math.PI * 2 * Math.round(d / (Math.PI * 2));
       car.hd += d * k;
+    }
+    if (car.lat) {
+      // after a lane change the body glides sideways instead of jumping
+      car.lat *= Math.exp(-dt * 4);
+      if (Math.abs(car.lat) < 0.004) car.lat = 0;
+      p.x += p.nx * car.lat; p.z += p.nz * car.lat;
     }
     dummy.position.set(p.x, p.y, p.z);
     dummy.rotation.set(0, car.hd, 0);
