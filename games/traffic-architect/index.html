@@ -1878,8 +1878,18 @@ function applyPlan() {
 
 // ---------- Districts ----------
 const matCache = new Map();
+// In the map views the scenery loses its colour so that the road colours stand out: one shared uniform, 0 = normal, 1 = greyed.
+const grayU = { value: 0 };
+function grayify(m) {
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uGray = grayU;
+    sh.fragmentShader = 'uniform float uGray;\n' + sh.fragmentShader.replace('#include <dithering_fragment>',
+      '#include <dithering_fragment>\n  float lum = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));\n  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(lum * 0.88 + 0.04), uGray * 0.6);');
+  };
+  return m;
+}
 function mat(hex) {
-  if (!matCache.has(hex)) matCache.set(hex, new THREE.MeshLambertMaterial({ color: hex }));
+  if (!matCache.has(hex)) matCache.set(hex, grayify(new THREE.MeshLambertMaterial({ color: hex })));
   return matCache.get(hex);
 }
 const DIRS4 = [[1, 0], [0, 1], [-1, 0], [0, -1]];
@@ -1971,7 +1981,7 @@ sun.shadow.normalBias = 0.04;          // removes shadow acne on flat road surfa
 scene.add(sun, sun.target);
 scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x4f5f36, 0.6));
 
-const vcMat = () => new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+const vcMat = () => grayify(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
 const groundMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
 groundMesh.receiveShadow = true;
 const waterMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
@@ -3502,6 +3512,18 @@ function frame(now) {
     const pulse = 1 + 0.16 * Math.sin(performance.now() / 180);
     contMesh.position.set(cp.x, hAt(cp.x, cp.z) + 0.13, cp.z);
     contMesh.scale.set(pulse, 1, pulse);
+  }
+  {
+    // Fade the scenery to grey and the cars to glass while a map view is on.
+    const target = S.view ? 1 : 0, g0 = grayU.value;
+    grayU.value += clamp(target - g0, -dt * 4, dt * 4);
+    if (grayU.value !== g0) {
+      const op = 1 - 0.68 * grayU.value, glass = grayU.value > 0.01;
+      for (const m of [carBody, carCab]) {
+        if (m.material.transparent !== glass) { m.material.transparent = glass; m.material.depthWrite = !glass; m.material.needsUpdate = true; }
+        m.material.opacity = op;
+      }
+    }
   }
   if (S.view) {
     const hk = `${S.view}|${Math.floor(S.t * 2)}|${S.netVer | 0}`;
