@@ -302,6 +302,7 @@ if (!window.THREE) {
 const FIELD = 30;                      // field size in world units (one unit ≈ a lane width ×10)
 const JAM_T = 6;                       // seconds stuck before a car counts as jammed
 const ROAD_H = 0.04, BRIDGE_H = 0.3, WATER_Y = 0.01;
+const RAMP = 1.4;                       // length of the bridge ramp on each bank
 const RIVER_HALF = 1.0, RIVER_AMP = 3.4, RIVER_FREQ = 0.2, RIVER_BASE = 15, RIVER_PHASE = 0.8;
 const riverY = x => RIVER_BASE + RIVER_AMP * Math.sin(x * RIVER_FREQ + RIVER_PHASE);
 const waterDist = (x, z) => Math.abs(z - riverY(x)) - RIVER_HALF;   // negative inside the water
@@ -328,6 +329,7 @@ const GRASS = 0x7b9f56;
 const COL = {
   asphalt: 0x4a5058, bridge: 0x5b626c, curb: 0xb9bfc6, white: 0xf4f4ef, yellow: 0xf2c94c,
   pillar: 0x9aa3ad, water: 0x2f77a6, bank: 0xb3a072, pave: 0x8d949c, dirt: 0x6e5a43,
+  deck: 0x9ba2aa, fascia: 0x6f767f, rail: 0xe9edf0, pier: 0xb3bac2,
   trunk: 0x7a5636, outer: 0x58803f,
 };
 const HINTS = {
@@ -340,7 +342,7 @@ const HINTS = {
 // ---------- Helpers ----------
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const ss = t => t * t * (3 - 2 * t);
-const hAt = (x, z) => ROAD_H + (BRIDGE_H - ROAD_H) * (1 - ss(clamp(waterDist(x, z) / 0.8, 0, 1)));
+const hAt = (x, z) => ROAD_H + (BRIDGE_H - ROAD_H) * (1 - ss(clamp(waterDist(x, z) / RAMP, 0, 1)));
 const rgb = h => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
 const dist2 = (a, b) => Math.max(20, Math.hypot(a.x - b.x, a.y - b.y));
 const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
@@ -457,6 +459,7 @@ const lanes = new Map();        // key 'L<edge>.<dir>.<li>' -> lane {key, from, 
 const conns = new Map();        // id -> connector {id, key 'C<id>', inKey, outKey, node, C, len, speed, head, conn:true}
 const connByPair = new Map();   // inKey + '>' + outKey -> connector id
 const bk = new Map();           // segment key -> cars on it, nearest to the segment end first
+const pendingNext = new Map();  // lane key -> cars on a connector that will enter it next
 const laneCount = new Map();    // segment key -> number of cars on it
 const EMPTY = [];
 
@@ -542,8 +545,10 @@ function connFor(inKey, outKey) {
     });
   }
   const id = ++seq;
+  const uturn = d0x * d1x + d0z * d1z < -0.5;
   const c = {
-    id, key: 'C' + id, inKey, outKey, node: A.to, C: makeCurve(pts), conn: true,
+    id, key: 'C' + id, inKey, outKey, node: A.to, C: makeCurve(pts), conn: true, uturn,
+    half: Math.max(KIND[A.kind].half, KIND[B.kind].half),
     speed: 0.75 * Math.min(A.speed, B.speed), head: A.head,
   };
   c.len = c.C.len;
@@ -554,6 +559,22 @@ function connFor(inKey, outKey) {
 function rebuildConnPairs() {
   connByPair.clear();
   for (const c of conns.values()) connByPair.set(c.inKey + '>' + c.outKey, c.id);
+}
+// Every turn through every junction exists up front, so the junction surface can be drawn from the real turn paths.
+function buildAllConns() {
+  for (const c of conns.values()) {
+    const A = lanes.get(c.inKey), B = lanes.get(c.outKey);
+    if (A && B) c.half = Math.max(KIND[A.kind].half, KIND[B.kind].half);
+  }
+  for (const n of nodes.values()) {
+    if (n.door >= 0) continue;
+    for (const ik of n.ins) {
+      for (const ok of n.outs) {
+        if (ok === reverseKey(ik) && n.edges.size > 1) continue;
+        connFor(ik, ok);
+      }
+    }
+  }
 }
 
 // Dijkstra over lane states. Doors are dead ends for through traffic; busy lanes cost more.
@@ -733,6 +754,7 @@ function upgradeEdge(e) {
 function afterNetworkChange() {
   rebuildLanes();
   rebuildConnPairs();
+  buildAllConns();
   for (const car of S.cars) {
     if (car.dead) continue;
     const cur = car.route[car.idx];
@@ -1046,7 +1068,8 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xbfdcea);
 scene.fog = new THREE.Fog(0xbfdcea, 90, 240);
-const camera = new THREE.PerspectiveCamera(FOV, 1, 0.5, 500);
+// Near plane 3 keeps depth precision good on phone GPUs, so coplanar road layers do not flicker.
+const camera = new THREE.PerspectiveCamera(FOV, 1, 3, 320);
 
 const sun = new THREE.DirectionalLight(0xfff3dc, 0.75);
 sun.position.set(FIELD / 2 + 8, 22, FIELD / 2 + 12);
@@ -1055,7 +1078,8 @@ sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -22, right: 22, top: 22, bottom: -22, near: 1, far: 80 });
 sun.shadow.camera.updateProjectionMatrix();
-sun.shadow.bias = -0.0008;
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.04;          // removes shadow acne on flat road surfaces at low sun angles
 scene.add(sun, sun.target);
 scene.add(new THREE.HemisphereLight(0xeaf6ff, 0x4f5f36, 0.6));
 
@@ -1064,7 +1088,9 @@ const groundMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
 groundMesh.receiveShadow = true;
 const waterMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
 waterMesh.receiveShadow = true;
-const roadMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
+// Road layers are coplanar on purpose (surface, markings, turns): polygon offset pulls the top layer forward.
+const roadMat = () => new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+const roadMesh = new THREE.Mesh(new THREE.BufferGeometry(), roadMat());
 roadMesh.receiveShadow = true;
 const treeMesh = new THREE.Mesh(new THREE.BufferGeometry(), vcMat());
 treeMesh.castShadow = true;
@@ -1244,38 +1270,85 @@ function buildTrees() {
   }
   return g.geometry();
 }
-function drawEdge(g, e) {
-  const C = e.C, k = KIND[e.kind];
-  const asph = rgb(COL.asphalt), brg = rgb(COL.bridge);
-  const surf = p => (isWater(p.x, p.z) ? brg : asph);
-  ribbon(g, C, 0, k.half + 0.07, () => rgb(COL.curb), -0.006);
-  ribbon(g, C, 0, k.half, surf, 0);
-  if (e.kind === 1) {
-    dashes(g, C, 0, 0.035, 0.32, 0.25, COL.white, 0.012);
-  } else {
-    for (const off of [0.03, -0.03]) ribbon(g, C, off, 0.022, () => rgb(COL.yellow), 0.012);
-    dashes(g, C, 0.28, 0.03, 0.32, 0.25, COL.white, 0.012);
-    dashes(g, C, -0.28, 0.03, 0.32, 0.25, COL.white, 0.012);
+// Sections of an edge that cross the water band (with a little margin for the ramps).
+function bridgeRanges(C) {
+  const out = [];
+  let open = null;
+  for (let s = 0; s <= C.len + 1e-6; s += 0.1) {
+    const q = curveAt(C, Math.min(s, C.len));
+    const near = waterDist(q.x, q.z) < 0.5;
+    if (near && open === null) open = s;
+    if (!near && open !== null) { if (s - open > 0.3) out.push([open, s]); open = null; }
   }
-  if (e.frac > 0) {
-    for (let s = 0.8; s < C.len; s += 1.8) {
-      const q = curveAt(C, s);
-      if (!isWater(q.x, q.z)) continue;
-      g.box(q.x - 0.07, -0.35, q.z - 0.07, q.x + 0.07, q.y - 0.01, q.z + 0.07, COL.pillar);
-    }
+  if (open !== null && C.len - open > 0.3) out.push([open, C.len]);
+  return out;
+}
+// Vertical wall along a curve, offset sideways, from h0 to h1 above the curve.
+function wall(g, C, off, s0, s1, h0, h1, hex) {
+  const q = subCurve(C, s0, s1, off), col = rgb(hex);
+  for (let i = 0; i < q.length - 1; i++) {
+    const a = q[i], b = q[i + 1];
+    g.quadV({ x: a.x, y: a.y + h0, z: a.z }, { x: b.x, y: b.y + h0, z: b.z },
+      { x: b.x, y: b.y + h1, z: b.z }, { x: a.x, y: a.y + h1, z: a.z }, col, col, col, col);
   }
 }
+// Concrete piers from the river bed up to the deck, with a cap under the deck.
+function piers(g, C, s0, s1) {
+  for (let s = s0 + 0.5; s < s1 - 0.2; s += 2.2) {
+    const q = curveAt(C, s);
+    if (!isWater(q.x, q.z)) continue;
+    g.box(q.x - 0.11, -0.7, q.z - 0.11, q.x + 0.11, q.y - 0.14, q.z + 0.11, COL.pier);
+    g.box(q.x - 0.17, q.y - 0.14, q.z - 0.17, q.x + 0.17, q.y - 0.02, q.z + 0.17, COL.pier);
+  }
+}
+// Asphalt colour blended into deck colour along the same ramp as the height, so there is no hard colour edge.
+function surfaceOf(asph, deck) {
+  return p => {
+    const m = ss(clamp((RAMP - waterDist(p.x, p.z)) / RAMP, 0, 1));
+    return [asph[0] + (deck[0] - asph[0]) * m, asph[1] + (deck[1] - asph[1]) * m, asph[2] + (deck[2] - asph[2]) * m];
+  };
+}
+function drawEdge(g, e) {
+  const C = e.C, k = KIND[e.kind];
+  const surf = surfaceOf(rgb(COL.asphalt), rgb(COL.deck));
+  ribbon(g, C, 0, k.half + 0.07, () => rgb(COL.curb), -0.015);
+  ribbon(g, C, 0, k.half, surf, 0);
+  if (e.kind === 1) {
+    dashes(g, C, 0, 0.035, 0.32, 0.25, COL.white, 0.02);
+  } else {
+    for (const off of [0.03, -0.03]) ribbon(g, C, off, 0.022, () => rgb(COL.yellow), 0.02);
+    dashes(g, C, 0.28, 0.03, 0.32, 0.25, COL.white, 0.02);
+    dashes(g, C, -0.28, 0.03, 0.32, 0.25, COL.white, 0.02);
+  }
+  // Railings and piers stop short of the ends, so two bridges meeting at a junction do not cut through each other.
+  for (const [r0, r1] of bridgeRanges(C)) {
+    const s0 = Math.max(r0, 0.9), s1 = Math.min(r1, C.len - 0.9);
+    if (s1 - s0 < 0.3) continue;
+    for (const sg of [-1, 1]) {
+      wall(g, C, sg * (k.half + 0.04), s0, s1, -0.14, 0.0, COL.fascia);   // deck edge: visible thickness
+      wall(g, C, sg * (k.half + 0.03), s0, s1, 0.0, 0.16, COL.rail);      // railings
+    }
+    piers(g, C, s0, s1);
+  }
+}
+// Junction surfaces: the real turn paths between lanes, so junctions take their shape from the traffic.
 function buildRoads() {
   const g = new Geo();
   for (const e of edges.values()) drawEdge(g, e);
+  const curb = () => rgb(COL.curb);
+  const surf = surfaceOf(rgb(COL.asphalt), rgb(COL.deck));
+  for (const c of conns.values()) {
+    if (c.uturn) continue;
+    ribbon(g, c.C, 0, c.half + 0.07, curb, -0.015);
+    ribbon(g, c.C, 0, c.half, surf, 0);
+  }
   for (const n of nodes.values()) {
     if (n.door >= 0) { g.disk(n.x, n.y + 0.005, n.z, 0.3, rgb(COL.pave)); continue; }
     let r = 0;
     for (const eid of n.edges) r = Math.max(r, KIND[edges.get(eid).kind].half);
     if (!r) continue;
-    const wet = isWater(n.x, n.z);
-    g.disk(n.x, n.y - 0.006, n.z, r + 0.07, rgb(COL.curb));
-    g.disk(n.x, n.y + 0.002, n.z, r, rgb(wet ? COL.bridge : COL.asphalt));
+    g.disk(n.x, n.y - 0.015, n.z, r + 0.07, curb());
+    g.disk(n.x, n.y, n.z, r, rgb(COL.asphalt));
   }
   swapGeometry(roadMesh, g.geometry());
   swapGeometry(treeMesh, buildTrees());
@@ -1291,9 +1364,11 @@ function rebuildWorld() {
 
 // ---------- Cars: spawning and movement ----------
 function bkOf(key) { return bk.get(key) || EMPTY; }
+const bumpPending = k => pendingNext.set(k, (pendingNext.get(k) || 0) + 1);
 function rebuildBuckets() {
   bk.clear();
   laneCount.clear();
+  pendingNext.clear();
   for (const car of S.cars) {
     if (car.dead) continue;
     const k = car.route[car.idx];
@@ -1301,6 +1376,7 @@ function rebuildBuckets() {
     if (!arr) { arr = []; bk.set(k, arr); }
     arr.push(car);
     laneCount.set(k, (laneCount.get(k) || 0) + 1);
+    if (k[0] === 'C' && car.idx + 1 < car.route.length) bumpPending(car.route[car.idx + 1]);
   }
   for (const arr of bk.values()) if (arr.length > 1) arr.sort((p, q) => q.s - p.s);
 }
@@ -1351,6 +1427,11 @@ function moveCar(car, leader, dt) {
     nextSeg = segOf(nk);
     q = bkOf(nk);
     if (nextSeg && nextSeg.conn) blocked = nodes.get(nextSeg.node).cool > 0;
+    else if (nextSeg) {
+      // Cars still in a turn that leads into this lane have not reached the lane list yet; wait for them.
+      const others = (pendingNext.get(nk) || 0) - (seg.conn ? 1 : 0);
+      if (others > 0) blocked = true;
+    }
   }
   if (leader) gap = leader.s - car.s - need;
   else if (last) gap = 9;
@@ -1371,7 +1452,10 @@ function moveCar(car, leader, dt) {
     if (free) {
       car.idx++;
       car.s = ns - len;
-      if (nextSeg.conn) nodes.get(nextSeg.node).cool = nextSeg.head;
+      if (nextSeg.conn) {
+        nodes.get(nextSeg.node).cool = nextSeg.head;
+        if (car.idx + 1 < car.route.length) bumpPending(car.route[car.idx + 1]);
+      }
     } else {
       car.s = len;
       car.v = 0;
@@ -1638,7 +1722,7 @@ cv.addEventListener('pointermove', e => {
   } else if (drag.mode === 'pinch' && ptrs.size === 2) {
     const [a, b] = [...ptrs.values()];
     const d = dist2(a, b), m = mid(a, b);
-    cam.dist = clamp(cam.dist * drag.d / d, ZMIN, ZMAX);
+    zoomAt(drag.m.x, drag.m.y, drag.d / d);
     panPx(m.x - drag.m.x, m.y - drag.m.y);
     drag.d = d; drag.m = m;
   }
@@ -1667,10 +1751,21 @@ function endPtr(e) {
 cv.addEventListener('pointerup', endPtr);
 cv.addEventListener('pointercancel', endPtr);
 cv.addEventListener('contextmenu', ev => ev.preventDefault());
+// Zoom keeps the ground point under the pointer (or between the fingers) in place.
+function zoomAt(x, y, factor) {
+  const before = groundAt(x, y);
+  cam.dist = clamp(cam.dist * factor, ZMIN, ZMAX);
+  updateCamera();
+  const after = groundAt(x, y);
+  if (before && after) {
+    cam.tx = clamp(cam.tx + before.x - after.x, -5, FIELD + 5);
+    cam.tz = clamp(cam.tz + before.z - after.z, -5, FIELD + 5);
+    updateCamera();
+  }
+}
 cv.addEventListener('wheel', ev => {
   ev.preventDefault();
-  cam.dist = clamp(cam.dist * Math.exp(ev.deltaY * 0.0015), ZMIN, ZMAX);
-  updateCamera();
+  zoomAt(ev.clientX, ev.clientY, Math.exp(ev.deltaY * 0.0015));
 }, { passive: false });
 
 document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
@@ -1727,6 +1822,8 @@ window.trafficArchitect = {
     return { x: (projV.x + 1) / 2 * CW, y: (1 - projV.y) / 2 * CH };
   },
   rebuildWorld,
+  roadVerts: () => roadMesh.geometry.attributes.position.count,
+  conns: () => conns.size,
 };
 })();
 </script>
