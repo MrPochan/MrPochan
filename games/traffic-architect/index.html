@@ -386,9 +386,9 @@ const COL = {
 };
 const HINTS = {
   road: 'Проведите линию — дорога. Два пальца — камера',
-  avenue: 'Проведите линию — проспект. Тап по дороге — расширить',
-  bulldoze: 'Нажимайте или проводите по дороге, чтобы снести',
-  edit: 'Тап по дороге или перекрёстку',
+  avenue: 'Проведите линию — проспект. Тап по дороге — расширить участок',
+  bulldoze: 'Нажимайте или проводите по дороге, чтобы снести участок',
+  edit: 'Тап по участку дороги или перекрёстку',
   pan: 'Тяните, чтобы двигать камеру',
 };
 
@@ -934,6 +934,14 @@ function splitEdge(e, s) {
     }
     X.ringId = e.ring;
   }
+  // A road that was the main one at a junction stays so: its id is replaced by the piece that still touches the junction.
+  for (const nid of [a, b]) {
+    const nd = nodes.get(nid);
+    if (nd && nd.prio && nd.prio.main) {
+      const ne = e1.a === nid || e1.b === nid ? e1 : e2;
+      nd.prio.main = nd.prio.main.map(id => (id === e.id ? ne.id : id));
+    }
+  }
   for (const car of S.cars) {
     const cur = car.route[car.idx];
     if (!cur.startsWith(oldPre)) continue;
@@ -980,18 +988,51 @@ function removeEdge(e) {
   }
   afterNetworkChange();
 }
-const upgradeCost = e => Math.round(nominalCost(2, e.len, e.frac) - nominalCost(1, e.len, e.frac));
+// Roads are edited in sections of about SECTION units: the road is cut only when a section is upgraded or removed.
+const SECTION = 2.4;
+function sectionRange(e, s) {
+  const n = Math.max(1, Math.round(e.len / SECTION));
+  if (n < 2 || e.ring) return [0, e.len];
+  const step = e.len / n, k = clamp(Math.floor(s / step), 0, n - 1);
+  return [k * step, (k + 1) * step];
+}
+const isWhole = (e, s0, s1) => s0 <= 0.05 && s1 >= e.len - 0.05;
+function sectionStats(e, s0 = 0, s1 = e.len) {
+  if (isWhole(e, s0, s1)) return { len: e.len, frac: e.frac };
+  const L = s1 - s0, n = Math.max(1, Math.ceil(L / 0.1));
+  let wet = 0;
+  for (let i = 0; i < n; i++) {
+    const q = curveAt(e.C, s0 + (i + 0.5) * L / n);
+    if (isWater(q.x, q.z)) wet += L / n;
+  }
+  return { len: L, frac: wet / L };
+}
+// Cuts the section [s0, s1] out of an edge with new nodes and returns the edge that is exactly that section.
+function carveSection(e, s0, s1) {
+  if (isWhole(e, s0, s1)) return e;
+  const other = (X, wantB) => [...X.edges].map(id => edges.get(id)).find(f => (wantB ? f.b : f.a) === X.id);
+  let cur = e;
+  if (s1 < e.len - 0.05) cur = other(splitEdge(cur, s1), true);
+  if (s0 > 0.05) cur = other(splitEdge(cur, s0), false);
+  return cur;
+}
+const upgradeCost = (e, s0 = 0, s1 = e.len) => {
+  const t = sectionStats(e, s0, s1);
+  return Math.round(nominalCost(2, t.len, t.frac) - nominalCost(1, t.len, t.frac));
+};
 function nodeNeed(n) { return !n || n.door >= 0 || n.edges.size < 2 ? 0 : junctionArms(n).need; }
 // Why a road cannot become an avenue without running into its neighbours; empty if it can.
-function upgradeProblem(e) {
+function upgradeProblem(e, s0 = 0, s1 = e.len) {
   if (e.kind !== 1) return 'Это уже проспект';
   e.kind = 2;
-  try { return upgradeConflict(e); } finally { e.kind = 1; }
+  try { return upgradeConflict(e, s0, s1); } finally { e.kind = 1; }
 }
-function upgradeConflict(e) {
+function upgradeConflict(e, s0, s1) {
   const hw = KIND[e.kind].half + 0.07;
-  const A = nodes.get(e.a), B = nodes.get(e.b);
-  for (const n of [A, B]) {
+  const touchA = s0 <= 0.05, touchB = s1 >= e.len - 0.05, ends = [];
+  if (touchA) ends.push(nodes.get(e.a));
+  if (touchB) ends.push(nodes.get(e.b));
+  for (const n of ends) {
     if (n.door >= 0 || n.edges.size < 2) continue;
     if (nodeNeed(n) > MAX_TRIM) return 'Тесно: дороги на перекрёстке сольются';
     for (const eid of n.edges) {
@@ -999,34 +1040,41 @@ function upgradeConflict(e) {
       if (nodeNeed(n) + nodeNeed(far) > f.len - 0.3) return 'Участок слишком короткий для проспекта';
     }
   }
-  if (e.len < 1) return 'Участок слишком короткий для проспекта';
-  const nearShared = (p, f) => [A, B].some(n => (f.a === n.id || f.b === n.id) && Math.hypot(p.x - n.x, p.z - n.z) < 1.7);
+  if (s1 - s0 < 1) return 'Участок слишком короткий для проспекта';
+  const nearShared = (p, f) => ends.some(n => (f.a === n.id || f.b === n.id) && Math.hypot(p.x - n.x, p.z - n.z) < 1.7);
+  const P = isWhole(e, s0, s1) ? e.C.P : subCurve(e.C, s0, s1, 0);
   for (const f of edges.values()) {
     if (f === e) continue;
     const need = hw + KIND[f.kind].half + 0.13;
-    for (const p of e.C.P) {
+    for (const p of P) {
       if (nearShared(p, f)) continue;
       if (nearestOnCurve(f.C, p.x, p.z).d < need) return 'Рядом другая дорога: дороги сольются';
     }
   }
-  const doorNear = p => [A, B].some(n => n.door >= 0 && Math.hypot(p.x - n.x, p.z - n.z) < 2.4);
-  for (const p of e.C.P) {
+  const doorNear = p => ends.some(n => n.door >= 0 && Math.hypot(p.x - n.x, p.z - n.z) < 2.4);
+  for (const p of P) {
     if (p.x < 0.8 || p.z < 0.8 || p.x > FIELD - 0.8 || p.z > FIELD - 0.8) return 'Слишком близко к краю поля';
     if (doorNear(p)) continue;
     for (const d of S.districts) if (Math.abs(p.x - d.cx) < 1.42 && Math.abs(p.z - d.cz) < 1.42) return 'Рядом район: проспект не поместится';
   }
   return '';
 }
-function upgradeEdge(e) {
+// Upgrades one section (the whole edge by default); returns the upgraded edge, or false.
+function upgradeEdge(e, s0 = 0, s1 = e.len) {
   if (e.kind !== 1) return false;
-  const bad = upgradeProblem(e);
+  const bad = upgradeProblem(e, s0, s1);
   if (bad) { toast(bad, 2600); return false; }
-  const extra = upgradeCost(e);
+  const extra = upgradeCost(e, s0, s1);
   if (S.money < extra) { toast(`Нужно $${extra} на проспект`, 2200); return false; }
   S.money -= extra;
-  e.kind = 2;
+  const piece = carveSection(e, s0, s1);
+  piece.kind = 2;
   afterNetworkChange();
-  return true;
+  return piece;
+}
+function removeSection(e, s0, s1) {
+  if (e.ring) { removeEdge(e); return; }
+  removeEdge(carveSection(e, s0, s1));
 }
 // ---------- Roundabouts and traffic lights ----------
 function setEdgeCurve(e, pts2) {
@@ -1357,7 +1405,14 @@ function buildLights() {
   }
   return g.geometry();
 }
-function clearSel() { S.sel = S.selNode = S.selRing = null; S.selDirty = true; }
+function clearSel() { S.sel = S.selNode = S.selRing = S.selR = null; S.selDirty = true; }
+// The selected section of the selected edge: [s0, s1] along it.
+function selSection() {
+  const e = S.sel && edges.get(S.sel);
+  if (!e) return null;
+  const r = S.selR && Math.abs(S.selR.len - e.len) < 1e-6 ? S.selR : null;
+  return { e, s0: r ? r.s0 : 0, s1: r ? r.s1 : e.len };
+}
 
 // Where the player can carry on building: the end of a plan that is waiting to be built, or the free end of the last road.
 function contPoint() {
@@ -1398,9 +1453,9 @@ function districtsLinked() {
   return S.districts.every(d => find(d.doors[0]) === root);
 }
 // upgradeProblem is a full scan, so it is only repeated after the network or the districts change.
-function cachedProblem(e) {
-  const k = `${S.netVer | 0}|${S.districts.length}|${e.id}`;
-  if (S.pk !== k) { S.pk = k; S.pv = upgradeProblem(e); }
+function cachedProblem(e, s0 = 0, s1 = e.len) {
+  const k = `${S.netVer | 0}|${S.districts.length}|${e.id}|${s0.toFixed(2)}`;
+  if (S.pk !== k) { S.pk = k; S.pv = upgradeProblem(e, s0, s1); }
   return S.pv;
 }
 function selectNear(x, z) {
@@ -1414,7 +1469,11 @@ function selectNear(x, z) {
   }
   if (best) { S.selNode = best.id; return; }
   const near = nearestEdge(x, z);
-  if (near && !near.e.ring && near.h.d < 0.8) S.sel = near.e.id;
+  if (near && !near.e.ring && near.h.d < 0.8) {
+    const [s0, s1] = sectionRange(near.e, near.h.s);
+    S.sel = near.e.id;
+    S.selR = { s0, s1, len: near.e.len };
+  }
 }
 // Cars keep their place: segments that still exist are kept, the rest of the route is planned again.
 function afterNetworkChange() {
@@ -1521,18 +1580,27 @@ function resample(pts, step) {
   return out;
 }
 // Snap target for a plan end: a junction or door node, an edge (to split it), or nothing.
+// A node in the middle of a road (the joint between two sections) is snapped like a point on the road,
+// so the new road still arrives at a right angle.
+function nodeSnap(n) {
+  if (n.door < 0 && !n.ringId && n.edges.size === 2) {
+    const e = edges.get([...n.edges][0]);
+    if (e && !e.ring && e.a !== e.b) return { type: 'edge', edge: e.id, s: e.a === n.id ? 0 : e.len, x: n.x, z: n.z };
+  }
+  return { type: 'node', id: n.id, x: n.x, z: n.z };
+}
 function snapTarget(p) {
   let best = null, bd = SNAP_NODE;
   for (const n of nodes.values()) {
     const d = Math.hypot(p.x - n.x, p.z - n.z);
-    if (d < bd) { bd = d; best = { type: 'node', id: n.id, x: n.x, z: n.z }; }
+    if (d < bd) { bd = d; best = nodeSnap(n); }
   }
   if (best) return best;
   const near = nearestEdge(p.x, p.z);
   if (!near || near.h.d >= SNAP_EDGE) return null;
   const e = near.e, s = near.h.s, m = e.ring ? 0.9 : 0.4;
-  if (s < m) return { type: 'node', id: e.a, x: nodes.get(e.a).x, z: nodes.get(e.a).z };
-  if (s > e.len - m) return { type: 'node', id: e.b, x: nodes.get(e.b).x, z: nodes.get(e.b).z };
+  if (s < m) return nodeSnap(nodes.get(e.a));
+  if (s > e.len - m) return nodeSnap(nodes.get(e.b));
   return { type: 'edge', edge: e.id, s, x: near.h.x, z: near.h.z };
 }
 // Direction a dead-end road continues in, pointing away from its end node.
@@ -2082,9 +2150,9 @@ function bridgeRanges(C) {
     const q = curveAt(C, Math.min(s, C.len));
     const near = waterDist(q.x, q.z) < RAMP;
     if (near && open === null) open = s;
-    if (!near && open !== null) { if (s - open > 0.3) out.push([open, s]); open = null; }
+    if (!near && open !== null) { if (s - open > 0.3 || open === 0) out.push([open, s]); open = null; }
   }
-  if (open !== null && C.len - open > 0.3) out.push([open, C.len]);
+  if (open !== null) out.push([open, C.len]);
   return out;
 }
 // Vertical wall along a curve, offset sideways, from h0 to h1 above the curve.
@@ -2134,13 +2202,13 @@ function arrowGlyph(g, p, fx, fz, type, sc = 1) {
   if (type === 'S') { stroke([[-0.2, 0], [0.1, 0]]); head(0.1, 0, 1, 0); }
   else { const sg = type === 'L' ? -1 : 1; stroke([[-0.2, 0], [-0.04, 0], [0.04, 0.065 * sg]]); head(0.04, 0.065 * sg, 0.08, 0.065 * sg); }
 }
-function drawEdge(g, e, ta, tb) {
+function drawEdge(g, e, ta, tb, pa, pb) {
   const C = e.C, k = KIND[e.kind], s0 = ta, s1 = C.len - tb;
   if (s1 - s0 < 0.05) return;
   const surf = surfaceOf(rgb(COL.asphalt), rgb(COL.deck));
   ribbon(g, C, 0, k.half + 0.07, () => rgb(COL.curb), -0.015, s0, s1);
   ribbon(g, C, 0, k.half, surf, 0, s0, s1);
-  const m0 = s0 + 0.12, m1 = s1 - 0.12;
+  const m0 = s0 + (pa ? 0 : 0.12), m1 = s1 - (pb ? 0 : 0.12);
   if (m1 - m0 > 0.1) {
     if (e.ring) {
       for (const sg of [-1, 1]) ribbon(g, C, sg * (k.half - 0.03), 0.014, () => rgb(COL.white), 0.02, m0, m1);
@@ -2165,9 +2233,9 @@ function drawEdge(g, e, ta, tb) {
   // Railings and piers stay between the junction polygons, so bridges meeting at a junction never cut through each other.
   for (const [r0, r1] of bridgeRanges(C)) {
     // No railings where a road meets a ring: they would cut across the mouth of the road.
-    const ringA = nodes.get(e.a) && nodes.get(e.a).ringId ? 0.9 : 0.05, ringB = nodes.get(e.b) && nodes.get(e.b).ringId ? 0.9 : 0.05;
+    const ringA = nodes.get(e.a) && nodes.get(e.a).ringId ? 0.9 : pa ? 0 : 0.05, ringB = nodes.get(e.b) && nodes.get(e.b).ringId ? 0.9 : pb ? 0 : 0.05;
     const w0 = Math.max(r0, s0 + ringA), w1 = Math.min(r1, s1 - ringB);
-    if (w1 - w0 < 0.3) continue;
+    if (w1 - w0 < 0.01 || (w1 - w0 < 0.3 && !((pa && w0 <= s0 + 1e-6) || (pb && w1 >= s1 - 1e-6)))) continue;
     for (const sg of [-1, 1]) {
       wall(g, C, sg * (k.half + 0.04), w0, w1, -0.14, 0.0, COL.fascia);   // deck edge: visible thickness
       wall(g, C, sg * (k.half + 0.03), w0, w1, 0.0, 0.16, COL.rail);      // railings
@@ -2204,6 +2272,15 @@ function junctionArms(n) {
   arms.need = arms.length >= 2 ? t : 0;     // the trim the junction would like, before it is capped
   t = Math.min(t, MAX_TRIM);
   for (const a of arms) a.t = Math.min(t, a.e.len * 0.4);
+  // Two equal roads continuing each other (the joint left by cutting a road into sections): no junction patch, no gap in the markings.
+  if (arms.length === 2 && n.door < 0) {
+    const [p, q] = arms, ow = p.e.oneway;
+    const flowIn = a => (a.atA ? (a.e.owDir || 0) === 1 : (a.e.owDir || 0) === 0);
+    if (p.e.kind === q.e.kind && !!ow === !!q.e.oneway && !p.e.ring && !q.e.ring && (!ow || flowIn(p) !== flowIn(q)) && p.dx * q.dx + p.dz * q.dz < -0.985) {
+      arms.pass = true;
+      for (const a of arms) a.td = 0;
+    }
+  }
   return arms;
 }
 // Outline of a junction: each arm contributes its two edge corners at the trim distance, neighbouring corners
@@ -2258,7 +2335,11 @@ function buildRoads() {
     const arms = armsOf.get(n.id), a = arms && arms.find(x => x.e === e);
     return a ? (a.td !== undefined ? a.td : a.t) : 0;
   };
-  for (const e of edges.values()) drawEdge(g, e, trimAt(nodes.get(e.a), e), trimAt(nodes.get(e.b), e));
+  const passAt = n => { const arms = armsOf.get(n.id); return !!(arms && arms.pass); };
+  for (const e of edges.values()) {
+    const A = nodes.get(e.a), B = nodes.get(e.b);
+    drawEdge(g, e, trimAt(A, e), trimAt(B, e), passAt(A), passAt(B));
+  }
   // Give-way markings: white triangles across the approach of every road that gives way.
   for (const n of nodes.values()) {
     if (!n.prio || n.prio.equal || (n.light && n.phaseOf)) continue;
@@ -2292,7 +2373,7 @@ function buildRoads() {
     if (n.door >= 0) continue;
     const arms = armsOf.get(n.id);
     if (n.ringId) continue;
-    if (arms && arms.length >= 2) {
+    if (arms && arms.length >= 2 && !arms.pass) {
       const lo = { x: n.x, y: n.y - 0.015, z: n.z }, hi = { x: n.x, y: n.y, z: n.z };
       fillPoly(g, lo, junctionPoly(n, arms, 0.07).map(p => ({ x: p.x, y: p.y - 0.015, z: p.z })), curb);
       fillPoly(g, hi, junctionPoly(n, arms, 0), surf);
@@ -2661,11 +2742,11 @@ function deliver(car) {
 // ---------- Player actions ----------
 function removeNear(x, z, r) {
   const near = nearestEdge(x, z);
-  if (near && near.h.d < r) removeEdge(near.e);
+  if (near && near.h.d < r) { const [s0, s1] = sectionRange(near.e, near.h.s); removeSection(near.e, s0, s1); }
 }
 function upgradeNear(x, z) {
   const near = nearestEdge(x, z);
-  if (near && near.h.d < 0.7) upgradeEdge(near.e);
+  if (near && near.h.d < 0.7) { const [s0, s1] = sectionRange(near.e, near.h.s); upgradeEdge(near.e, s0, s1); }
 }
 let lastNoMoney = 0;
 
@@ -2932,14 +3013,15 @@ function buildSelGeo() {
       }
     }
   }
-  const e = S.sel && edges.get(S.sel);
-  if (!e) return g.geometry();
+  const sec = selSection();
+  if (!sec) return g.geometry();
+  const { e, s0, s1 } = sec;
   let col = [0.45, 0.7, 1], hw = KIND[e.kind].half;
   if (e.kind === 1) {
     hw = KIND[2].half;
-    col = cachedProblem(e) ? [0.84, 0.35, 0.35] : upgradeCost(e) <= S.money ? [0.49, 0.83, 0.42] : [0.95, 0.68, 0.2];
+    col = cachedProblem(e, s0, s1) ? [0.84, 0.35, 0.35] : upgradeCost(e, s0, s1) <= S.money ? [0.49, 0.83, 0.42] : [0.95, 0.68, 0.2];
   }
-  ribbon(g, e.C, 0, hw, () => col, 0.07);
+  ribbon(g, e.C, 0, hw, () => col, 0.07, s0, s1);
   return g.geometry();
 }
 const nodeBar = $('nodeBar');
@@ -2997,17 +3079,18 @@ function cycleOneway(e) {
 function updateEditUi() {
   updateNodeUi();
   if (S.sel && !edges.has(S.sel)) { S.sel = null; S.selDirty = true; }
-  const e = S.tool === 'edit' && S.sel ? edges.get(S.sel) : null;
-  editBar.hidden = !e;
-  if (!e) return;
-  const refund = Math.floor(nominalCost(e.kind, e.len, e.frac) * 0.5);
-  setText($('editTitle'), `${KIND[e.kind].name} · ${Math.round(e.len)} ед.`);
+  const sec = S.tool === 'edit' ? selSection() : null;
+  editBar.hidden = !sec;
+  if (!sec) return;
+  const { e, s0, s1 } = sec, st = sectionStats(e, s0, s1), part = !isWhole(e, s0, s1);
+  const refund = Math.floor(nominalCost(e.kind, st.len, st.frac) * 0.5);
+  setText($('editTitle'), `${part ? 'Участок · ' : ''}${KIND[e.kind].name} · ${st.len < 10 ? st.len.toFixed(1) : Math.round(st.len)} ед.`);
   setText($('editRemove'), `Снести +$${refund}`);
   setText($('editOneway'), !e.oneway ? 'Двустороннее' : (e.owDir || 0) === 0 ? 'Односторонняя →' : 'Односторонняя ←');
   const up = $('editUpgrade');
   up.hidden = e.kind !== 1;
   if (e.kind !== 1) { setText($('editMsg'), e.oneway ? 'Одностороннее движение — стрелки на дороге показывают направление' : 'Максимальный уровень'); return; }
-  const bad = cachedProblem(e), cost = upgradeCost(e);
+  const bad = cachedProblem(e, s0, s1), cost = upgradeCost(e, s0, s1);
   setText($('editMsg'), bad || (S.money < cost ? 'Не хватает денег' : 'Проспект: больше полос и скорость'));
   setText(up, `Улучшить $${cost}`);
   up.disabled = !!bad || S.money < cost;
@@ -3183,8 +3266,16 @@ $('ringOff').addEventListener('click', () => {
   const r = rings.get(S.selRing);
   if (r) { const X = dissolveRing(r); S.selRing = null; S.selNode = X.id; S.selDirty = true; }
 });
-$('editUpgrade').addEventListener('click', () => { const e = edges.get(S.sel); if (e) upgradeEdge(e); });
-$('editRemove').addEventListener('click', () => { const e = edges.get(S.sel); if (e) { removeEdge(e); S.sel = null; S.selDirty = true; } });
+$('editUpgrade').addEventListener('click', () => {
+  const sec = selSection();
+  if (!sec) return;
+  const piece = upgradeEdge(sec.e, sec.s0, sec.s1);
+  if (piece) { S.sel = piece.id; S.selR = null; S.selDirty = true; }
+});
+$('editRemove').addEventListener('click', () => {
+  const sec = selSection();
+  if (sec) { removeSection(sec.e, sec.s0, sec.s1); S.sel = S.selR = null; S.selDirty = true; }
+});
 $('planCancel').addEventListener('click', () => { S.plan = null; S.planDirty = true; });
 $('startBtn').addEventListener('click', () => { endDemo(); newGame(); });
 window.addEventListener('resize', resize);
@@ -3206,7 +3297,7 @@ function frame(now) {
   if (S.selDirty || S.sel || S.selNode || S.selRing) {
     // The preview depends on money, so it is refreshed while something is selected.
     S.selDirty = false;
-    const key = S.sel + '|' + S.selNode + '|' + S.selRing + '|' + Math.floor(S.money) + '|' + (S.netVer | 0) + '|' + S.districts.length;
+    const key = S.sel + '|' + (S.selR ? S.selR.s0.toFixed(2) : '') + '|' + S.selNode + '|' + S.selRing + '|' + Math.floor(S.money) + '|' + (S.netVer | 0) + '|' + S.districts.length;
     if (key !== S.selKey) { S.selKey = key; swapGeometry(selMesh, buildSelGeo()); }
   }
   const cp = contPoint(), ck = cp ? `${cp.plan ? 1 : 0}|${cp.dx.toFixed(2)}|${cp.dz.toFixed(2)}` : '';
