@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
-<title>Архитектор трафика</title>
+<title>RoadFlow</title>
 <style>
 /* Full-screen 3D view with a dark HUD. Dark is the default; light follows the system setting. */
 :root {
@@ -191,6 +191,17 @@ body {
 .card h1 { margin: 0 0 8px; font-size: 22px; line-height: 1.15; text-wrap: balance; }
 .card p { margin: 0; color: var(--muted); font-size: 14px; }
 .card ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; display: grid; gap: 4px; }
+.logo { margin: 0; font-size: 56px; line-height: 1; font-weight: 800; letter-spacing: -2px; color: #fff; text-shadow: 0 3px 18px rgba(0, 0, 0, 0.55); }
+.logo b { color: #6cc0ff; }
+.tag { margin: 8px 0 0; font-weight: 700; font-size: 15px; color: #fff; text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); }
+#startOverlay { background: linear-gradient(180deg, rgba(8, 12, 16, 0.35), rgba(8, 12, 16, 0) 35%, rgba(8, 12, 16, 0) 60%, rgba(8, 12, 16, 0.45)); backdrop-filter: none; }
+#startOverlay.menu { flex-direction: column; justify-content: space-between; align-items: center; padding-top: calc(env(safe-area-inset-top, 0px) + 56px); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 22px); }
+.menu-top { text-align: center; }
+.menu-card { padding: 16px 16px 14px; backdrop-filter: blur(6px); }
+.menu-card p { font-size: 14px; color: var(--fg); }
+.menu-card summary { margin-top: 10px; cursor: pointer; color: var(--accent); font-weight: 600; font-size: 13px; }
+.menu-card .primary { margin-top: 12px; }
+body.demo .hud, body.demo .planbar, body.demo .toast, body.demo #labels { display: none !important; }
 .primary {
   width: 100%; margin-top: 16px; padding: 12px; border: 0; border-radius: 12px; cursor: pointer;
   background: var(--accent); color: #0b1620;
@@ -300,15 +311,22 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   </div>
 </nav>
 
-<div id="startOverlay" class="overlay">
-  <section class="card" aria-labelledby="startTitle">
-    <h1 id="startTitle">Архитектор трафика</h1>
-    <p>Районы растут, и машины ездят между ними. Проведите линию — игра сгладит её в кривую. Проверьте цену и нажмите «Построить».</p>
-    <ul>
-      <li>Дорога соединяется с районом у его выезда. Пересечение с другой дорогой становится перекрёстком.</li>
-      <li>У каждого района от одного до трёх выездов.</li>
-      <li>Пробки заполняют шкалу. Заполнится — игра окончена.</li>
-    </ul>
+<div id="startOverlay" class="overlay menu">
+  <div class="menu-top">
+    <h1 id="startTitle" class="logo"><span>Road</span><b>Flow</b></h1>
+    <p class="tag">Строй дороги. Пусти поток.</p>
+  </div>
+  <section class="card menu-card" aria-labelledby="startTitle">
+    <p>Соедините районы дорогами, и машины поедут. Не дайте городу встать в пробках.</p>
+    <details>
+      <summary>Как играть</summary>
+      <ul>
+        <li>Проведите линию — игра сгладит её в кривую. Проверьте цену и нажмите «Построить».</li>
+        <li>Дорога соединяется с районом у его выезда. Пересечение с другой дорогой становится перекрёстком.</li>
+        <li>В режиме «Правка» перекрёсток можно превратить в кольцо или поставить светофор.</li>
+        <li>Пробки заполняют шкалу. Заполнится — игра окончена.</li>
+      </ul>
+    </details>
     <button id="startBtn" class="primary" type="button">Начать</button>
   </section>
 </div>
@@ -1764,6 +1782,7 @@ function updateHud() {
 }
 let toastTimer = 0;
 function toast(msg, ms = 2600) {
+  if (S.demo) return;
   toastEl.textContent = msg;
   toastEl.classList.add('show');
   clearTimeout(toastTimer);
@@ -1790,7 +1809,8 @@ function saveBest(v) {
 
 // ---------- Camera ----------
 function updateCamera() {
-  camera.position.set(cam.tx, cam.dist * Math.sin(cam.pitch), cam.tz + cam.dist * Math.cos(cam.pitch));
+  const yaw = cam.yaw || 0, flat = cam.dist * Math.cos(cam.pitch);
+  camera.position.set(cam.tx + flat * Math.sin(yaw), cam.dist * Math.sin(cam.pitch), cam.tz + flat * Math.cos(yaw));
   camera.lookAt(cam.tx, 0, cam.tz);
   camera.updateMatrixWorld();
 }
@@ -2166,7 +2186,14 @@ function connBusy(c, need) {
     for (const k of node.ins) {
       const ln = lanes.get(k);
       if (!ln || !ln.ring) continue;
-      for (const o of bkOf(k)) if (o.s > ln.len - 1.8) return true;
+      for (const o of bkOf(k)) {
+        if (o.s <= ln.len - 1.8) continue;
+        // A car that leaves the ring at this junction never meets the one that joins it.
+        const ns = segOf(o.route[o.idx + 1]);
+        const out = ns && ns.conn && lanes.get(ns.outKey);
+        if (out && !out.ring) continue;
+        return true;
+      }
     }
   }
   for (const f of c.conf) {
@@ -2275,6 +2302,12 @@ function spawnPopup(x, y, z, text) {
 // ---------- Simulation ----------
 function step(dt) {
   S.t += dt;
+  if (S.demo) {
+    // Menu background: steady traffic, no jams, no new districts.
+    S.meter = 0;
+    S.nextDistrictIn = 1e9;
+    for (const d of S.districts) d.queue = Math.max(d.queue, 8);
+  }
   for (const n of nodes.values()) if (n.cool > 0) n.cool = Math.max(0, n.cool - dt);
   rebuildBuckets();
 
@@ -2336,6 +2369,63 @@ function step(dt) {
   if (S.meter >= 100) gameOver();
 }
 
+// ---------- Menu background ----------
+// A ready-made city (four districts around a roundabout) that runs behind the menu. The seed fixes the map.
+function buildDemo(seed) {
+  const real = Math.random;
+  let a = seed >>> 0;
+  Math.random = () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  try {
+    clearWorld();
+    S.names = NAMES.slice().sort(() => Math.random() - 0.5);
+    buildGround(); buildWater(); placeTrees();
+    S.t = 0; S.money = 1e6; S.delivered = 0; S.meter = 0; S.over = false;
+    addDistrict(0);
+    if (!addDistrict(1, 24)) return false;
+    for (let k = 0; k < 2; k++) if (!addDistrict()) return false;
+    const hub = { x: S.districts.reduce((q, d) => q + d.cx, 0) / S.districts.length, z: S.districts.reduce((q, d) => q + d.cz, 0) / S.districts.length };
+    for (const d of S.districts) {
+      const A = d.doors.map(id => nodes.get(id)).sort((p, q) => Math.hypot(p.x - hub.x, p.z - hub.z) - Math.hypot(q.x - hub.x, q.z - hub.z))[0];
+      const L = Math.hypot(hub.x - A.x, hub.z - A.z), n = Math.ceil(L / 0.5), raw = [];
+      for (let i = 0; i <= n; i++) raw.push({ x: A.x + (hub.x - A.x) * i / n, z: A.z + (hub.z - A.z) * i / n });
+      S.plan = computePlan(raw, 1);
+      S.plan.drawing = false;
+      if (!S.plan.valid || !applyPlan()) return false;
+    }
+    const j = [...nodes.values()].find(n => n.door < 0 && n.edges.size >= 3);
+    if (!j || waterDist(j.x, j.z) < 3.5) return false;     // keep the ring on land, it looks better
+    const ring = makeRoundabout(j, 2, true);
+    if (!ring) return false;
+    S.demoRing = ring;
+    return true;
+  } finally {
+    Math.random = real;
+    S.plan = null;
+  }
+}
+function startDemo() {
+  let ok = false;
+  for (let seed = 11; seed < 80 && !ok; seed++) ok = buildDemo(seed);
+  if (!ok) return;                                     // no demo: the menu simply shows the empty field
+  S.demo = true;
+  S.running = true;
+  document.body.classList.add('demo');
+  const r = S.demoRing;
+  cam.tx = r.x; cam.tz = r.z; cam.dist = 30; cam.yaw = 0;
+  S.demoDist = 30;
+  updateCamera();
+  S.dirty = true;
+}
+function endDemo() {
+  S.demo = false;
+  document.body.classList.remove('demo');
+  cam.yaw = 0;
+}
 function clearWorld() {
   for (const d of S.districts) { scene.remove(d.group); d.el.remove(); }
   for (const p of S.popups) p.el.remove();
@@ -2672,7 +2762,7 @@ $('ringOff').addEventListener('click', () => {
 $('editUpgrade').addEventListener('click', () => { const e = edges.get(S.sel); if (e) upgradeEdge(e); });
 $('editRemove').addEventListener('click', () => { const e = edges.get(S.sel); if (e) { removeEdge(e); S.sel = null; S.selDirty = true; } });
 $('planCancel').addEventListener('click', () => { S.plan = null; S.planDirty = true; });
-$('startBtn').addEventListener('click', newGame);
+$('startBtn').addEventListener('click', () => { endDemo(); newGame(); });
 $('againBtn').addEventListener('click', newGame);
 window.addEventListener('resize', resize);
 
@@ -2682,6 +2772,13 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (S.running && !S.over) for (let s = 0; s < S.speed && !S.over; s++) step(dt);
+  if (S.demo && S.demoRing) {
+    // Slow orbit around the roundabout.
+    cam.yaw += dt * 0.07;
+    cam.dist = S.demoDist + 3 * Math.sin(now / 4000);
+    cam.tx = S.demoRing.x; cam.tz = S.demoRing.z;
+    updateCamera();
+  }
   if (S.dirty) rebuildWorld();
   if (S.selDirty || S.sel || S.selNode || S.selRing) {
     // The preview depends on money, so it is refreshed while something is selected.
@@ -2718,6 +2815,7 @@ resize();
 buildGround();
 buildWater();
 placeTrees();
+startDemo();
 setTool('road');
 setSpeed(1);
 updateHud();
@@ -2725,7 +2823,7 @@ requestAnimationFrame(frame);
 
 // Debug handle for automated checks.
 window.trafficArchitect = {
-  S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD }, addDistrict, contPoint, districtsLinked,
+  S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD }, addDistrict, contPoint, districtsLinked, startDemo, buildDemo,
   newGame, step, setTool, setSpeed, carPose, applyPlan, removeNear, upgradeNear, selectNear, upgradeProblem, upgradeEdge, rings, setRingLanes, ringLanesProblem, makeRoundabout, dissolveRing, resizeRing, ringProblem, toggleLight, lightState,
   planAt(points, kind) {
     S.plan = computePlan(points.map(p => ({ x: p.x, z: p.z })), kind === 'avenue' ? 2 : 1);
