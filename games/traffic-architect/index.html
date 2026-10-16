@@ -371,11 +371,15 @@ class Geo {
     const faces = [[0, 1, 2, 3], [4, 7, 6, 5], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]];
     for (const [a, b, c, d] of faces) this.quad(p[a], p[b], p[c], p[d], col);
   }
+  // col is a colour, or a function of position so a disk can follow the same surface colour as the road around it.
   disk(cx, y, cz, r, col, n = 18) {
+    const colOf = typeof col === 'function' ? col : () => col;
+    const c0 = { x: cx, y, z: cz };
     for (let i = 0; i < n; i++) {
       const a0 = (i / n) * Math.PI * 2, a1 = ((i + 1) / n) * Math.PI * 2;
-      this.tri({ x: cx, y, z: cz }, { x: cx + Math.cos(a0) * r, y, z: cz + Math.sin(a0) * r },
-        { x: cx + Math.cos(a1) * r, y, z: cz + Math.sin(a1) * r }, col, col, col);
+      const p0 = { x: cx + Math.cos(a0) * r, y, z: cz + Math.sin(a0) * r };
+      const p1 = { x: cx + Math.cos(a1) * r, y, z: cz + Math.sin(a1) * r };
+      this.tri(c0, p0, p1, colOf(c0), colOf(p0), colOf(p1));
     }
   }
   geometry() {
@@ -1270,13 +1274,15 @@ function buildTrees() {
   }
   return g.geometry();
 }
-// Sections of an edge that cross the water band (with a little margin for the ramps).
+// How far the deck is raised at a point: 0 on the ground, 1 at full bridge height.
+function deckFrac(x, z) { return (hAt(x, z) - ROAD_H) / (BRIDGE_H - ROAD_H); }
+// Sections of an edge that cross the water band, including the ramps (walls there fade out with the deck).
 function bridgeRanges(C) {
   const out = [];
   let open = null;
   for (let s = 0; s <= C.len + 1e-6; s += 0.1) {
     const q = curveAt(C, Math.min(s, C.len));
-    const near = waterDist(q.x, q.z) < 0.5;
+    const near = waterDist(q.x, q.z) < RAMP;
     if (near && open === null) open = s;
     if (!near && open !== null) { if (s - open > 0.3) out.push([open, s]); open = null; }
   }
@@ -1284,12 +1290,14 @@ function bridgeRanges(C) {
   return out;
 }
 // Vertical wall along a curve, offset sideways, from h0 to h1 above the curve.
+// Heights scale with the deck, so the wall sinks to nothing at the ends of the ramps instead of stopping in mid-air.
 function wall(g, C, off, s0, s1, h0, h1, hex) {
   const q = subCurve(C, s0, s1, off), col = rgb(hex);
+  const f = q.map(p => deckFrac(p.x, p.z));
   for (let i = 0; i < q.length - 1; i++) {
-    const a = q[i], b = q[i + 1];
-    g.quadV({ x: a.x, y: a.y + h0, z: a.z }, { x: b.x, y: b.y + h0, z: b.z },
-      { x: b.x, y: b.y + h1, z: b.z }, { x: a.x, y: a.y + h1, z: a.z }, col, col, col, col);
+    const a = q[i], b = q[i + 1], fa = f[i], fb = f[i + 1];
+    g.quadV({ x: a.x, y: a.y + h0 * fa, z: a.z }, { x: b.x, y: b.y + h0 * fb, z: b.z },
+      { x: b.x, y: b.y + h1 * fb, z: b.z }, { x: a.x, y: a.y + h1 * fa, z: a.z }, col, col, col, col);
   }
 }
 // Concrete piers from the river bed up to the deck, with a cap under the deck.
@@ -1348,7 +1356,8 @@ function buildRoads() {
     for (const eid of n.edges) r = Math.max(r, KIND[edges.get(eid).kind].half);
     if (!r) continue;
     g.disk(n.x, n.y - 0.015, n.z, r + 0.07, curb());
-    g.disk(n.x, n.y, n.z, r, rgb(COL.asphalt));
+    // Same colour function as the ribbons, so the coplanar disk never shows as a dark patch on the deck.
+    g.disk(n.x, n.y, n.z, r, surf);
   }
   swapGeometry(roadMesh, g.geometry());
   swapGeometry(treeMesh, buildTrees());
