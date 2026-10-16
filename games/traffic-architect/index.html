@@ -522,6 +522,7 @@ const rings = new Map();         // id -> roundabout {id, x, y, z, r, size, node
 const connByPair = new Map();   // inKey + '>' + outKey -> connector id
 const bk = new Map();           // segment key -> cars on it, nearest to the segment end first
 const pendingNext = new Map();  // lane key -> cars on a connector that will enter it next
+const connsInto = new Map();    // lane key -> keys of the turns that lead into it
 const pendingFrom = new Map();  // lane key + '|' + connector key -> how many of those cars are on that connector
 const laneCount = new Map();    // segment key -> number of cars on it
 const EMPTY = [];
@@ -635,6 +636,7 @@ function shapeConn(c) {
   c.len = c.C.len;
   c.d0 = { x: d0x, z: d0z };
   c.ringEntry = !!B.ring && !A.ring;
+  c.ringThrough = !!B.ring && !!A.ring;
 }
 // Which turns of one junction cross, merge or overlap each other: a car may only enter a turn while none of those is occupied.
 function computeConflicts() {
@@ -670,8 +672,8 @@ function computeConflicts() {
         }
         if (!hit) continue;
         const same = a.inKey === b.inKey, merge = !same && a.outKey === b.outKey;
-        a.conf.push({ key: b.key, same, merge });
-        b.conf.push({ key: a.key, same, merge });
+        a.conf.push({ key: b.key, same, merge, entry: !!b.ringEntry });
+        b.conf.push({ key: a.key, same, merge, entry: !!a.ringEntry });
       }
     }
   }
@@ -695,6 +697,12 @@ function buildAllConns() {
     }
   }
   computeConflicts();
+  connsInto.clear();
+  for (const c of conns.values()) {
+    let arr = connsInto.get(c.outKey);
+    if (!arr) { arr = []; connsInto.set(c.outKey, arr); }
+    arr.push(c.key);
+  }
 }
 
 // Dijkstra over lane states. Doors are dead ends for through traffic; busy lanes cost more.
@@ -1210,6 +1218,18 @@ function buildContGeo(cp) {
   const nx = -cp.dz, nz = cp.dx, B = (f, o) => ({ x: cp.dx * f + nx * o, y: 0, z: cp.dz * f + nz * o });
   g.tri(B(1.25, 0), B(0.8, 0.2), B(0.8, -0.2), col, col, col);
   return g.geometry();
+}
+// True when every district is joined to every other by roads (doors of one district count as joined).
+function districtsLinked() {
+  if (S.districts.length < 2) return true;
+  const par = new Map();
+  const find = x => { while (par.get(x) !== x) { par.set(x, par.get(par.get(x))); x = par.get(x); } return x; };
+  const add = x => { if (!par.has(x)) par.set(x, x); };
+  const join = (a, b) => { add(a); add(b); par.set(find(a), find(b)); };
+  for (const e of edges.values()) join(e.a, e.b);
+  for (const d of S.districts) for (const id of d.doors) { add(id); join(id, d.doors[0]); }
+  const root = find(S.districts[0].doors[0]);
+  return S.districts.every(d => find(d.doors[0]) === root);
 }
 // upgradeProblem is a full scan, so it is only repeated after the network or the districts change.
 function cachedProblem(e) {
@@ -2126,26 +2146,31 @@ function connBusy(c, need) {
     if (ph !== undefined && lightState(node, ph) !== 'g') return true;
   }
   if (c.ringEntry) {
-    // Cars may not fill the ring completely, or it would lock up.
-    const L = lanes.get(c.outKey), cnt = (laneCount.get(c.outKey) || 0) + (pendingNext.get(c.outKey) || 0);
-    if (L && cnt >= Math.max(1, Math.floor(L.len / need) - 1)) return true;
-    // ...and the ring as a whole keeps free places, so cars can always move on round it.
-    const rg = L && rings.get(L.ringId);
+    // The ring as a whole keeps a few free places, so cars can always move on round it. Counted by length,
+    // not per lane: ring lanes are short, and a per-lane limit left the ring almost empty.
+    const L = lanes.get(c.outKey), rg = L && rings.get(L.ringId);
     if (rg) {
-      let tot = 0, cap = 0;
+      let tot = 0, len = 0;
       for (const eid of rg.edges) {
         const e = edges.get(eid);
         if (!e) continue;
         for (let li = 0; li < KIND[e.kind].lanes; li++) {
           const k = `L${eid}.0.${li}`, ln = lanes.get(k);
           tot += (laneCount.get(k) || 0) + (pendingNext.get(k) || 0);
-          cap += ln ? Math.floor(ln.len / need) : 0;
+          len += ln ? ln.len : 0;
         }
       }
-      if (tot >= Math.max(2, cap - rg.edges.length)) return true;
+      if (tot >= Math.max(2, Math.floor(len / need) - 3)) return true;
+    }
+    // Cars already on the ring have priority: wait while one is close to this junction.
+    for (const k of node.ins) {
+      const ln = lanes.get(k);
+      if (!ln || !ln.ring) continue;
+      for (const o of bkOf(k)) if (o.s > ln.len - 1.8) return true;
     }
   }
   for (const f of c.conf) {
+    if (c.ringThrough && f.entry) continue;     // cars joining the ring give way to the ones on it
     const arr = bkOf(f.key);
     if (!arr.length) continue;
     if (!f.same) return true;
@@ -2171,7 +2196,19 @@ function moveCar(car, leader, dt) {
       // Cars still in a turn that leads into this lane have not reached the lane list yet; wait for them.
       // Cars of other turns that lead into this lane; cars queued in my own turn are handled by the gap logic.
       const others = (pendingNext.get(nk) || 0) - (seg.conn ? pendingFrom.get(nk + '|' + car.route[car.idx]) || 0 : 0);
-      if (others > 0) blocked = true;
+      if (others > 0) {
+        // Another turn leads into this lane too. Only the car that is less far along gives way, so two cars
+        // in merging turns can never wait for each other.
+        const myKey = car.route[car.idx], mine = seg.conn ? car.s / (seg.len || 1) : 0;
+        for (const ck of connsInto.get(nk) || []) {
+          if (ck === myKey) continue;
+          const cs = segOf(ck), arr = bkOf(ck);
+          for (const o of arr) {
+            const pg = o.s / ((cs && cs.len) || 1);
+            if (pg > mine + 1e-6 || (Math.abs(pg - mine) <= 1e-6 && ck < myKey)) blocked = true;
+          }
+        }
+      }
     }
   }
   if (leader) gap = leader.s - car.s - need;
@@ -2243,7 +2280,12 @@ function step(dt) {
 
   S.nextDistrictIn -= dt;
   if (S.nextDistrictIn <= 0) {
-    if (S.districts.length < MAX_DISTRICTS && addDistrict()) {
+    const linked = districtsLinked();
+    if (S.districts.length < MAX_DISTRICTS && !linked) {
+      // A new district only appears once every district so far is connected.
+      if (S.t - (S.linkHint === undefined ? -99 : S.linkHint) > 30) { S.linkHint = S.t; toast('Новый район появится, когда все районы соединены дорогами', 3400); }
+      S.nextDistrictIn = 3;
+    } else if (S.districts.length < MAX_DISTRICTS && addDistrict()) {
       const d = S.districts[S.districts.length - 1];
       S.money += 40;
       toast(`Новый район «${d.name}» · +$40`, 3000);
@@ -2313,7 +2355,7 @@ function newGame() {
   placeTrees();
   S.t = 0; S.money = START_MONEY; S.delivered = 0; S.meter = 0;
   S.over = false; S.running = true;
-  S.nextDistrictIn = 12; S.jamCool = 0;
+  S.nextDistrictIn = 12; S.jamCool = 0; S.linkHint = undefined;
   addDistrict(0);
   if (!addDistrict(1, 24)) addDistrict(1);
   fitDistance();
@@ -2683,7 +2725,7 @@ requestAnimationFrame(frame);
 
 // Debug handle for automated checks.
 window.trafficArchitect = {
-  S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD }, addDistrict, contPoint,
+  S, nodes, edges, lanes, conns, bk, constants: { CAR_LEN, MIN_GAP, JAM_T, FIELD }, addDistrict, contPoint, districtsLinked,
   newGame, step, setTool, setSpeed, carPose, applyPlan, removeNear, upgradeNear, selectNear, upgradeProblem, upgradeEdge, rings, setRingLanes, ringLanesProblem, makeRoundabout, dissolveRing, resizeRing, ringProblem, toggleLight, lightState,
   planAt(points, kind) {
     S.plan = computePlan(points.map(p => ({ x: p.x, z: p.z })), kind === 'avenue' ? 2 : 1);
