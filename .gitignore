@@ -8,3 +8,4 @@ coverage/
 # starship: single-file build output is committed on purpose
 packages/starship/.build/
 !packages/starship/dist/
+!packages/arsenal/dist/

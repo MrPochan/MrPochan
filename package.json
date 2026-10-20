@@ -10,7 +10,8 @@
     "packages/core",
     "packages/server",
     "packages/client",
-    "packages/starship"
+    "packages/starship",
+    "packages/arsenal"
   ],
   "scripts": {
     "test": "npm run test --workspaces --if-present",

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0d0e16" />
+    <title>Arsenal</title>
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #0d0e16;
+        color: #e6e9f5;
+        font-family: system-ui, sans-serif;
+        overflow: hidden;
+        overscroll-behavior: none;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #game { position: fixed; inset: 0; }
+      #game canvas { display: block; width: 100%; height: 100%; }
+      #hud {
+        position: fixed;
+        top: env(safe-area-inset-top, 0px);
+        left: 0;
+        right: 0;
+        padding: 12px 16px;
+        display: flex;
+        justify-content: space-between;
+        font-size: 18px;
+        pointer-events: none;
+        text-shadow: 0 1px 2px #000;
+      }
+      #over {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        text-align: center;
+        background: rgba(0, 0, 0, 0.55);
+        font-size: 22px;
+        pointer-events: none;
+      }
+      #over[hidden] { display: none; }
+      .zone { position: fixed; top: 0; bottom: 0; width: 50%; z-index: 2; touch-action: none; }
+      .zone.left { left: 0; }
+      .zone.right { right: 0; }
+      .stick {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 112px;
+        height: 112px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.35);
+        background: rgba(255, 255, 255, 0.08);
+        display: none;
+        pointer-events: none;
+        z-index: 3;
+      }
+      .knob {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 44px;
+        height: 44px;
+        margin: -22px 0 0 -22px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.4);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+    <div id="hud"><span id="hp"></span><span id="room"></span></div>
+    <div id="over" hidden>Вы погибли. Нажмите справа или кликните, чтобы начать заново</div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
