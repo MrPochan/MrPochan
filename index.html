@@ -239,6 +239,7 @@ body.touch #hud.on ~ #touch{display:block}
   <div class="set"><label><span>Графика</span></label><div class="seg" id="qSeg"><button data-q="auto">Авто</button><button data-q="high">Высокая</button><button data-q="low">Лёгкая</button></div></div>
   <div class="set"><label><span>Тряска камеры</span></label><div class="seg" id="shSeg"><button data-v="1">Вкл</button><button data-v="0">Выкл</button></div></div>
   <div class="set"><label><span>Числа урона</span></label><div class="seg" id="dnSeg"><button data-v="1">Вкл</button><button data-v="0">Выкл</button></div></div>
+  <div class="set"><label><span>Автонаведение при стрельбе</span></label><div class="seg" id="aaSeg"><button data-v="1">Вкл</button><button data-v="0">Выкл</button></div></div>
   <div class="set"><label><span>Сенсорное управление</span></label><div class="seg" id="tcSeg"><button data-v="auto">Авто</button><button data-v="1">Вкл</button><button data-v="0">Выкл</button></div></div>
   <button class="btn" id="setBack">Назад</button>
 </div></div>
@@ -511,7 +512,7 @@ const Save = {
   data: null,
   defaults() {
     return {
-      settings: { master: 0.8, music: 0.5, sfx: 0.8, sens: 1, quality: 'auto', shake: 1, dmgnum: 1, touch: 'auto' },
+      settings: { master: 0.8, music: 0.5, sfx: 0.8, sens: 1, quality: 'auto', shake: 1, dmgnum: 1, touch: 'auto', autoaim: 1 },
       stats: { runs: 0, wins: 0, kills: 0, bestFloor: 0, bestScore: 0, bestTime: 0, deaths: 0, items: 0, bosses: 0 },
       ach: {}, tutorialSeen: false
     };
@@ -2528,6 +2529,7 @@ const Player = {
     // aim
     let mvx = Input.mv.x, mvz = Input.mv.z; const mm = Math.hypot(mvx, mvz);
     if (Input.aimMode !== 'none') P.aim = Input.aimAng; else if (mm > 0.2) P.aim = Math.atan2(mvx, mvz);
+    if (Input.fire && Save.data.settings.autoaim) { const ta = Weapons.autoAim(); if (ta !== null) P.aim = ta; }
     // velocity
     const spd = BAL.playerSpeed * (1 + S.speed) * (P.adrenT > 0 && S.adren ? 1.25 : 1);
     if (P.dashT > 0) {
@@ -2670,6 +2672,20 @@ const Weapons = {
     if (w.mag <= 0 && w.reserve <= 0 && w.rel <= 0 && P.cur !== 0) { P.cur = 0; Player.setGun(); UI.toast('Патроны закончились — ПМ-9', 1600); UI.dirty.weapon = true; }
   },
   dryFire(w) { if (w.cd <= 0) { Sfx.p('empty'); w.cd = 0.3; } },
+  /* aim assist while the trigger is held: best visible enemy near the manual aim, with target lead */
+  autoAim() {
+    const w = this.cur(), W = WEAPONS[w.id], reach = Math.max(8, Math.min(W.rng || 12, 16)); let best = null, bs = 1e9;
+    for (const e of Foes.list) {
+      if (!e.alive || e.spawnT > 0 || e.ghost) continue;
+      const dx = e.x - P.x, dz = e.z - P.z, d = Math.hypot(dx, dz); if (d > reach + e.r || !Phys.los(P.x, P.z, e.x, e.z)) continue;
+      const sc = d + Math.abs(angDiff(P.aim, Math.atan2(dx, dz))) * 4 - (e.boss ? 1.5 : 0);
+      if (sc < bs) { bs = sc; best = e; }
+    }
+    if (!best) return null;
+    const spd = (W.k === 'bullet' || W.k === 'rocket' || W.k === 'boom' || W.k === 'sing' || W.k === 'flame') ? Math.max(8, W.spd || 20) : 0;
+    let tx = best.x, tz = best.z; if (spd && !best.static) { const t = Math.hypot(tx - P.x, tz - P.z) / spd * 0.8; tx += (best.vx || 0) * t; tz += (best.vz || 0) * t; }
+    return Math.atan2(tx - P.x, tz - P.z);
+  },
   muzzle() { const f = P.gunLen + 0.55; return { x: P.x + Math.sin(P.aim) * f, z: P.z + Math.cos(P.aim) * f }; },
   shoot(w, W) {
     const S = P.S; w.mag--; w.fireN++; UI.dirty.weapon = true;
@@ -3589,7 +3605,7 @@ const UI = {
     $('vSfx').addEventListener('change', () => Sfx.p('hit'));
     const seg = (id, key, fn) => $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const v = b.dataset.q || b.dataset.v; fn(v); Sfx.p('ui'); this.syncSettings(); Save.save(); });
     seg('qSeg', 'quality', v => { S().quality = v; Perf.setQuality(v); });
-    seg('shSeg', 'shake', v => S().shake = +v); seg('dnSeg', 'dmgnum', v => S().dmgnum = +v);
+    seg('aaSeg', 'autoaim', v => S().autoaim = +v); seg('shSeg', 'shake', v => S().shake = +v); seg('dnSeg', 'dmgnum', v => S().dmgnum = +v);
     seg('tcSeg', 'touch', v => { S().touch = v; Input.applyTouchSetting(); });
     this.syncSettings(); this.updateContinue();
     $('wSlots').addEventListener('click', e => { const c = e.target.closest('canvas'); if (c) Weapons.swap(+c.dataset.i); });
@@ -3600,7 +3616,7 @@ const UI = {
     const set = (id, v) => { $(id).value = Math.round(v * 100); $(id + 'V').textContent = Math.round(v * 100) + '%'; };
     set('vMaster', s.master); set('vMusic', s.music); set('vSfx', s.sfx); set('vSens', s.sens);
     const mark = (id, val) => { for (const b of $(id).children) b.classList.toggle('on', (b.dataset.q || b.dataset.v) === String(val)); };
-    mark('qSeg', s.quality); mark('shSeg', s.shake); mark('dnSeg', s.dmgnum); mark('tcSeg', s.touch);
+    mark('qSeg', s.quality); mark('aaSeg', s.autoaim); mark('shSeg', s.shake); mark('dnSeg', s.dmgnum); mark('tcSeg', s.touch);
   },
   updateContinue() {
     const r = Save.loadRun(); const b = $('mCont'); b.style.display = r ? 'flex' : 'none';
