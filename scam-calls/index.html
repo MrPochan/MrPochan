@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Колл-центр «Лохотрон»</title>
+<style>
+:root{--bg:#10141c;--panel:#1a2130;--line:#2a3550;--text:#e6ebf5;--dim:#8a96b0;--ok:#3ddc84;--bad:#ff5c6c;--warn:#ffb020;--acc:#4da3ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 system-ui,sans-serif;min-height:100vh;display:flex;justify-content:center}
+#app{width:100%;max-width:560px;padding:12px 16px 32px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.stat{flex:1;min-width:90px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.stat small{display:block;color:var(--dim);font-size:12px}
+.stat b{font-size:18px}
+.meter{height:8px;background:#0b0f16;border-radius:4px;overflow:hidden;margin-top:4px}
+.meter i{display:block;height:100%;width:0;background:var(--acc);transition:width .3s}
+#heatbar i{background:var(--bad)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px}
+h1,h2{margin:0 0 8px}
+button{font:inherit;color:var(--text);background:#243049;border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer;text-align:left}
+button:hover:not(:disabled){background:#2d3b5a}
+button:disabled{opacity:.45;cursor:default}
+button.main{background:var(--acc);color:#04101f;border:0;font-weight:700;text-align:center}
+.opts{display:grid;gap:8px;margin-top:12px}
+.opt small{color:var(--dim);display:block}
+.log{min-height:120px;max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.me,.them{padding:8px 12px;border-radius:12px;max-width:88%}
+.me{align-self:flex-end;background:#1f4a7a}
+.them{align-self:flex-start;background:#2b3347}
+.sys{color:var(--dim);font-size:13px;text-align:center}
+.ring{animation:ring .5s infinite alternate}
+@keyframes ring{to{transform:scale(1.03);border-color:var(--ok)}}
+.shop{display:grid;gap:8px;margin:12px 0}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.good{color:var(--ok)}.badc{color:var(--bad)}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="bar">
+    <div class="stat"><small>День</small><b id="sDay">1</b></div>
+    <div class="stat"><small>Деньги</small><b id="sMoney">0 ₽</b></div>
+    <div class="stat"><small>Время</small><b id="sTime">--</b></div>
+    <div class="stat"><small>Внимание полиции</small><div class="meter" id="heatbar"><i></i></div></div>
+  </div>
+  <div id="screen"></div>
+</div>
+
+<script>
+// ---------- данные ----------
+const TONES = {
+  polite:{name:'Вежливо'}, flatter:{name:'Лесть'}, pressure:{name:'Давление'},
+  jargon:{name:'Умные слова'}, sympathy:{name:'Сочувствие'}
+};
+// реплики оператора: stage -> tone -> варианты
+const LINES = {
+  0:{polite:['Добрый день! Вас беспокоит служба «Всё Для Вас».','Здравствуйте, это не займёт много времени.'],
+     flatter:['Здравствуйте! У вас такой приятный голос!','О, наконец-то я дозвонился до самого приятного человека!'],
+     pressure:['Слушайте внимательно, у меня мало времени.','Не вешайте трубку, это касается вас лично!'],
+     jargon:['Добрый день, отдел верификации транзакционных профилей.','Звоню по вопросу синхронизации вашего абонентского кластера.'],
+     sympathy:['Здравствуйте, как у вас день? Вы не устали?','Добрый день, надеюсь, не отвлекаю от важных дел.']},
+  1:{polite:['У вас выигрыш в нашем розыгрыше призов. Хотите узнать подробности?','Мы подготовили для вас специальное предложение.'],
+     flatter:['Вы один из немногих, кого выбрали за безупречную репутацию!','Такие клиенты, как вы, — наша гордость. Для вас — приз!'],
+     pressure:['Приз сгорит через пять минут, решайте сейчас!','Предложение действует только сегодня, потом будет поздно.'],
+     jargon:['Алгоритм определил у вас рейтинг лояльности класса «А+».','Ваш идентификатор попал в пул беспроигрышной эмиссии.'],
+     sympathy:['Понимаю, сейчас всем непросто. Именно поэтому мы хотим вам помочь.','Вы заслуживаете хорошего подарка, после всего что пережили.']},
+  2:{polite:['Осталась небольшая комиссия за оформление. Вам удобно сейчас?','Для получения нужно оплатить символический сбор.'],
+     flatter:['Для такого человека сбор — пустяк, правда же?','Вы ведь не из тех, кто упустит такую возможность?'],
+     pressure:['Платите сбор немедленно, иначе всё аннулируется!','Диктуйте реквизиты, у меня очередь.'],
+     jargon:['Требуется подтверждение через эквайринговый шлюз, сбор — формальность.','Нужна оплата комиссии для активации токена получателя.'],
+     sympathy:['Я сам переживаю за вас. Давайте закроем сбор, и всё у вас будет хорошо.','Не волнуйтесь, я помогу вам пройти последний шаг.']}
+};
+const ARCH = [
+  {name:'Бабушка Нина',emoji:'👵',wallet:[3000,9000],need:62,heat:2,patience:22,
+   aff:{polite:14,flatter:10,pressure:-14,jargon:-12,sympathy:16},
+   open:['Алло? Кто это? Говорите погромче, внучек.','Алло, да-да, слушаю вас.'],
+   good:['Ой, какой вы хороший человек!','Надо же, как приятно!','Ох, спасибо, милый.'],
+   meh:['Что-что? Я не поняла...','Ну не знаю...','Подождите, очки найду.'],
+   bad:['Ой, вы на меня кричите!','Я внучке позвоню, она разберётся...','Ничего не поняла, страшно как-то.'],
+   win:'Ладно, сейчас номер карты найду...',lose:'Нет, я лучше сыну позвоню. Всего доброго!'},
+  {name:'Студент Дима',emoji:'🎧',wallet:[800,2500],need:55,heat:3,patience:16,
+   aff:{polite:2,flatter:10,pressure:-4,jargon:8,sympathy:4},
+   open:['Ну, говорите.','Чё надо?'],
+   good:['Хм, звучит прикольно.','О, неплохо.','А круто, продолжайте.'],
+   meh:['Ну ок...','Мм, не знаю.','Та ладно.'],
+   bad:['Это развод какой-то?','Скучно, я играю.','Не грузите меня.'],
+   win:'Ладно, это ж копейки, отправляю.',lose:'Нет, мне пары бросать. Пока!'},
+  {name:'Бизнесмен Олег',emoji:'💼',wallet:[10000,30000],need:70,heat:4,patience:14,
+   aff:{polite:6,flatter:-10,pressure:-8,jargon:12,sympathy:-4},
+   open:['Олег, слушаю. У вас минута.','Да. Кратко.'],
+   good:['Конкретно. Продолжайте.','Хм, интересно.','Это звучит логично.'],
+   meh:['Где суть?','Я должен проверить.','Допустим.'],
+   bad:['Вы мне время тратите.','Передам юристам.','Это какая-то чушь.'],
+   win:'Хорошо. Присылайте реквизиты, закрою быстро.',lose:'Всё. Мой юрист с вами свяжется.'},
+  {name:'Дед Василий',emoji:'🧓',wallet:[2000,6000],need:66,heat:3,patience:20,
+   aff:{polite:12,flatter:2,pressure:-16,jargon:-6,sympathy:8},
+   open:['Ну? Чего звоните?','Василий на проводе. Что случилось?'],
+   good:['Ну, это дело.','Слушаю, слушаю.','Правильно говорите.'],
+   meh:['Я таким не верю...','Хм.','Погоди, не торопи.'],
+   bad:['Жуликов развелось!','Я на таких в своё время...','Не кричи на меня, сопляк.'],
+   win:'Ну ладно, пиши данные карты...',lose:'Всё, жулик! Я в полицию звоню!'},
+  {name:'Тайный агент',emoji:'🕵️',wallet:[0,0],need:101,heat:18,patience:25,undercover:true,
+   aff:{polite:3,flatter:3,pressure:3,jargon:3,sympathy:3},
+   open:['Алло. Слушаю вас внимательно.','Да? Представьтесь, пожалуйста.'],
+   good:['Так, интересно, запишу...','Продолжайте, пожалуйста.'],
+   meh:['Угу. Говорите чётче.','Продолжайте.'],
+   bad:['Мы записываем разговор.','Запишу ваш номер.'],
+   win:'',lose:'Вы задержаны... шучу, но номер мы пробили. До свидания.'},
+  {name:'Блогер-расследователь',emoji:'📹',wallet:[0,0],need:101,heat:10,patience:18,undercover:true,
+   aff:{polite:0,flatter:0,pressure:0,jargon:0,sympathy:0},
+   open:['Привет! Вы в прямом эфире, 12 тысяч зрителей!','Алло, это канал «Разоблачитель», вы в эфире.'],
+   good:['Чат смеётся, продолжайте!','Отлично, скрин сделали.'],
+   meh:['Чат требует подробностей.','Да-да, говорите.'],
+   bad:['Всё, это в монтаже.','Ролик уже собирает просмотры.'],
+   win:'',lose:'Спасибо, ролик выйдет вечером!'}
+];
+const UPG = [
+  {id:'script',name:'Сценарий продаж',desc:'+6 к доверию в каждой реплике',base:3000,max:5},
+  {id:'coffee',name:'Энергетик',desc:'+3 сек. терпения жертвы',base:2000,max:4},
+  {id:'vpn',name:'VPN и сим-карты',desc:'−1 к внимания полиции за звонок и −8 в конце дня',base:4000,max:5},
+  {id:'dialer',name:'Автодозвон',desc:'Звонки приходят чаще',base:3500,max:5},
+  {id:'staff',name:'Нанять оператора',desc:'Пассивный доход +400 ₽ в минуту',base:6000,max:6}
+];
+const DAY_LEN = 90;     // секунд на день
+const RENT_BASE = 800;  // аренда за день
+
+// ---------- состояние ----------
+let S = load() || {day:1,money:0,heat:0,up:{},stats:{sold:0,earned:0}};
+let run = null;       // состояние дня
+let call = null;      // активный звонок
+let ringing = null;   // входящий
+
+function load(){try{return JSON.parse(localStorage.getItem('scamcalls'))}catch(e){return null}}
+function save(){try{localStorage.setItem('scamcalls',JSON.stringify(S))}catch(e){}}
+const lv = id => S.up[id]||0;
+const rnd = (a,b)=>a+Math.random()*(b-a);
+const pick = a => a[Math.floor(Math.random()*a.length)];
+const $ = id => document.getElementById(id);
+const fmt = n => Math.round(n).toLocaleString('ru-RU')+' ₽';
+
+// ---------- звук ----------
+let ac=null;
+function beep(f=440,d=.15,t='sine',v=.08){
+  try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+    const o=ac.createOscillator(),g=ac.createGain();o.type=t;o.frequency.value=f;g.gain.value=v;
+    o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+d);}catch(e){}
+}
+const ringSound=()=>{beep(700,.12);setTimeout(()=>beep(900,.12),160)};
+
+// ---------- интерфейс ----------
+function hud(){
+  $('sDay').textContent=S.day;
+  $('sMoney').textContent=fmt(S.money);
+  $('sTime').textContent=run?Math.max(0,Math.ceil(run.left))+' с':'--';
+  $('heatbar').firstElementChild.style.width=Math.min(100,S.heat)+'%';
+}
+function screen(html){$('screen').innerHTML=html;hud()}
+
+function menu(){
+  screen(`<div class="card"><h1>📞 Колл-центр «Лохотрон»</h1>
+  <p>Сатирический симулятор: вы — оператор вымышленного мошеннического колл-центра. Принимайте входящие, выбирайте тон разговора и «продавайте» воображаемые призы персонажам. Но осторожно: полиция не дремлет.</p>
+  <p class="sys">Всё вымышлено. Игра высмеивает мошенничество, а не обучает ему.</p>
+  <div class="opts">
+    <button class="main" onclick="startDay()">${S.day>1?'Продолжить — день '+S.day:'Начать смену'}</button>
+    ${S.day>1||S.money?'<button onclick="resetAll()">Начать заново</button>':''}
+  </div></div>`);
+}
+function resetAll(){if(confirm('Стереть прогресс?')){S={day:1,money:0,heat:0,up:{},stats:{sold:0,earned:0}};save();menu()}}
+
+function startDay(){
+  run={left:DAY_LEN,nextCall:2,earned:0,sold:0,missed:0,passive:0,tick:0};
+  call=null;ringing=null;
+  idle();
+  clearInterval(window.__t);window.__t=setInterval(tick,250);
+}
+function idle(){
+  screen(`<div class="card" id="phone"><h2>Ожидание звонка…</h2><p class="sys">Телефон молчит. Будьте наготове.</p></div>
+  <div class="card"><div class="row"><span>Заработано за смену</span><b class="good">${fmt(run.earned)}</b></div>
+  <div class="row"><span>Продаж</span><b>${run.sold}</b></div><div class="row"><span>Пропущено</span><b>${run.missed}</b></div></div>`);
+}
+
+function tick(){
+  const dt=.25;
+  run.left-=dt;
+  // пассивный доход операторов
+  const passive=lv('staff')*400/60*dt;run.passive+=passive;S.money+=passive;run.earned+=passive;
+  // входящий
+  if(!call){
+    if(ringing){
+      ringing.t-=dt;
+      if(ringing.t<=0){ringing=null;run.missed++;run.nextCall=rnd(3,6)/(1+lv('dialer')*.25);idle();}
+    }else{
+      run.nextCall-=dt;
+      if(run.nextCall<=0)incoming();
+    }
+  }else{
+    call.timer-=dt;
+    const b=$('pbar');if(b)b.style.width=Math.max(0,call.timer/call.max*100)+'%';
+    if(call.timer<=0)endCall(false,'Жертва потеряла терпение и повесила трубку.');
+  }
+  if(run.left<=0&&!call){endDay();return}
+  if(run.left<=-30&&call){endDay();return}
+  hud();
+}
+
+function incoming(){
+  // шанс агента растёт с днями
+  const pool=ARCH.filter(a=>!a.undercover||Math.random()<.12+S.day*.01);
+  const a=pick(pool);
+  ringing={a,t:7};
+  ringSound();
+  screen(`<div class="card ring"><h2>${a.emoji} Входящий звонок!</h2><p class="sys">Неизвестный номер…</p>
+    <button class="main" onclick="answer()">Ответить</button></div>`);
+}
+
+function answer(){
+  if(!ringing)return;
+  const a=ringing.a;ringing=null;
+  const max=a.patience+lv('coffee')*3;
+  call={a,stage:0,trust:28+lv('script')*2,timer:max,max,wallet:Math.round(rnd(a.wallet[0],a.wallet[1])/100)*100,log:[]};
+  renderCall(true);
+}
+
+function renderCall(first){
+  const a=call.a;
+  if(first)call.log.push(['them',pick(a.open)]);
+  const tones=Object.keys(TONES).sort(()=>Math.random()-.5).slice(0,3);
+  call.opts=tones.map(t=>({tone:t,text:pick(LINES[call.stage][t])}));
+  const logHtml=call.log.map(([w,t])=>`<div class="${w}">${t}</div>`).join('');
+  screen(`<div class="card"><div class="row"><h2>${a.emoji} ${a.name}</h2><span class="sys">Этап ${call.stage+1}/3</span></div>
+    <div class="meter"><i id="pbar" style="width:100%;background:var(--warn)"></i></div>
+    <div class="log" id="log" style="margin-top:12px">${logHtml}</div>
+    <div class="opts">${call.opts.map((o,i)=>`<button class="opt" onclick="say(${i})"><small>${TONES[o.tone].name}</small>${o.text}</button>`).join('')}</div>
+    <p class="sys">Доверие: <b id="trust">${Math.round(call.trust)}</b>%</p></div>`);
+  const l=$('log');l.scrollTop=l.scrollHeight;
+}
+
+function say(i){
+  const o=call.opts[i],a=call.a;
+  call.log.push(['me',o.text]);
+  const d=a.aff[o.tone]+lv('script')*6*(a.undercover?0:1)/3+rnd(-5,5);
+  call.trust=Math.max(0,Math.min(100,call.trust+d));
+  const kind=d>6?'good':d>-2?'meh':'bad';
+  call.log.push(['them',pick(a[kind])]);
+  call.timer=call.max;
+  beep(kind==='good'?660:kind==='bad'?200:400,.1);
+  if(call.trust<=8&&!a.undercover)return endCall(false,'Доверие упало до нуля — трубку бросили.');
+  call.stage++;
+  if(call.stage>=3)return finish();
+  renderCall(false);
+}
+
+function finish(){
+  const a=call.a;
+  if(a.undercover)return endCall(false,a.lose);
+  if(call.trust>=a.need){
+    const pay=call.wallet*(call.trust/100)*1.0;
+    call.log.push(['them',a.win]);
+    endCall(true,'Сделка! Сорвали куш.',pay);
+  }else endCall(false,a.lose);
+}
+
+function endCall(ok,msg,pay=0){
+  const a=call.a;
+  let heat=a.heat-lv('vpn');
+  if(ok){heat=Math.max(1,heat);}else if(!a.undercover){heat=Math.max(0,heat-2)}
+  else heat=a.heat; // агенты и блогеры не боятся VPN
+  if(heat<0)heat=0;
+  S.heat+=heat;
+  if(ok){S.money+=pay;run.earned+=pay;run.sold++;S.stats.sold++;S.stats.earned+=pay;beep(880,.25);}
+  const log=call.log.map(([w,t])=>`<div class="${w}">${t}</div>`).join('');
+  call=null;run.nextCall=rnd(2,5)/(1+lv('dialer')*.25);
+  save();hud();
+  screen(`<div class="card"><h2 class="${ok?'good':'badc'}">${ok?'Успех: +'+fmt(pay):'Неудача'}</h2>
+    <div class="log">${log}</div><p>${msg}</p>
+    <p class="sys">Внимание полиции: ${heat>0?'+'+heat:'без изменений'}</p>
+    <button class="main" onclick="next()">Дальше</button></div>`);
+  if(S.heat>=100){clearInterval(window.__t);setTimeout(raid,600);}
+}
+function next(){ if(S.heat>=100)return; run.left<=0?endDay():idle(); }
+
+function raid(){
+  clearInterval(window.__t);
+  screen(`<div class="card"><h1 class="badc">🚔 Облава!</h1>
+  <p>Полиция нагрянула в офис. Оборудование изъято, деньги арестованы. Вы продержались ${S.day} дн. и выручили ${fmt(S.stats.earned)}.</p>
+  <button class="main" onclick="S={day:1,money:0,heat:0,up:{},stats:{sold:0,earned:0}};save();menu()">Новая карьера</button></div>`);
+}
+
+function endDay(){
+  clearInterval(window.__t);
+  if(call){call=null}
+  ringing=null;
+  const rent=RENT_BASE+S.day*200+lv('staff')*300;
+  S.money-=rent;
+  S.heat=Math.max(0,S.heat-8-lv('vpn')*8);
+  const broke=S.money<0;
+  if(broke)S.money=0;
+  S.day++;save();
+  const items=UPG.map(u=>{
+    const l=lv(u.id),cost=u.base*(l+1);
+    return `<div class="row card" style="margin:0"><div><b>${u.name}</b> <small class="sys">ур. ${l}/${u.max}</small><br><small class="sys">${u.desc}</small></div>
+    <button ${l>=u.max||S.money<cost?'disabled':''} onclick="buy('${u.id}')">${l>=u.max?'MAX':fmt(cost)}</button></div>`;
+  }).join('');
+  screen(`<div class="card"><h2>Итоги смены</h2>
+    <div class="row"><span>Выручка</span><b class="good">${fmt(run.earned)}</b></div>
+    <div class="row"><span>Продаж / пропущено</span><b>${run.sold} / ${run.missed}</b></div>
+    <div class="row"><span>Аренда и зарплаты</span><b class="badc">−${fmt(rent)}</b></div>
+    ${broke?'<p class="badc">Вы ушли в ноль — аренда съела всё.</p>':''}
+    <h2 style="margin-top:14px">Магазин</h2><div class="shop">${items}</div>
+    <button class="main" onclick="startDay()">Следующий день</button></div>`);
+}
+function buy(id){
+  const u=UPG.find(x=>x.id===id),l=lv(id),cost=u.base*(l+1);
+  if(l>=u.max||S.money<cost)return;
+  S.money-=cost;S.up[id]=l+1;save();
+  // перерисовать магазин, не теряя итогов
+  const keep=run;endDayRender(keep);
+}
+function endDayRender(r){
+  const rentShown=RENT_BASE+(S.day-1)*200+lv('staff')*300;
+  const items=UPG.map(u=>{
+    const l=lv(u.id),cost=u.base*(l+1);
+    return `<div class="row card" style="margin:0"><div><b>${u.name}</b> <small class="sys">ур. ${l}/${u.max}</small><br><small class="sys">${u.desc}</small></div>
+    <button ${l>=u.max||S.money<cost?'disabled':''} onclick="buy('${u.id}')">${l>=u.max?'MAX':fmt(cost)}</button></div>`;
+  }).join('');
+  screen(`<div class="card"><h2>Итоги смены</h2>
+    <div class="row"><span>Выручка</span><b class="good">${fmt(r.earned)}</b></div>
+    <div class="row"><span>Продаж / пропущено</span><b>${r.sold} / ${r.missed}</b></div>
+    <div class="row"><span>Аренда и зарплаты</span><b class="badc">−${fmt(rentShown)}</b></div>
+    <h2 style="margin-top:14px">Магазин</h2><div class="shop">${items}</div>
+    <button class="main" onclick="startDay()">Следующий день</button></div>`);
+}
+
+menu();
+</script>
+</body>
+</html>
