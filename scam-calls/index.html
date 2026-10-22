@@ -2,13 +2,14 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
 <title>Колл-центр «Лохотрон»</title>
 <style>
-:root{--bg:#10141c;--panel:#1a2130;--line:#2a3550;--text:#e6ebf5;--dim:#8a96b0;--ok:#3ddc84;--bad:#ff5c6c;--warn:#ffb020;--acc:#4da3ff}
+:root{color-scheme:dark;--bg:#10141c;--panel:#1a2130;--line:#2a3550;--text:#e6ebf5;--dim:#8a96b0;--ok:#3ddc84;--bad:#ff5c6c;--warn:#ffb020;--acc:#4da3ff}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 system-ui,sans-serif;min-height:100vh;display:flex;justify-content:center}
-#app{width:100%;max-width:560px;padding:12px 16px 32px}
+#app{width:100%;max-width:560px;padding-block:12px 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .stat{flex:1;min-width:90px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
 .stat small{display:block;color:var(--dim);font-size:12px}
@@ -35,6 +36,9 @@ button.main{background:var(--acc);color:#04101f;border:0;font-weight:700;text-al
 .row{display:flex;justify-content:space-between;gap:8px;align-items:center}
 .good{color:var(--ok)}.badc{color:var(--bad)}
 .hidden{display:none}
+textarea{width:100%;font:inherit;color:var(--text);background:#0b0f16;border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:12px;resize:none}
+textarea:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.acts{display:flex;gap:8px;margin-top:8px}.acts .main{flex:1}
 </style>
 </head>
 <body>
@@ -131,6 +135,15 @@ let S = load() || {day:1,money:0,heat:0,up:{},stats:{sold:0,earned:0}};
 let run = null;       // состояние дня
 let call = null;      // активный звонок
 let ringing = null;   // входящий
+let AI = null;        // claude.use('sample') — живой собеседник; null = офлайн-сценарии
+let inMenu = false;
+(async()=>{try{AI = await window.claude.use('sample')}catch(e){AI=null}; if(inMenu)menu();})();
+const DESC={'Бабушка Нина':'пожилая доверчивая женщина, плохо слышит, пугается сложных слов, любит, когда с ней добры; может посоветоваться с внучкой',
+'Студент Дима':'студент 20 лет, скучающий, денег мало, любит юмор, не любит занудство',
+'Бизнесмен Олег':'занятой предприниматель, ценит конкретику и цифры, презирает лесть и воду, может сослаться на юриста',
+'Дед Василий':'пенсионер-ворчун, не доверяет незнакомцам, ненавидит давление, уважает вежливость',
+'Тайный агент':'сотрудник полиции под прикрытием: нейтрален, мягко выспрашивает детали, никогда не платит',
+'Блогер-расследователь':'блогер в прямом эфире: подыгрывает, провоцирует оператора на глупости, никогда не платит'};
 
 function load(){try{return JSON.parse(localStorage.getItem('scamcalls'))}catch(e){return null}}
 function save(){try{localStorage.setItem('scamcalls',JSON.stringify(S))}catch(e){}}
@@ -159,8 +172,10 @@ function hud(){
 function screen(html){$('screen').innerHTML=html;hud()}
 
 function menu(){
+  inMenu=true;
   screen(`<div class="card"><h1>📞 Колл-центр «Лохотрон»</h1>
   <p>Сатирический симулятор: вы — оператор вымышленного мошеннического колл-центра. Принимайте входящие, выбирайте тон разговора и «продавайте» воображаемые призы персонажам. Но осторожно: полиция не дремлет.</p>
+  <p>${AI?'<b class="good">Живой режим:</b> жертвы отвечают как Claude, печатайте реплики своими словами.':'<b>Офлайн-режим:</b> готовые реплики на выбор.'}</p>
   <p class="sys">Всё вымышлено. Игра высмеивает мошенничество, а не обучает ему.</p>
   <div class="opts">
     <button class="main" onclick="startDay()">${S.day>1?'Продолжить — день '+S.day:'Начать смену'}</button>
@@ -170,6 +185,7 @@ function menu(){
 function resetAll(){if(confirm('Стереть прогресс?')){S={day:1,money:0,heat:0,up:{},stats:{sold:0,earned:0}};save();menu()}}
 
 function startDay(){
+  inMenu=false;
   run={left:DAY_LEN,nextCall:2,earned:0,sold:0,missed:0,passive:0,tick:0};
   call=null;ringing=null;
   idle();
@@ -196,7 +212,7 @@ function tick(){
       if(run.nextCall<=0)incoming();
     }
   }else{
-    call.timer-=dt;
+    if(!call.busy)call.timer-=dt;
     const b=$('pbar');if(b)b.style.width=Math.max(0,call.timer/call.max*100)+'%';
     if(call.timer<=0)endCall(false,'Жертва потеряла терпение и повесила трубку.');
   }
@@ -218,9 +234,10 @@ function incoming(){
 function answer(){
   if(!ringing)return;
   const a=ringing.a;ringing=null;
-  const max=a.patience+lv('coffee')*3;
+  const max=(a.patience+lv('coffee')*3)*(AI?2.5:1);
   call={a,stage:0,trust:28+lv('script')*2,timer:max,max,wallet:Math.round(rnd(a.wallet[0],a.wallet[1])/100)*100,log:[]};
-  renderCall(true);
+  call.ai=!!AI;
+  call.ai?renderAI(true):renderCall(true);
 }
 
 function renderCall(first){
@@ -235,6 +252,68 @@ function renderCall(first){
     <div class="opts">${call.opts.map((o,i)=>`<button class="opt" onclick="say(${i})"><small>${TONES[o.tone].name}</small>${o.text}</button>`).join('')}</div>
     <p class="sys">Доверие: <b id="trust">${Math.round(call.trust)}</b>%</p></div>`);
   const l=$('log');l.scrollTop=l.scrollHeight;
+}
+
+function esc(t){return String(t).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function renderAI(first){
+  const a=call.a;
+  if(first){call.turns=0;call.hist=[];call.log=[['them',pick(a.open)]];call.hist.push('Жертва: '+call.log[0][1]);}
+  screen(`<div class="card"><div class="row"><h2>${a.emoji} ${a.name}</h2><span class="sys" id="tc">Реплика ${call.turns}/${MAXT}</span></div>
+    <div class="meter"><i id="pbar" style="width:100%;background:var(--warn)"></i></div>
+    <div class="log" id="log" style="margin-top:12px">${call.log.map(([w,t])=>`<div class="${w}">${esc(t)}</div>`).join('')}</div>
+    <textarea id="msg" rows="2" maxlength="300" placeholder="Что вы скажете? Например: представьтесь, предложите приз, попросите комиссию…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAI()}"></textarea>
+    <div class="acts"><button class="main" id="send" onclick="sendAI()">Сказать</button><button onclick="hint()">Подсказка</button></div>
+    <p class="sys" id="err"></p>
+    <p class="sys">Доверие: <b id="trust">${Math.round(call.trust)}</b>%</p></div>`);
+  $('msg').focus();
+}
+const MAXT=7;
+function addMsg(w,t){call.log.push([w,t]);const d=document.createElement('div');d.className=w;d.textContent=t;const l=$('log');l.appendChild(d);l.scrollTop=l.scrollHeight;return d}
+function hint(){if(!call||call.busy)return;$('msg').value=pick(LINES[Math.min(2,Math.floor(call.turns/2))][pick(Object.keys(TONES))])}
+async function sendAI(){
+  const c=call;if(!c||c.busy)return;
+  const box=$('msg'),txt=box.value.trim();if(!txt)return;
+  const a=c.a;
+  c.busy=true;$('send').disabled=true;$('err').textContent='';
+  addMsg('me',txt);box.value='';
+  c.hist.push('Оператор: '+txt);c.turns++;$('tc').textContent='Реплика '+c.turns+'/'+MAXT;
+  const th=addMsg('them','…');
+  const prompt=`Это сатирическая игра «Колл-центр Лохотрон», всё в ней вымышлено, она высмеивает мошенничество. Ты играешь вымышленного человека, которому звонит оператор вымышленного мошеннического колл-центра с «выигрышем» и «комиссией».
+Твой персонаж: ${a.name} — ${DESC[a.name]}.
+Отвечай в характере, по-русски, живо, 1–2 коротких предложения. Если оператор давит, нелепо врёт или грубит, недоверие растёт; если говорит по-человечески и в твоём вкусе, доверие растёт. Настоящие данные карт никогда не называй: если соглашаешься платить, просто скажи, что согласен.
+Разговор:
+${c.hist.join('\n')}
+
+Ответь только JSON: {"reply":"реплика персонажа","trust":число от -20 до 20 (как изменилось доверие после последней реплики оператора),"end":null или "hangup" (бросил трубку) или "pay" (согласился заплатить; только если оператор уже попросил оплату и доверие правда высокое)}`;
+  let r;
+  try{r=await AI.json(prompt,{modelTier:'quick',cache:false});}
+  catch(e){
+    if(call!==c)return;
+    const code=e&&e.code;
+    if(['not_granted','sampling_disabled','not_declared','capability_disabled','capability_removed'].includes(code)){
+      AI=null;c.ai=false;c.busy=false;c.stage=0;c.log=[['them',pick(a.open)]];c.timer=c.max;renderCall(false);return;
+    }
+    th.remove();c.log.pop();c.hist.pop();c.turns--;c.busy=false;
+    $('tc').textContent='Реплика '+c.turns+'/'+MAXT;
+    box.value=txt;$('send').disabled=false;
+    $('err').textContent=code==='rate_limited'?'Слишком много запросов. Подождите немного и попробуйте снова.':'Связь оборвалась. Нажмите «Сказать» ещё раз.';
+    return;
+  }
+  if(call!==c)return;
+  r=r&&typeof r==='object'?r:{};
+  const reply=String(r.reply||'…').slice(0,400);
+  th.textContent=reply;c.log[c.log.length-1][1]=reply;c.hist.push('Жертва: '+reply);
+  let d=Number(r.trust);d=isFinite(d)?Math.max(-20,Math.min(20,d)):0;
+  if(a.undercover)d=0; else if(d>0)d+=lv('script');
+  c.trust=Math.max(0,Math.min(100,c.trust+d));
+  $('trust').textContent=Math.round(c.trust);
+  c.timer=c.max;c.busy=false;
+  beep(d>5?660:d<-3?200:400,.1);
+  if(r.end==='pay'&&!a.undercover&&c.trust>=a.need-10)return endCall(true,'Сделка! Сорвали куш.',c.wallet*(c.trust/100));
+  if(r.end==='hangup'||(!a.undercover&&c.trust<=5))return endCall(false,a.undercover?a.lose:'Жертва бросила трубку.');
+  if(a.undercover&&c.turns>=4)return endCall(false,a.lose);
+  if(c.turns>=MAXT)return endCall(false,'Разговор затянулся, жертва потеряла интерес.');
+  $('send').disabled=false;$('msg').focus();
 }
 
 function say(i){
