@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Оборона острова</title>
+<style>
+  :root{--u:2px;--ink:#e8eef2;--dim:#7f95a3;--panel:#0b141b;--line:#1d2c37;--purple:#b04bff;--oil:#f0b840;--red:#e0503c}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+  html,body{margin:0;height:100%;background:#05090d;overflow:hidden;font-family:ui-monospace,"SF Mono","Courier New",monospace;font-weight:700;color:var(--ink);touch-action:none}
+  #wrap{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);overflow:hidden;background:#12232f}
+  canvas{display:block;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges}
+  .ui{position:absolute;left:0;right:0;pointer-events:none}
+  .ui *{pointer-events:auto}
+  #top{top:0;height:calc(var(--u)*30);background:linear-gradient(#0a1218 70%,rgba(10,18,24,0));display:flex;align-items:flex-start;justify-content:space-between;padding:calc(var(--u)*3) calc(var(--u)*6) 0}
+  #top>.grp{display:flex;align-items:center;gap:calc(var(--u)*6)}
+  .stat{display:flex;align-items:center;gap:calc(var(--u)*3);font-size:calc(var(--u)*12);line-height:1}
+  .stat small{display:block;font-size:calc(var(--u)*6);color:var(--dim);margin-top:calc(var(--u)*1)}
+  .stat svg{width:calc(var(--u)*14);height:calc(var(--u)*14)}
+  #oil{color:var(--oil);font-size:calc(var(--u)*16)}
+  #banner{position:absolute;left:50%;top:calc(var(--u)*2);transform:translateX(-50%);background:var(--purple);padding:calc(var(--u)*1.5);clip-path:polygon(0 0,100% 0,88% 100%,12% 100%);width:calc(var(--u)*130);pointer-events:none}
+  #banner div{background:#0a1218;clip-path:polygon(0 0,100% 0,88% 100%,12% 100%);text-align:center;font-size:calc(var(--u)*7);padding:calc(var(--u)*4) 0;letter-spacing:.04em;white-space:nowrap}
+  #timer{position:absolute;left:50%;top:calc(var(--u)*20);transform:translateX(-50%);font-size:calc(var(--u)*7);color:var(--dim);display:flex;gap:calc(var(--u)*4);align-items:center}
+  button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+  .ib{width:calc(var(--u)*18);height:calc(var(--u)*18);background:#13212b;border:calc(var(--u)*1) solid var(--line);font-size:calc(var(--u)*8);display:flex;align-items:center;justify-content:center}
+  .ib.on{border-color:var(--purple);color:var(--purple)}
+  #skip{background:var(--purple);color:#fff;font-size:calc(var(--u)*6.5);padding:calc(var(--u)*2) calc(var(--u)*6);display:none}
+  #bottom{bottom:0;padding:0 calc(var(--u)*4) calc(var(--u)*5);background:linear-gradient(rgba(10,18,24,0),rgba(10,18,24,.85) 45%)}
+  #cards,#sel{display:flex;gap:calc(var(--u)*4);justify-content:center;padding-top:calc(var(--u)*14)}
+  #sel{display:none}
+  .card{width:calc(var(--u)*64);height:calc(var(--u)*58);background:rgba(13,24,32,.92);border:calc(var(--u)*1.5) solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:calc(var(--u)*3) 0;font-size:calc(var(--u)*6)}
+  .card canvas{width:calc(var(--u)*32);height:calc(var(--u)*32)}
+  .card .nm{color:var(--ink);letter-spacing:.04em}
+  .card .co{color:var(--oil);font-size:calc(var(--u)*7)}
+  .card.sel{border-color:var(--purple);background:#1a1230}
+  .card.no .co{color:var(--red)}
+  .card.no canvas{opacity:.45}
+  .act{min-width:calc(var(--u)*76);height:calc(var(--u)*46);background:rgba(13,24,32,.95);border:calc(var(--u)*1.5) solid var(--line);font-size:calc(var(--u)*6.5);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(var(--u)*3);padding:0 calc(var(--u)*4)}
+  .act b{color:var(--oil);font-size:calc(var(--u)*8)}
+  .act.no{opacity:.45}
+  .act.info{pointer-events:none;border-color:var(--purple);min-width:calc(var(--u)*90)}
+  #announce{position:absolute;left:0;right:0;top:32%;text-align:center;pointer-events:none;opacity:0;transition:opacity .4s}
+  #announce.show{opacity:1}
+  #announce h2{margin:0;font-size:calc(var(--u)*16);letter-spacing:.1em;text-shadow:0 calc(var(--u)*1.5) 0 #000}
+  #announce p{margin:calc(var(--u)*4) 0 0;font-size:calc(var(--u)*8);color:#ffd9a0;text-shadow:0 calc(var(--u)*1) 0 #000}
+  #toast{position:absolute;left:50%;bottom:calc(var(--u)*88);transform:translateX(-50%);background:rgba(160,30,20,.9);padding:calc(var(--u)*3) calc(var(--u)*8);font-size:calc(var(--u)*7);opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
+  #toast.show{opacity:1}
+  .overlay{position:absolute;inset:0;background:rgba(5,10,14,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:calc(var(--u)*20);gap:calc(var(--u)*8)}
+  .overlay h1{margin:0;font-size:calc(var(--u)*20);letter-spacing:.08em;color:#fff}
+  .overlay h1 span{color:var(--purple)}
+  .overlay p{margin:0;font-size:calc(var(--u)*7.5);color:var(--dim);line-height:1.6;max-width:calc(var(--u)*280)}
+  .overlay p b{color:var(--ink)}
+  .big{background:var(--purple);color:#fff;font-size:calc(var(--u)*10);padding:calc(var(--u)*7) calc(var(--u)*20);letter-spacing:.1em;margin-top:calc(var(--u)*4)}
+  #over{display:none}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+
+  <div id="top" class="ui">
+    <div class="grp">
+      <div class="stat">
+        <svg viewBox="0 0 14 14"><rect x="2" y="1" width="10" height="12" rx="2" fill="#f0b840"/><rect x="2" y="4" width="10" height="1.5" fill="#8a5d10"/><rect x="2" y="8.5" width="10" height="1.5" fill="#8a5d10"/></svg>
+        <div><span id="oil">0</span><small id="inc">+0/с</small></div>
+      </div>
+    </div>
+    <div id="banner"><div id="waveLbl">ВОЛНА 1</div></div>
+    <div class="grp">
+      <div class="stat">
+        <svg viewBox="0 0 14 14"><circle cx="7" cy="6" r="5" fill="#e8eef2"/><rect x="4" y="9" width="6" height="4" fill="#e8eef2"/><circle cx="5" cy="6" r="1.4" fill="#0a1218"/><circle cx="9" cy="6" r="1.4" fill="#0a1218"/></svg>
+        <div><span id="kills">0</span></div>
+      </div>
+      <button class="ib" id="bSpeed">▶</button>
+      <button class="ib" id="bPause">II</button>
+    </div>
+    <div id="timer"><span id="tm"></span><button id="skip">СТАРТ</button></div>
+  </div>
+
+  <div id="announce"><h2 id="aT"></h2><p id="aS"></p></div>
+  <div id="toast"></div>
+
+  <div id="bottom" class="ui">
+    <div id="cards"></div>
+    <div id="sel"></div>
+  </div>
+
+  <div id="intro" class="overlay">
+    <h1>ОБОРОНА <span>ОСТРОВА</span></h1>
+    <p>Враг идёт на нефтебазу: <b>десант с моря</b>, <b>парашютисты</b>, <b>бомбардировщики</b> и <b>танки</b>.<br>Строй турели на суше, качай нефть, улучшай оборону.</p>
+    <p><b>Пулемёт и пушка</b> — по земле и кораблям.<br><b>Зенитка и ЗРК</b> — по самолётам и парашютам.<br>Красные стрелки у края — откуда ждать удар.</p>
+    <button class="big" id="bStart">В БОЙ</button>
+  </div>
+  <div id="over" class="overlay">
+    <h1 style="color:#e0503c">БАЗА ПАЛА</h1>
+    <p id="overTxt"></p>
+    <button class="big" id="bAgain">ЕЩЁ РАЗ</button>
+  </div>
+</div>
+<script src="game.js"></script>
+</body>
+</html>
