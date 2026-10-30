@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Шиномонтаж на Калинина, 28Б — Владивосток</title>
 <meta name="description" content="Шиномонтажная мастерская во Владивостоке, ул. Калинина, 28Б. Переобувка, балансировка, ремонт порезов, мотошиномонтаж. Ежедневно 09:00–22:00. +7 964 431-73-17">
 <meta property="og:title" content="Шиномонтаж на Калинина, 28Б">
@@ -244,19 +244,69 @@
   @media (max-width: 860px) { .c-grid { grid-template-columns: 1fr; } .map { min-height: 320px; margin: 0 -24px; } }
   @media (max-width: 600px) { .map { margin: 0 -16px; } }
 
-  footer { background: var(--ink); color: rgba(255,255,255,.55); font-size: 13px; padding: 26px 0; margin-top: 64px; }
-  .contacts + footer { margin-top: 0; }
+  footer { background: var(--ink); color: rgba(255,255,255,.55); font-size: 13px; padding: 26px 0; }
   footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 
-  /* мобильная кнопка звонка */
-  .call-fab {
-    position: fixed; right: 16px; bottom: 16px; z-index: 20;
-    display: none; width: 58px; height: 58px; border-radius: 50%;
-    background: var(--yellow); color: var(--ink); align-items: center; justify-content: center;
-    box-shadow: 0 6px 18px rgba(0,0,0,.28);
+  /* ---------- нижняя панель на телефоне ---------- */
+  .dock { display: none; }
+  @media (max-width: 860px) {
+    .dock {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+      padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+      background: var(--facade); border-top: 3px solid var(--yellow);
+      transition: transform .2s ease;
+    }
+    .dock a {
+      display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 50px;
+      border-radius: 3px; text-decoration: none; text-align: center;
+      font: 600 16px/1.1 var(--head); letter-spacing: .05em; text-transform: uppercase;
+    }
+    .dock svg { width: 18px; height: 18px; flex: none; }
+    .dock .d-call { background: var(--yellow); color: var(--ink); }
+    .dock .d-alt { border: 2px solid rgba(255,255,255,.45); color: #fff; }
+    .dock .d-alt small { display: block; font: 400 12px/1.2 var(--body); letter-spacing: 0; text-transform: none; color: rgba(255,255,255,.7); }
+    .dock .d-alt b { font-weight: 600; color: var(--yellow); }
+    body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+    .rating + .contacts, footer { scroll-margin-bottom: 80px; }
   }
-  .call-fab svg { width: 24px; height: 24px; }
-  @media (max-width: 860px) { .call-fab { display: flex; } }
+
+  /* ---------- телефон ---------- */
+  @media (max-width: 600px) {
+    body { font-size: 16px; }
+    /* шапка не прилипает: звонок и маршрут есть в нижней панели */
+    .top { position: static; }
+    .top .wrap { height: 56px; }
+    .top-phone { padding: 12px 0; }
+
+    .hero .wrap { min-height: auto; padding-top: 72px; padding-bottom: 40px; }
+    .hero-img::after { background: linear-gradient(180deg, rgba(28,22,18,.55) 0%, rgba(28,22,18,.88) 55%, rgba(28,22,18,.96) 100%); }
+    .hero p.lead { margin: 16px 0 24px; }
+    .actions { display: grid; grid-template-columns: 1fr; }
+    .btn { justify-content: center; min-height: 52px; }
+
+    .facts li { padding: 14px 10px; }
+    .facts span { display: block; font-size: 13px; line-height: 1.35; }
+
+    .calc-form h3 { font-size: 24px; }
+    .chips { display: grid; grid-template-columns: 1fr 1fr; }
+    .chips span { min-height: 52px; display: flex; flex-direction: column; justify-content: center; }
+    .chips.n3 { grid-template-columns: repeat(3, 1fr); }
+    .chips.n3 span { align-items: center; }
+    .calc-out .btn { align-self: stretch; }
+
+    .tabs button { min-height: 52px; }
+    .price-board tbody td { font-size: 16px; }
+
+    .svc-list li { padding: 18px 0; }
+    .place figure img { aspect-ratio: 16 / 10; }
+
+    .c-list .phone { font-size: 28px; }
+    .c-actions { display: grid; grid-template-columns: 1fr 1fr; }
+    .c-actions .btn { padding: 14px 10px; }
+    .map { min-height: 300px; }
+    footer .wrap { flex-direction: column; gap: 6px; }
+  }
 
   :focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
 </style>
@@ -354,7 +404,7 @@
 
           <fieldset>
             <legend>Сколько колёс</legend>
-            <div class="chips">
+            <div class="chips n3">
               <label><input type="radio" name="n" value="4" checked><span>4</span></label>
               <label><input type="radio" name="n" value="2"><span>2</span></label>
               <label><input type="radio" name="n" value="1"><span>1</span></label>
@@ -362,7 +412,7 @@
           </fieldset>
         </div>
 
-        <div class="calc-out" aria-live="polite">
+        <div class="calc-out" id="calc-out" aria-live="polite">
           <div class="lbl" id="calc-lbl">Итого за 4 колеса</div>
           <div class="sum" id="calc-sum">—</div>
           <div class="per" id="calc-per"></div>
@@ -495,9 +545,13 @@
   </div>
 </footer>
 
-<a class="call-fab" href="tel:+79644317317" aria-label="Позвонить">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2"/></svg>
-</a>
+<nav class="dock" aria-label="Быстрые действия">
+  <a class="d-call" href="tel:+79644317317">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2"/></svg>
+    Позвонить
+  </a>
+  <a class="d-alt" id="dock-alt" href="#contacts">Как доехать</a>
+</nav>
 
 <script>
   // Прайс мастерской (рубли за колесо). Колонки: легковая R10–14, легковая R15–17,
@@ -575,6 +629,22 @@
   }
   calc.addEventListener('change', updateCalc);
   updateCalc();
+
+  // На телефоне, пока выбираешь варианты, итог виден в нижней панели
+  const dockAlt = document.getElementById('dock-alt');
+  const calcForm = calc.querySelector('.calc-form');
+  function setDock(inCalc) {
+    if (inCalc) {
+      dockAlt.href = '#calc-out';
+      dockAlt.innerHTML = `<span><small>Итого</small><b>${document.getElementById('calc-sum').textContent}</b></span>`;
+    } else {
+      dockAlt.href = '#contacts';
+      dockAlt.textContent = 'Как доехать';
+    }
+  }
+  let calcVisible = false;
+  new IntersectionObserver(([e]) => { calcVisible = e.isIntersecting; setDock(calcVisible); }, { rootMargin: '0px 0px -40% 0px' }).observe(calcForm);
+  calc.addEventListener('change', () => setDock(calcVisible));
 
   // Статус «открыто/закрыто» по времени Владивостока
   const OPEN = 9, CLOSE = 22;
