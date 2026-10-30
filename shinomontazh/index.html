@@ -239,7 +239,7 @@
   .hours td + td { text-align: right; }
   .hours tr.today td { color: var(--yellow); font-weight: 600; }
   .map { min-height: 420px; background: #2a201b; position: relative; }
-  .map iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; filter: saturate(.85); }
+  .map iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
   .c-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
   @media (max-width: 860px) { .c-grid { grid-template-columns: 1fr; } .map { min-height: 320px; margin: 0 -24px; } }
   @media (max-width: 600px) { .map { margin: 0 -16px; } }
@@ -481,7 +481,7 @@
         </div>
         <div class="map">
           <iframe title="Карта: ул. Калинина, 28Б" loading="lazy"
-            src="https://www.openstreetmap.org/export/embed.html?bbox=131.9032%2C43.0991%2C131.9166%2C43.1051&amp;layer=mapnik&amp;marker=43.102102%2C131.909906"></iframe>
+            src="https://yandex.ru/map-widget/v1/?ll=131.909906%2C43.102102&amp;z=16&amp;mode=whatshere&amp;whatshere%5Bpoint%5D=131.909906%2C43.102102&amp;whatshere%5Bzoom%5D=16" allowfullscreen></iframe>
         </div>
       </div>
     </div>
