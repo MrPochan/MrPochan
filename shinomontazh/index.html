@@ -111,33 +111,36 @@
   @media (max-width: 600px) { .sec-head { grid-template-columns: 1fr; } .sec-head .num { width: 60px; margin-bottom: 14px; } .sec-head p { grid-column: 1; } }
 
   /* ---------- прайс ---------- */
-  .tabs { display: inline-flex; border: 2px solid var(--ink); border-radius: 3px; margin-bottom: 24px; flex-wrap: wrap; }
+  .tabs { display: none; border: 2px solid var(--ink); border-radius: 3px; margin-bottom: 20px; flex-wrap: wrap; }
   .tabs button {
-    font: 600 15px/1 var(--head); letter-spacing: .06em; text-transform: uppercase;
-    background: none; border: 0; padding: 13px 18px; cursor: pointer; color: var(--ink);
+    font: 600 14px/1.15 var(--head); letter-spacing: .05em; text-transform: uppercase; text-align: left;
+    background: none; border: 0; padding: 11px 14px; cursor: pointer; color: var(--ink); flex: 1 1 50%;
   }
-  .tabs button + button { border-left: 2px solid var(--ink); }
+  .tabs button small { display: block; font: 400 12px var(--body); letter-spacing: 0; text-transform: none; opacity: .7; }
   .tabs button[aria-selected="true"] { background: var(--ink); color: var(--yellow); }
-  .price-board { background: #fff; border: 1px solid var(--rule); overflow-x: auto; }
-  table { border-collapse: collapse; width: 100%; min-width: 600px; font-variant-numeric: tabular-nums; }
-  th, td { text-align: right; padding: 14px 18px; border-bottom: 1px solid var(--paper-2); white-space: nowrap; }
-  th:first-child, td:first-child { text-align: left; }
-  thead th { font: 500 13px/1.3 var(--body); color: var(--ink-2); text-transform: none; vertical-align: bottom; border-bottom: 2px solid var(--ink); }
-  thead th.total { color: var(--ink); font-weight: 600; }
-  tbody td:first-child { font: 600 20px/1 var(--head); }
-  tbody td.total { font-weight: 600; background: #fbf3d5; }
-  tbody tr:hover td { background: #f7f4ee; }
-  tbody tr:hover td.total { background: #f8eabb; }
-  @media (max-width: 600px) {
-    .price-board table { min-width: 0; }
+  .price-board { background: #fff; border: 1px solid var(--rule); }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 12px 16px; border-bottom: 1px solid var(--paper-2); }
+  .price-board th, .price-board td { text-align: center; }
+  .price-board th:first-child, .price-board td:first-child { text-align: left; }
+  .price-board thead th { font: 500 13px/1.3 var(--body); color: var(--ink-2); vertical-align: bottom; border-bottom: 2px solid var(--ink); }
+  .price-board thead th b { display: block; font: 600 17px/1.1 var(--head); text-transform: uppercase; color: var(--ink); letter-spacing: .03em; }
+  .price-board thead th span { display: block; margin-top: 3px; }
+  .price-board tbody td { font: 500 17px/1.2 var(--body); white-space: nowrap; }
+  .price-board tbody td:first-child { font: 500 16px/1.3 var(--body); white-space: normal; }
+  .price-board tbody td:first-child small { display: block; font-size: 13px; color: var(--ink-2); }
+  .price-board td.all { background: #fbf3d5; font-weight: 600; }
+  .price-board tr.group td { font: 600 20px/1 var(--head); text-transform: uppercase; letter-spacing: .03em; background: var(--paper); padding-top: 18px; text-align: left; }
+  .price-board tbody tr:not(.group):hover td { background: #f7f4ee; }
+  @media (max-width: 760px) {
+    .tabs { display: flex; }
     .price-board thead { display: none; }
-    .price-board tbody tr { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--paper-2); padding: 14px 16px; gap: 8px 10px; }
-    .price-board tbody td { border: 0; padding: 0; text-align: left; font-size: 15px; }
-    .price-board tbody td:first-child { grid-column: 1 / 2; align-self: center; }
-    .price-board tbody td.total { grid-column: 2 / 4; grid-row: 1; text-align: right; background: none; font: 600 22px/1 var(--head); }
-    .price-board tbody td.total::after { content: " / 4 колеса"; font: 400 13px var(--body); color: var(--ink-2); }
-    .price-board tbody td[data-l]::before { content: attr(data-l); display: block; font-size: 12px; color: var(--ink-2); line-height: 1.3; }
-    .price-board tbody tr:hover td, tbody tr:hover td.total { background: none; }
+    .price-board td.c { display: none; }
+    .price-board[data-col="1"] td.c1, .price-board[data-col="2"] td.c2, .price-board[data-col="3"] td.c3,
+    .price-board[data-col="4"] td.c4, .price-board[data-col="5"] td.c5 { display: table-cell; }
+    .price-board td.c, .price-board td.all { text-align: right; font-weight: 600; }
+    .price-board td.all { background: none; }
+    th, td { padding: 12px 14px; }
   }
   .price-notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 22px; font-size: 14px; color: var(--ink-2); }
   .price-notes p { margin: 0; padding-left: 14px; border-left: 3px solid var(--yellow); }
@@ -243,7 +246,7 @@
     <div class="wrap">
       <div class="status" id="status"><i></i><span>Ежедневно 09:00–22:00</span></div>
       <h1>Шиномонтаж <span>на Калинина</span></h1>
-      <p class="lead">Сезонная переобувка, балансировка, ремонт проколов и порезов, мотошиномонтаж. Работаем каждый день с 9 до 22, без выходных.</p>
+      <p class="lead">Переобувка, балансировка, проверка колёс, ремонт порезов, мотошиномонтаж. Работаем каждый день с 9 до 22, без выходных.</p>
       <div class="actions">
         <a class="btn btn-y" href="tel:+79644317317">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2"/></svg>
@@ -259,7 +262,7 @@
       <ul>
         <li><b>4,8</b><span>рейтинг в 2ГИС, 133 оценки</span></li>
         <li><b>09–22</b><span>каждый день, без выходных</span></li>
-        <li><b>R13–R22</b><span>легковые, кроссоверы, внедорожники</span></li>
+        <li><b>R10–R22</b><span>легковые, джипы, грузовые</span></li>
         <li><b>160 м</b><span>от остановки «Чайка»</span></li>
       </ul>
     </div>
@@ -270,24 +273,27 @@
       <div class="sec-head">
         <div class="num">01</div>
         <h2>Цены на шиномонтаж</h2>
-        <p>Цена за одно колесо по каждой операции и за полный комплекс на четыре колеса. Грузики для балансировки уже включены.</p>
+        <p>Прайс мастерской, цены в рублях за одно колесо. Где указана вилка, точную цену назовёт мастер — она зависит от состояния колеса и сложности работы.</p>
       </div>
 
-      <div class="tabs" role="tablist" aria-label="Тип автомобиля">
-        <button role="tab" aria-selected="true" data-k="car">Легковой</button>
-        <button role="tab" aria-selected="false" data-k="suv">Кроссовер</button>
-        <button role="tab" aria-selected="false" data-k="jeep">Внедорожник / минивэн</button>
+      <div class="tabs" role="tablist" aria-label="Тип шины">
+        <button role="tab" aria-selected="true" data-col="1">Легковая<small>R10–R14</small></button>
+        <button role="tab" aria-selected="false" data-col="2">Легковая<small>R15–R17</small></button>
+        <button role="tab" aria-selected="false" data-col="3">Джип<small>R15–R17</small></button>
+        <button role="tab" aria-selected="false" data-col="4">Джип<small>R18–R22</small></button>
+        <button role="tab" aria-selected="false" data-col="5">Низкий профиль, грузовая<small>R12–R22</small></button>
       </div>
 
-      <div class="price-board">
+      <div class="price-board" data-col="1">
         <table>
           <thead>
             <tr>
-              <th>Радиус</th>
-              <th>Снятие и установка<br>за 1 колесо</th>
-              <th>Монтаж и демонтаж<br>за 1 колесо</th>
-              <th>Балансировка<br>за 1 колесо</th>
-              <th class="total">Комплекс<br>4 колеса</th>
+              <th>Работа</th>
+              <th><b>Легковая</b><span>R10–R14</span></th>
+              <th><b>Легковая</b><span>R15–R17</span></th>
+              <th><b>Джип</b><span>R15–R17</span></th>
+              <th><b>Джип</b><span>R18–R22</span></th>
+              <th><b>Низкий профиль, грузовая</b><span>R14–R22 (до 55 серии), грузовая R12–R22</span></th>
             </tr>
           </thead>
           <tbody id="price-body"></tbody>
@@ -295,9 +301,9 @@
       </div>
 
       <div class="price-notes">
-        <p>Низкий профиль (серия 45 и ниже) и шины RunFlat — плюс 20% к монтажу.</p>
-        <p>Переставить колёса в сборе, без монтажа шин — по цене «Снятие и установка».</p>
-        <p>Цены могут меняться — точную стоимость назовём по телефону, до начала работ.</p>
+        <p>Низкопрофильной считаем шину с высотой профиля до 55 (серия 55 и ниже).</p>
+        <p>Перекидка — снять шину с диска и поставить другую (разборка и сборка вместе).</p>
+        <p>Очистка диска от ржавчины — 250–500 ₽, цену определяет мастер по сложности.</p>
       </div>
     </div>
   </section>
@@ -307,16 +313,16 @@
       <div class="sec-head">
         <div class="num">02</div>
         <h2>Ремонт и другие работы</h2>
-        <p>Помимо переобувки чиним колёса, обслуживаем мотоциклы, меняем колодки и заправляем кондиционеры.</p>
+        <p>Помимо переобувки чиним колёса, обслуживаем мотоциклы, меняем колодки и заправляем кондиционеры. Стоимость этих работ зависит от машины — назовём по телефону.</p>
       </div>
       <ul class="svc-list">
-        <li><h3>Ремонт прокола</h3><p>Саморез, гвоздь, мелкий прокол в протекторе. Ставим жгут или грибок изнутри.</p><span class="p">от 300 ₽</span></li>
-        <li><h3>Ремонт пореза</h3><p>Вулканизация и латка с кордом. Скажем честно, если шину уже не спасти.</p><span class="p">от 900 ₽</span></li>
-        <li><h3>Мотошиномонтаж</h3><p>Снятие, монтаж и балансировка колёс мотоциклов и скутеров.</p><span class="p">от 700 ₽</span></li>
-        <li><h3>Замена колодок</h3><p>Передние или задние тормозные колодки, цена за ось.</p><span class="p">от 1 200 ₽</span></li>
-        <li><h3>Кондиционер</h3><p>Проверка системы на утечку и заправка фреоном.</p><span class="p">от 2 000 ₽</span></li>
-        <li><h3>Замена вентиля</h3><p>Резиновый вентиль, при монтаже шины.</p><span class="p">100 ₽</span></li>
-        <li><h3>Шины б/у</h3><p>Продаём подержанные шины в хорошем состоянии и выкупаем ваши. Наличие и размеры — по телефону.</p><span class="p">по запросу</span></li>
+        <li><h3>Ремонт прокола</h3><p>Саморез, гвоздь, мелкий прокол в протекторе. Ставим жгут или грибок изнутри.</p><span class="p">по звонку</span></li>
+        <li><h3>Ремонт пореза</h3><p>Вулканизация и латка с кордом. Скажем честно, если шину уже не спасти.</p><span class="p">по звонку</span></li>
+        <li><h3>Мотошиномонтаж</h3><p>Снятие, монтаж и балансировка колёс мотоциклов и скутеров.</p><span class="p">по звонку</span></li>
+        <li><h3>Замена колодок</h3><p>Передние или задние тормозные колодки, цена за ось.</p><span class="p">по звонку</span></li>
+        <li><h3>Кондиционер</h3><p>Проверка системы на утечку и заправка фреоном.</p><span class="p">по звонку</span></li>
+        <li><h3>Замена вентиля</h3><p>Резиновый вентиль, при монтаже шины.</p><span class="p">по звонку</span></li>
+        <li><h3>Шины б/у</h3><p>Продаём подержанные шины в хорошем состоянии и выкупаем ваши. Наличие и размеры — по телефону.</p><span class="p">по звонку</span></li>
       </ul>
     </div>
   </section>
@@ -397,44 +403,39 @@
 </a>
 
 <script>
-  // Базовые цены для легкового авто: [радиус, снятие/установка, монтаж/демонтаж, балансировка, комплекс 4 колеса]
-  // Кроссоверы и внедорожники считаются коэффициентом. Править цены — здесь.
+  // Прайс мастерской (рубли за колесо). Колонки: легковая R10–14, легковая R15–17,
+  // джип R15–17, джип R18–22, низкий профиль/грузовая. Строка из одного значения — цена для всех.
   const PRICES = [
-    ['R13', 120, 180, 200, 2000],
-    ['R14', 120, 190, 210, 2100],
-    ['R15', 130, 210, 230, 2300],
-    ['R16', 140, 240, 250, 2500],
-    ['R17', 150, 280, 280, 2800],
-    ['R18', 160, 330, 310, 3200],
-    ['R19', 180, 380, 340, 3600],
-    ['R20', 200, 440, 380, 4000],
-    ['R21', 220, 500, 420, 4500],
-    ['R22', 240, 560, 460, 5000],
+    ['Подкачка колеса', '35'],
+    ['Обтяжка колеса', '50'],
+    ['Установка запасного колеса', '200', '200', '200–250', '250–350', '150–350'],
+    ['Перестановка колеса', '200', '200', '200–250', '250–350', '150–350'],
+    ['Проверка колеса в воде', '200', '200', '250', '250', '250'],
+    ['Разборка с диска', '100', '150–200', '250–300', '300–500', '250–500'],
+    ['Сборка на диск', '100–150', '150–200', '250–300', '300–500', '250–500'],
+    ['Перекидка колеса', '200', '200–250', '400–500', '400–1 000', '350–1 000'],
+    'Балансировка',
+    ['Без ремонта и перекидки<small>набивные грузы</small>', '200', '250', '300–350', '400', '350–750'],
+    ['Одно колесо<small>набивные грузы</small>', '200', '200', '250', '400', '350–750'],
+    ['Одно колесо<small>клеящиеся грузы</small>', '200–250', '250', '300–350', '300–400', '350–750'],
   ];
-  const FACTOR = { car: 1, suv: 1.15, jeep: 1.3 };
 
-  const fmt = n => n.toLocaleString('ru-RU') + ' ₽';
-  const round = (n, step) => Math.round(n / step) * step;
+  document.getElementById('price-body').innerHTML = PRICES.map(row => {
+    if (typeof row === 'string') return `<tr class="group"><td colspan="6">${row}</td></tr>`;
+    const [name, ...cols] = row;
+    const cells = cols.length === 1
+      ? `<td class="all" colspan="5">${cols[0]} ₽</td>`
+      : cols.map((v, i) => `<td class="c c${i + 1}">${v} ₽</td>`).join('');
+    return `<tr><td>${name}</td>${cells}</tr>`;
+  }).join('');
 
-  function renderPrices(kind) {
-    const f = FACTOR[kind];
-    document.getElementById('price-body').innerHTML = PRICES.map(([r, a, b, c, t]) => `
-      <tr>
-        <td>${r}</td>
-        <td data-l="Снятие/уст.">${fmt(round(a * f, 10))}</td>
-        <td data-l="Монтаж">${fmt(round(b * f, 10))}</td>
-        <td data-l="Балансировка">${fmt(round(c * f, 10))}</td>
-        <td class="total">${fmt(round(t * f, 50))}</td>
-      </tr>`).join('');
-  }
-
+  const board = document.querySelector('.price-board');
   document.querySelectorAll('.tabs button').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b === btn));
-      renderPrices(btn.dataset.k);
+      board.dataset.col = btn.dataset.col;
     });
   });
-  renderPrices('car');
 
   // Статус «открыто/закрыто» по времени Владивостока
   const OPEN = 9, CLOSE = 22;
