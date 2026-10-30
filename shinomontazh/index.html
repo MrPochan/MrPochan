@@ -110,6 +110,42 @@
   .sec-head p { grid-column: 2; color: var(--ink-2); margin: 14px 0 0; max-width: 40em; }
   @media (max-width: 600px) { .sec-head { grid-template-columns: 1fr; } .sec-head .num { width: 60px; margin-bottom: 14px; } .sec-head p { grid-column: 1; } }
 
+  /* ---------- калькулятор ---------- */
+  .calc { display: grid; grid-template-columns: 1.35fr 1fr; background: #fff; border: 1px solid var(--rule); margin-bottom: 64px; }
+  .calc-form { padding: 28px 32px 32px; }
+  .calc-form h3 { font-size: 28px; margin-bottom: 4px; }
+  .calc-form > p { margin: 0 0 8px; color: var(--ink-2); font-size: 15px; }
+  .calc fieldset { border: 0; margin: 20px 0 0; padding: 0; min-width: 0; }
+  .calc legend { font-size: 13px; color: var(--ink-2); margin-bottom: 8px; padding: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips label { position: relative; cursor: pointer; }
+  .chips input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .chips span {
+    display: block; padding: 10px 14px; border: 2px solid var(--rule); border-radius: 3px;
+    font: 500 15px/1.2 var(--body); background: #fff; transition: border-color .12s, background .12s;
+  }
+  .chips span small { display: block; font-size: 12px; color: var(--ink-2); margin-top: 2px; }
+  .chips label:hover span { border-color: var(--ink-2); }
+  .chips input:checked + span { border-color: var(--ink); background: var(--ink); color: #fff; }
+  .chips input:checked + span small { color: var(--yellow); }
+  .chips input:focus-visible + span { outline: 3px solid var(--yellow); outline-offset: 2px; }
+  .calc fieldset[disabled] { opacity: .4; }
+  .calc-out { background: var(--facade); color: #fff; padding: 28px 32px 32px; display: flex; flex-direction: column; }
+  .calc-out .lbl { font-size: 13px; color: rgba(255,255,255,.65); }
+  .calc-out .sum { font: 700 clamp(40px, 5vw, 56px)/1.05 var(--head); color: var(--yellow); margin: 6px 0 4px; font-variant-numeric: tabular-nums; }
+  .calc-out .per { font-size: 14px; color: rgba(255,255,255,.7); }
+  .calc-out ul { list-style: none; margin: 22px 0 0; padding: 0; font-size: 15px; }
+  .calc-out li { display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-top: 1px solid rgba(255,255,255,.14); }
+  .calc-out li span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .calc-out .note { font-size: 13px; color: rgba(255,255,255,.6); margin: 18px 0 22px; }
+  .calc-out .btn { margin-top: auto; align-self: flex-start; }
+  .sub-h { font-size: 28px; margin-bottom: 18px; }
+  @media (max-width: 860px) { .calc { grid-template-columns: 1fr; } }
+  @media (max-width: 600px) {
+    .calc { margin: 0 -16px 48px; border-left: 0; border-right: 0; }
+    .calc-form, .calc-out { padding: 24px 16px; }
+  }
+
   /* ---------- прайс ---------- */
   .tabs { display: none; border: 2px solid var(--ink); border-radius: 3px; margin-bottom: 20px; flex-wrap: wrap; }
   .tabs button {
@@ -273,9 +309,70 @@
       <div class="sec-head">
         <div class="num">01</div>
         <h2>Цены на шиномонтаж</h2>
-        <p>Прайс мастерской, цены в рублях за одно колесо. Где указана вилка, точную цену назовёт мастер — она зависит от состояния колеса и сложности работы.</p>
+        <p>Посчитайте переобувку в калькуляторе или найдите нужную работу в прайсе. Цены за одно колесо; где вилка — точную цену назовёт мастер.</p>
       </div>
 
+      <form class="calc" id="calc" onsubmit="return false">
+        <div class="calc-form">
+          <h3>Сколько стоит переобуться</h3>
+          <p>Выберите шины и что меняем — посчитаем по прайсу ниже.</p>
+
+          <fieldset>
+            <legend>Шины</legend>
+            <div class="chips">
+              <label><input type="radio" name="col" value="0" checked><span>Легковая<small>R10–R14</small></span></label>
+              <label><input type="radio" name="col" value="1"><span>Легковая<small>R15–R17</small></span></label>
+              <label><input type="radio" name="col" value="2"><span>Джип<small>R15–R17</small></span></label>
+              <label><input type="radio" name="col" value="3"><span>Джип<small>R18–R22</small></span></label>
+              <label><input type="radio" name="col" value="4"><span>Низкий профиль<small>или грузовая</small></span></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Что меняем</legend>
+            <div class="chips">
+              <label><input type="radio" name="job" value="wheels" checked><span>Колёса целиком<small>второй комплект уже на дисках</small></span></label>
+              <label><input type="radio" name="job" value="tires"><span>Только резину<small>шины на тех же дисках</small></span></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Диски</legend>
+            <div class="chips">
+              <label><input type="radio" name="disk" value="steel" checked><span>Штампованные<small>набивные грузы</small></span></label>
+              <label><input type="radio" name="disk" value="alloy"><span>Литые<small>клеящиеся грузы</small></span></label>
+            </div>
+          </fieldset>
+
+          <fieldset id="bal-set">
+            <legend>Балансировка</legend>
+            <div class="chips">
+              <label><input type="radio" name="bal" value="1" checked><span>Нужна</span></label>
+              <label><input type="radio" name="bal" value="0"><span>Не нужна</span></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Сколько колёс</legend>
+            <div class="chips">
+              <label><input type="radio" name="n" value="4" checked><span>4</span></label>
+              <label><input type="radio" name="n" value="2"><span>2</span></label>
+              <label><input type="radio" name="n" value="1"><span>1</span></label>
+            </div>
+          </fieldset>
+        </div>
+
+        <div class="calc-out" aria-live="polite">
+          <div class="lbl" id="calc-lbl">Итого за 4 колеса</div>
+          <div class="sum" id="calc-sum">—</div>
+          <div class="per" id="calc-per"></div>
+          <ul id="calc-list"></ul>
+          <p class="note">Это ориентир по прайсу. Точную цену мастер назовёт, когда посмотрит колёса.</p>
+          <a class="btn btn-y" href="tel:+79644317317">Позвонить и записаться</a>
+        </div>
+      </form>
+
+      <h3 class="sub-h">Полный прайс</h3>
       <div class="tabs" role="tablist" aria-label="Тип шины">
         <button role="tab" aria-selected="true" data-col="1">Легковая<small>R10–R14</small></button>
         <button role="tab" aria-selected="false" data-col="2">Легковая<small>R15–R17</small></button>
@@ -436,6 +533,48 @@
       board.dataset.col = btn.dataset.col;
     });
   });
+
+  // ---------- калькулятор: берёт цены из PRICES по названию строки ----------
+  const row = name => PRICES.find(r => Array.isArray(r) && r[0].startsWith(name)).slice(1);
+  const range = v => { const [a, b = a] = v.replace(/\s/g, '').split('–').map(Number); return [a, b]; };
+  const rub = n => n.toLocaleString('ru-RU') + ' ₽';
+  const rangeTxt = ([a, b]) => a === b ? rub(a) : `${a.toLocaleString('ru-RU')} – ${rub(b)}`;
+  const OPS = {
+    swap:      ['Перестановка колеса', 'Снять и поставить колесо'],
+    remount:   ['Перекидка колеса', 'Перекидка шины на диске'],
+    balLoose:  ['Без ремонта и перекидки', 'Балансировка'],
+    balSteel:  ['Одно колесо<small>набивные', 'Балансировка'],
+    balAlloy:  ['Одно колесо<small>клеящиеся', 'Балансировка'],
+  };
+
+  const calc = document.getElementById('calc');
+  function updateCalc() {
+    const f = new FormData(calc);
+    const col = +f.get('col'), job = f.get('job'), alloy = f.get('disk') === 'alloy', n = +f.get('n');
+    const tires = job === 'tires';
+    // при замене резины на дисках балансировка обязательна
+    if (tires) calc.querySelector('input[name=bal][value="1"]').checked = true;
+    document.getElementById('bal-set').disabled = tires;
+    const bal = tires || f.get('bal') === '1';
+
+    const ops = ['swap'];
+    if (tires) ops.push('remount');
+    if (bal) ops.push(alloy ? 'balAlloy' : tires ? 'balSteel' : 'balLoose');
+
+    let lo = 0, hi = 0;
+    document.getElementById('calc-list').innerHTML = ops.map(k => {
+      const [a, b] = range(row(OPS[k][0])[col]);
+      lo += a; hi += b;
+      return `<li><span>${OPS[k][1]} × ${n}</span><span>${rangeTxt([a * n, b * n])}</span></li>`;
+    }).join('');
+
+    const word = n === 1 ? 'колесо' : 'колеса';
+    document.getElementById('calc-lbl').textContent = `Итого за ${n} ${word}`;
+    document.getElementById('calc-sum').textContent = rangeTxt([lo * n, hi * n]);
+    document.getElementById('calc-per').textContent = n > 1 ? `${rangeTxt([lo, hi])} за одно колесо` : '';
+  }
+  calc.addEventListener('change', updateCalc);
+  updateCalc();
 
   // Статус «открыто/закрыто» по времени Владивостока
   const OPEN = 9, CLOSE = 22;
