@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Шиномонтаж на Калинина, 28Б — Владивосток</title>
+<meta name="description" content="Шиномонтажная мастерская во Владивостоке, ул. Калинина, 28Б. Переобувка, балансировка, ремонт порезов, мотошиномонтаж. Ежедневно 09:00–22:00. +7 964 431-73-17">
+<meta property="og:title" content="Шиномонтаж на Калинина, 28Б">
+<meta property="og:description" content="Переобувка, балансировка, ремонт порезов. Ежедневно 09:00–22:00.">
+<meta property="og:image" content="img/facade.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Golos+Text:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f1ede6;
+    --paper-2: #e7e1d7;
+    --ink: #1c1916;
+    --ink-2: #5b544c;
+    --rule: #cfc7ba;
+    --facade: #33261f;      /* цвет козырька на фасаде */
+    --facade-2: #43332a;
+    --yellow: #f2c12e;      /* дорожная разметка */
+    --head: "Oswald", "Arial Narrow", sans-serif;
+    --body: "Golos Text", system-ui, sans-serif;
+    --wrap: 1180px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 17px/1.55 var(--body);
+    -webkit-font-smoothing: antialiased;
+  }
+  img { display: block; max-width: 100%; }
+  a { color: inherit; }
+  .wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 24px; }
+  @media (max-width: 600px) { .wrap { padding: 0 16px; } }
+
+  h1, h2, h3 { font-family: var(--head); font-weight: 600; text-transform: uppercase; letter-spacing: .01em; line-height: 1.02; margin: 0; }
+
+  /* ---------- шапка ---------- */
+  .top {
+    background: var(--facade);
+    color: #fff;
+    position: sticky; top: 0; z-index: 10;
+    border-bottom: 3px solid var(--yellow);
+  }
+  .top .wrap { display: flex; align-items: center; gap: 24px; height: 64px; }
+  .logo { font: 700 22px/1 var(--head); letter-spacing: .04em; text-decoration: none; text-transform: uppercase; }
+  .logo small { display: block; font: 500 12px/1.3 var(--body); letter-spacing: 0; text-transform: none; opacity: .7; margin-top: 3px; }
+  .nav { display: flex; gap: 22px; margin-left: auto; font-size: 15px; }
+  .nav a { text-decoration: none; opacity: .85; }
+  .nav a:hover { opacity: 1; text-decoration: underline; text-underline-offset: 4px; }
+  .top-phone { font: 600 18px/1 var(--head); letter-spacing: .03em; text-decoration: none; white-space: nowrap; }
+  @media (max-width: 860px) { .nav { display: none; } .top-phone { margin-left: auto; } }
+  @media (max-width: 420px) { .logo small { display: none; } .top-phone { font-size: 16px; } }
+
+  /* ---------- первый экран ---------- */
+  .hero { position: relative; color: #fff; background: var(--facade); }
+  .hero-img { position: absolute; inset: 0; overflow: hidden; }
+  .hero-img img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 62%; }
+  .hero-img::after { content: ""; position: absolute; inset: 0;
+    background: linear-gradient(90deg, rgba(28,22,18,.92) 0%, rgba(28,22,18,.72) 45%, rgba(28,22,18,.15) 100%); }
+  .hero .wrap { position: relative; padding-top: 96px; padding-bottom: 72px; min-height: min(78vh, 680px); display: flex; flex-direction: column; justify-content: flex-end; }
+  .status { display: inline-flex; align-items: center; gap: 10px; font-size: 15px; margin-bottom: 22px; }
+  .status i { width: 9px; height: 9px; border-radius: 50%; background: #8a8178; }
+  .status.open i { background: #5fd17a; box-shadow: 0 0 0 4px rgba(95,209,122,.2); }
+  .hero h1 { font-size: clamp(46px, 8.4vw, 112px); font-weight: 700; max-width: 9.5em; }
+  .hero h1 span { color: var(--yellow); }
+  .hero p.lead { font-size: clamp(17px, 2vw, 20px); max-width: 30em; margin: 22px 0 32px; color: rgba(255,255,255,.88); }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 15px 24px; border-radius: 3px;
+    font: 600 17px/1 var(--head); letter-spacing: .05em; text-transform: uppercase; text-decoration: none;
+    border: 2px solid transparent; transition: transform .12s ease, background .12s ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-y { background: var(--yellow); color: var(--ink); }
+  .btn-y:hover { background: #ffd043; }
+  .btn-o { border-color: rgba(255,255,255,.55); color: #fff; }
+  .btn-o:hover { border-color: #fff; }
+  .btn svg { width: 18px; height: 18px; }
+
+  /* ---------- факты ---------- */
+  .facts { background: var(--ink); color: #fff; }
+  .facts ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); }
+  .facts li { padding: 22px 20px 22px 0; border-right: 1px solid rgba(255,255,255,.14); padding-left: 20px; }
+  .facts li:first-child { padding-left: 0; }
+  .facts li:last-child { border-right: 0; }
+  .facts b { display: block; font: 600 30px/1.1 var(--head); color: var(--yellow); }
+  .facts span { font-size: 14px; color: rgba(255,255,255,.7); }
+  @media (max-width: 760px) {
+    .facts ul { grid-template-columns: 1fr 1fr; }
+    .facts li { padding: 16px 12px; border-right: 0; border-bottom: 1px solid rgba(255,255,255,.14); }
+    .facts li:nth-child(odd) { padding-left: 0; border-right: 1px solid rgba(255,255,255,.14); }
+    .facts li:nth-child(n+3) { border-bottom: 0; }
+    .facts b { font-size: 24px; }
+  }
+
+  /* ---------- секции ---------- */
+  section { padding: 88px 0; }
+  @media (max-width: 600px) { section { padding: 60px 0; } }
+  .sec-head { display: grid; grid-template-columns: 90px 1fr; gap: 0 20px; margin-bottom: 40px; align-items: baseline; }
+  .sec-head .num { font: 500 15px/1 var(--head); color: var(--ink-2); letter-spacing: .1em; border-top: 3px solid var(--ink); padding-top: 10px; }
+  .sec-head h2 { font-size: clamp(36px, 5vw, 60px); }
+  .sec-head p { grid-column: 2; color: var(--ink-2); margin: 14px 0 0; max-width: 40em; }
+  @media (max-width: 600px) { .sec-head { grid-template-columns: 1fr; } .sec-head .num { width: 60px; margin-bottom: 14px; } .sec-head p { grid-column: 1; } }
+
+  /* ---------- прайс ---------- */
+  .tabs { display: none; border: 2px solid var(--ink); border-radius: 3px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tabs button {
+    font: 600 14px/1.15 var(--head); letter-spacing: .05em; text-transform: uppercase; text-align: left;
+    background: none; border: 0; padding: 11px 14px; cursor: pointer; color: var(--ink); flex: 1 1 50%;
+  }
+  .tabs button small { display: block; font: 400 12px var(--body); letter-spacing: 0; text-transform: none; opacity: .7; }
+  .tabs button[aria-selected="true"] { background: var(--ink); color: var(--yellow); }
+  .price-board { background: #fff; border: 1px solid var(--rule); }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 12px 16px; border-bottom: 1px solid var(--paper-2); }
+  .price-board th, .price-board td { text-align: center; }
+  .price-board th:first-child, .price-board td:first-child { text-align: left; }
+  .price-board thead th { font: 500 13px/1.3 var(--body); color: var(--ink-2); vertical-align: bottom; border-bottom: 2px solid var(--ink); }
+  .price-board thead th b { display: block; font: 600 17px/1.1 var(--head); text-transform: uppercase; color: var(--ink); letter-spacing: .03em; }
+  .price-board thead th span { display: block; margin-top: 3px; }
+  .price-board tbody td { font: 500 17px/1.2 var(--body); white-space: nowrap; }
+  .price-board tbody td:first-child { font: 500 16px/1.3 var(--body); white-space: normal; }
+  .price-board tbody td:first-child small { display: block; font-size: 13px; color: var(--ink-2); }
+  .price-board td.all { background: #fbf3d5; font-weight: 600; }
+  .price-board tr.group td { font: 600 20px/1 var(--head); text-transform: uppercase; letter-spacing: .03em; background: var(--paper); padding-top: 18px; text-align: left; }
+  .price-board tbody tr:not(.group):hover td { background: #f7f4ee; }
+  @media (max-width: 760px) {
+    .tabs { display: flex; }
+    .price-board thead { display: none; }
+    .price-board td.c { display: none; }
+    .price-board[data-col="1"] td.c1, .price-board[data-col="2"] td.c2, .price-board[data-col="3"] td.c3,
+    .price-board[data-col="4"] td.c4, .price-board[data-col="5"] td.c5 { display: table-cell; }
+    .price-board td.c, .price-board td.all { text-align: right; font-weight: 600; }
+    .price-board td.all { background: none; }
+    th, td { padding: 12px 14px; }
+  }
+  .price-notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 22px; font-size: 14px; color: var(--ink-2); }
+  .price-notes p { margin: 0; padding-left: 14px; border-left: 3px solid var(--yellow); }
+  @media (max-width: 760px) { .price-notes { grid-template-columns: 1fr; gap: 12px; } }
+
+  /* ---------- услуги ---------- */
+  .services { background: var(--paper-2); }
+  .svc-list { list-style: none; margin: 0; padding: 0; border-top: 2px solid var(--ink); }
+  .svc-list li {
+    display: grid; grid-template-columns: 1.1fr 1.6fr auto; gap: 24px; align-items: baseline;
+    padding: 22px 0; border-bottom: 1px solid var(--rule);
+  }
+  .svc-list h3 { font-size: 24px; font-weight: 500; }
+  .svc-list p { margin: 0; color: var(--ink-2); font-size: 16px; }
+  .svc-list .p { font: 600 22px/1 var(--head); white-space: nowrap; }
+  @media (max-width: 760px) {
+    .svc-list li { grid-template-columns: 1fr auto; gap: 6px 16px; }
+    .svc-list p { grid-column: 1 / -1; grid-row: 2; }
+    .svc-list h3 { font-size: 21px; }
+  }
+
+  /* ---------- про место ---------- */
+  .place { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+  .place figure { margin: 0; position: relative; }
+  .place figure img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; }
+  .place figcaption { font-size: 13px; color: var(--ink-2); margin-top: 8px; }
+  .place ul { list-style: none; padding: 0; margin: 28px 0 0; }
+  .place li { padding: 16px 0; border-top: 1px solid var(--rule); display: grid; grid-template-columns: 170px 1fr; gap: 16px; }
+  .place li b { font: 500 17px/1.4 var(--head); text-transform: uppercase; letter-spacing: .03em; }
+  .place li span { color: var(--ink-2); }
+  .place .sec-head { grid-template-columns: 1fr; margin-bottom: 0; }
+  .place .sec-head .num { width: 60px; margin-bottom: 14px; }
+  .place .sec-head p { grid-column: 1; }
+  @media (max-width: 860px) { .place { grid-template-columns: 1fr; gap: 36px; } .place figure img { aspect-ratio: 4 / 3; } }
+  @media (max-width: 480px) { .place li { grid-template-columns: 1fr; gap: 2px; } }
+
+  /* ---------- рейтинг ---------- */
+  .rating { background: var(--yellow); padding: 56px 0; }
+  .rating .wrap { display: flex; align-items: center; gap: 40px; flex-wrap: wrap; }
+  .rating .big { font: 700 clamp(72px, 11vw, 128px)/.9 var(--head); }
+  .rating .txt { flex: 1; min-width: 260px; }
+  .rating .txt h2 { font-size: clamp(26px, 3.4vw, 38px); }
+  .rating .txt p { margin: 10px 0 0; max-width: 34em; }
+  .rating .btn { border-color: var(--ink); color: var(--ink); }
+  .rating .btn:hover { background: var(--ink); color: var(--yellow); }
+
+  /* ---------- контакты ---------- */
+  .contacts { background: var(--facade); color: #fff; padding-bottom: 0; }
+  .contacts .sec-head .num { border-color: var(--yellow); color: rgba(255,255,255,.6); }
+  .contacts .sec-head p { color: rgba(255,255,255,.7); }
+  .c-grid { display: grid; grid-template-columns: 1fr 1.25fr; gap: 48px; }
+  .c-list { margin: 0; }
+  .c-list div { padding: 18px 0; border-top: 1px solid rgba(255,255,255,.16); }
+  .c-list dt { font-size: 13px; color: rgba(255,255,255,.6); margin-bottom: 4px; }
+  .c-list dd { margin: 0; font-size: 19px; }
+  .c-list dd a { text-decoration-color: rgba(255,255,255,.35); text-underline-offset: 4px; }
+  .c-list .phone { font: 600 32px/1.1 var(--head); letter-spacing: .02em; text-decoration: none; }
+  .hours { width: 100%; min-width: 0; font-size: 15px; }
+  .hours td, .hours td:first-child { padding: 4px 0; border: 0; text-align: left; font: inherit; }
+  .hours td + td { text-align: right; }
+  .hours tr.today td { color: var(--yellow); font-weight: 600; }
+  .map { min-height: 420px; background: #2a201b; position: relative; }
+  .map iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; filter: saturate(.85); }
+  .c-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+  @media (max-width: 860px) { .c-grid { grid-template-columns: 1fr; } .map { min-height: 320px; margin: 0 -24px; } }
+  @media (max-width: 600px) { .map { margin: 0 -16px; } }
+
+  footer { background: var(--ink); color: rgba(255,255,255,.55); font-size: 13px; padding: 26px 0; margin-top: 64px; }
+  .contacts + footer { margin-top: 0; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+  /* мобильная кнопка звонка */
+  .call-fab {
+    position: fixed; right: 16px; bottom: 16px; z-index: 20;
+    display: none; width: 58px; height: 58px; border-radius: 50%;
+    background: var(--yellow); color: var(--ink); align-items: center; justify-content: center;
+    box-shadow: 0 6px 18px rgba(0,0,0,.28);
+  }
+  .call-fab svg { width: 24px; height: 24px; }
+  @media (max-width: 860px) { .call-fab { display: flex; } }
+
+  :focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="#">Шиномонтаж<small>Калинина, 28Б · Владивосток</small></a>
+    <nav class="nav" aria-label="Разделы">
+      <a href="#prices">Цены</a>
+      <a href="#services">Услуги</a>
+      <a href="#place">Как у нас</a>
+      <a href="#contacts">Контакты</a>
+    </nav>
+    <a class="top-phone" href="tel:+79644317317">+7 964 431-73-17</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero" style="padding:0">
+    <div class="hero-img"><img src="img/facade.jpg" alt="Фасад мастерской: вывеска «Шиномонтаж» на улице Калинина, 28Б" fetchpriority="high"></div>
+    <div class="wrap">
+      <div class="status" id="status"><i></i><span>Ежедневно 09:00–22:00</span></div>
+      <h1>Шиномонтаж <span>на Калинина</span></h1>
+      <p class="lead">Переобувка, балансировка, проверка колёс, ремонт порезов, мотошиномонтаж. Работаем каждый день с 9 до 22, без выходных.</p>
+      <div class="actions">
+        <a class="btn btn-y" href="tel:+79644317317">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2"/></svg>
+          Позвонить
+        </a>
+        <a class="btn btn-o" href="#prices">Смотреть цены</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="facts">
+    <div class="wrap">
+      <ul>
+        <li><b>4,8</b><span>рейтинг в 2ГИС, 133 оценки</span></li>
+        <li><b>09–22</b><span>каждый день, без выходных</span></li>
+        <li><b>R10–R22</b><span>легковые, джипы, грузовые</span></li>
+        <li><b>160 м</b><span>от остановки «Чайка»</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <section id="prices">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="num">01</div>
+        <h2>Цены на шиномонтаж</h2>
+        <p>Прайс мастерской, цены в рублях за одно колесо. Где указана вилка, точную цену назовёт мастер — она зависит от состояния колеса и сложности работы.</p>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Тип шины">
+        <button role="tab" aria-selected="true" data-col="1">Легковая<small>R10–R14</small></button>
+        <button role="tab" aria-selected="false" data-col="2">Легковая<small>R15–R17</small></button>
+        <button role="tab" aria-selected="false" data-col="3">Джип<small>R15–R17</small></button>
+        <button role="tab" aria-selected="false" data-col="4">Джип<small>R18–R22</small></button>
+        <button role="tab" aria-selected="false" data-col="5">Низкий профиль, грузовая<small>R12–R22</small></button>
+      </div>
+
+      <div class="price-board" data-col="1">
+        <table>
+          <thead>
+            <tr>
+              <th>Работа</th>
+              <th><b>Легковая</b><span>R10–R14</span></th>
+              <th><b>Легковая</b><span>R15–R17</span></th>
+              <th><b>Джип</b><span>R15–R17</span></th>
+              <th><b>Джип</b><span>R18–R22</span></th>
+              <th><b>Низкий профиль, грузовая</b><span>R14–R22 (до 55 серии), грузовая R12–R22</span></th>
+            </tr>
+          </thead>
+          <tbody id="price-body"></tbody>
+        </table>
+      </div>
+
+      <div class="price-notes">
+        <p>Низкопрофильной считаем шину с высотой профиля до 55 (серия 55 и ниже).</p>
+        <p>Перекидка — снять шину с диска и поставить другую (разборка и сборка вместе).</p>
+        <p>Очистка диска от ржавчины — 250–500 ₽, цену определяет мастер по сложности.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="services" id="services">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="num">02</div>
+        <h2>Ремонт и другие работы</h2>
+        <p>Помимо переобувки чиним колёса, обслуживаем мотоциклы, меняем колодки и заправляем кондиционеры. Стоимость этих работ зависит от машины — назовём по телефону.</p>
+      </div>
+      <ul class="svc-list">
+        <li><h3>Ремонт прокола</h3><p>Саморез, гвоздь, мелкий прокол в протекторе. Ставим жгут или грибок изнутри.</p><span class="p">по звонку</span></li>
+        <li><h3>Ремонт пореза</h3><p>Вулканизация и латка с кордом. Скажем честно, если шину уже не спасти.</p><span class="p">по звонку</span></li>
+        <li><h3>Мотошиномонтаж</h3><p>Снятие, монтаж и балансировка колёс мотоциклов и скутеров.</p><span class="p">по звонку</span></li>
+        <li><h3>Замена колодок</h3><p>Передние или задние тормозные колодки, цена за ось.</p><span class="p">по звонку</span></li>
+        <li><h3>Кондиционер</h3><p>Проверка системы на утечку и заправка фреоном.</p><span class="p">по звонку</span></li>
+        <li><h3>Замена вентиля</h3><p>Резиновый вентиль, при монтаже шины.</p><span class="p">по звонку</span></li>
+        <li><h3>Шины б/у</h3><p>Продаём подержанные шины в хорошем состоянии и выкупаем ваши. Наличие и размеры — по телефону.</p><span class="p">по звонку</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="place">
+    <div class="wrap place">
+      <figure>
+        <img src="img/tire.jpg" alt="Новая зимняя шина Triangle на литом диске после установки" loading="lazy">
+        <figcaption>Фото из карточки мастерской в 2ГИС</figcaption>
+      </figure>
+      <div>
+        <div class="sec-head">
+          <div class="num">03</div>
+          <h2>Пока меняем колёса</h2>
+          <p>Мастерская на первом этаже, вход с улицы Калинина.</p>
+        </div>
+        <ul>
+          <li><b>Кафе рядом</b><span>Кофейня «Мате» в этом же здании — можно выпить кофе, пока идёт работа.</span></li>
+          <li><b>Wi-Fi</b><span>Бесплатный для клиентов.</span></li>
+          <li><b>Оплата</b><span>Наличные, карта, QR-код, перевод, безнал для организаций. Есть «Плати частями».</span></li>
+          <li><b>Запись</b><span>По телефону. В сезон переобувки лучше позвонить заранее и уточнить очередь.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="rating">
+    <div class="wrap">
+      <div class="big">4,8</div>
+      <div class="txt">
+        <h2>133 оценки и 109 отзывов в 2ГИС</h2>
+        <p>Мастерская — номинант Премии 2ГИС 2026. Все отзывы клиентов можно почитать в карточке.</p>
+      </div>
+      <a class="btn" href="https://2gis.ru/vladivostok/firm/70000001062691886/tab/reviews" target="_blank" rel="noopener">Читать отзывы</a>
+    </div>
+  </div>
+
+  <section class="contacts" id="contacts">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="num">04</div>
+        <h2>Как добраться</h2>
+        <p>Улица Калинина, 28Б, 1 этаж. Рядом остановка «Чайка» — 160 метров.</p>
+      </div>
+      <div class="c-grid">
+        <div>
+          <dl class="c-list">
+            <div><dt>Телефон</dt><dd><a class="phone" href="tel:+79644317317">+7 964 431-73-17</a></dd></div>
+            <div><dt>Адрес</dt><dd>Владивосток, ул. Калинина, 28Б</dd></div>
+            <div>
+              <dt>Часы работы</dt>
+              <dd><table class="hours" id="hours"></table></dd>
+            </div>
+          </dl>
+          <div class="c-actions">
+            <a class="btn btn-y" href="https://2gis.ru/vladivostok/firm/70000001062691886" target="_blank" rel="noopener">Маршрут в 2ГИС</a>
+            <a class="btn btn-o" href="https://yandex.ru/maps/?rtext=~43.102102,131.909906&rtt=auto" target="_blank" rel="noopener">Яндекс Карты</a>
+          </div>
+        </div>
+        <div class="map">
+          <iframe title="Карта: ул. Калинина, 28Б" loading="lazy"
+            src="https://www.openstreetmap.org/export/embed.html?bbox=131.9032%2C43.0991%2C131.9166%2C43.1051&amp;layer=mapnik&amp;marker=43.102102%2C131.909906"></iframe>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Шиномонтажная мастерская, ИП Кадач А.С.</span>
+    <span>Владивосток, ул. Калинина, 28Б · +7 964 431-73-17</span>
+  </div>
+</footer>
+
+<a class="call-fab" href="tel:+79644317317" aria-label="Позвонить">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2"/></svg>
+</a>
+
+<script>
+  // Прайс мастерской (рубли за колесо). Колонки: легковая R10–14, легковая R15–17,
+  // джип R15–17, джип R18–22, низкий профиль/грузовая. Строка из одного значения — цена для всех.
+  const PRICES = [
+    ['Подкачка колеса', '35'],
+    ['Обтяжка колеса', '50'],
+    ['Установка запасного колеса', '200', '200', '200–250', '250–350', '150–350'],
+    ['Перестановка колеса', '200', '200', '200–250', '250–350', '150–350'],
+    ['Проверка колеса в воде', '200', '200', '250', '250', '250'],
+    ['Разборка с диска', '100', '150–200', '250–300', '300–500', '250–500'],
+    ['Сборка на диск', '100–150', '150–200', '250–300', '300–500', '250–500'],
+    ['Перекидка колеса', '200', '200–250', '400–500', '400–1 000', '350–1 000'],
+    'Балансировка',
+    ['Без ремонта и перекидки<small>набивные грузы</small>', '200', '250', '300–350', '400', '350–750'],
+    ['Одно колесо<small>набивные грузы</small>', '200', '200', '250', '400', '350–750'],
+    ['Одно колесо<small>клеящиеся грузы</small>', '200–250', '250', '300–350', '300–400', '350–750'],
+  ];
+
+  document.getElementById('price-body').innerHTML = PRICES.map(row => {
+    if (typeof row === 'string') return `<tr class="group"><td colspan="6">${row}</td></tr>`;
+    const [name, ...cols] = row;
+    const cells = cols.length === 1
+      ? `<td class="all" colspan="5">${cols[0]} ₽</td>`
+      : cols.map((v, i) => `<td class="c c${i + 1}">${v} ₽</td>`).join('');
+    return `<tr><td>${name}</td>${cells}</tr>`;
+  }).join('');
+
+  const board = document.querySelector('.price-board');
+  document.querySelectorAll('.tabs button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b === btn));
+      board.dataset.col = btn.dataset.col;
+    });
+  });
+
+  // Статус «открыто/закрыто» по времени Владивостока
+  const OPEN = 9, CLOSE = 22;
+  const days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+  const vl = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Vladivostok' }));
+  const h = vl.getHours() + vl.getMinutes() / 60;
+  const todayIdx = (vl.getDay() + 6) % 7;
+  const isOpen = h >= OPEN && h < CLOSE;
+  const st = document.getElementById('status');
+  st.classList.toggle('open', isOpen);
+  st.querySelector('span').textContent = isOpen
+    ? 'Сейчас открыто · до 22:00'
+    : (h < OPEN ? 'Сейчас закрыто · откроемся в 09:00' : 'Сейчас закрыто · откроемся завтра в 09:00');
+
+  document.getElementById('hours').innerHTML = days.map((d, i) =>
+    `<tr${i === todayIdx ? ' class="today"' : ''}><td>${d}</td><td>09:00–22:00</td></tr>`).join('');
+</script>
+</body>
+</html>
